@@ -4,7 +4,11 @@ Extension IDE (`.vsix`) et plugin Antigravity (panneau latéral + serveur MCP + 
 
 ## Aperçu
 
-### Antigravity (Side Panel)
+### Antigravity (Plugin & Side Panel)
+
+| Carte du plugin | Vue d'ensemble du plugin |
+| :---: | :---: |
+| ![Carte du plugin](docs/images/plugin-card.png) | ![Vue d'ensemble](docs/images/plugin-overview.png) |
 
 | Tableau de bord | Agents actifs & Historique |
 | :---: | :---: |
