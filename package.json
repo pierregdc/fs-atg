@@ -1,7 +1,7 @@
 {
   "name": "fs-atg",
   "displayName": "France Student pour Antigravity [ATG]",
-  "publisher": "ton-pseudo",
+  "publisher": "pierregdc",
   "version": "0.1.0",
   "engines": {
     "vscode": "^1.90.0"

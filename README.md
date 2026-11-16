@@ -28,14 +28,20 @@ Extension IDE (`.vsix`) et plugin Antigravity (panneau latéral + serveur MCP + 
 
 ```bash
 git clone https://github.com/pierregdc/fs-atg.git
+cd fs-atg
+node install.mjs
 ```
 
-1. Copiez le dossier `plugin/` dans `~/.gemini/config/plugins/fs-atg/`.
-2. Installez les dépendances MCP :
-   ```bash
-   cd ~/.gemini/config/plugins/fs-atg && npm install
-   ```
-3. Rechargez Antigravity, ouvrez **Extensions > France Student [ATG]**, puis dans **Paramètres** collez votre **clé API** (ou votre cookie `next-auth.session-token` de `ia.francestudent.org` en attendant l'accès développeur).
+Rechargez Antigravity, ouvrez **Extensions > France Student [ATG]**, puis dans **Paramètres** collez votre **clé API** (ou votre cookie `next-auth.session-token` de `ia.francestudent.org` en attendant l'accès développeur).
+
+<details>
+<summary>Installation manuelle (sans script)</summary>
+
+1. Copiez `plugin/` dans `~/.gemini/config/plugins/fs-atg/`.
+2. Dans `~/.gemini/config/plugins/fs-atg/mcp_config.json`, remplacez `<HOME>` par le chemin absolu de votre dossier utilisateur.
+3. Installez les dépendances : `cd ~/.gemini/config/plugins/fs-atg && npm install --omit=dev`.
+
+</details>
 
 <details>
 <summary>Optionnel : installer aussi l'extension .vsix dans Antigravity IDE / VS Code</summary>
