@@ -376,7 +376,8 @@
     </div>
 
     <div class="composer">
-      <textarea id="task" placeholder="Décris la tâche à déléguer…"></textarea>
+      <textarea id="task" placeholder="Décris la tâche à déléguer… (/auto, /faible, /mid, /élevé)"></textarea>
+      <div class="tier-row" id="cmdBar" hidden style="margin-bottom:6px"></div>
       <div class="tier-row" id="tierRow">
         <button class="chip on" data-choice="">
           <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
@@ -453,7 +454,10 @@
       <div class="grid-2">
         <div class="field">
           <label>Coupe-circuit (%)</label>
-          <input type="number" id="cutoffInput" min="0" max="90" value="15" />
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="number" id="cutoffInput" min="0" max="90" value="15" />
+            <button type="button" class="btn ghost sm" id="useAllBtn" title="Désactiver la réserve (0 %)">Tout utiliser</button>
+          </div>
         </div>
         <div class="field">
           <label>Agents parallèles</label>
@@ -770,10 +774,63 @@
       schedulePoll();
     }
 
+    const SLASH_COMMANDS = [
+      { cmd: '/auto', choice: '', label: 'Auto' },
+      { cmd: '/faible', choice: 'tier:light', label: 'Modèle faible' },
+      { cmd: '/mid', choice: 'tier:medium', label: 'Modèle équilibré' },
+      { cmd: '/élevé', choice: 'tier:heavy', label: 'Modèle fort' },
+    ];
+    const SLASH_MAP = {
+      auto: { choice: '', label: 'Auto' },
+      faible: { choice: 'tier:light', label: 'Modèle faible' },
+      leger: { choice: 'tier:light', label: 'Modèle faible' },
+      light: { choice: 'tier:light', label: 'Modèle faible' },
+      mid: { choice: 'tier:medium', label: 'Modèle équilibré' },
+      moyen: { choice: 'tier:medium', label: 'Modèle équilibré' },
+      equilibre: { choice: 'tier:medium', label: 'Modèle équilibré' },
+      medium: { choice: 'tier:medium', label: 'Modèle équilibré' },
+      eleve: { choice: 'tier:heavy', label: 'Modèle fort' },
+      fort: { choice: 'tier:heavy', label: 'Modèle fort' },
+      heavy: { choice: 'tier:heavy', label: 'Modèle fort' },
+    };
+
+    function parseSlash(raw) {
+      const m = /^\s*\/([a-zA-ZÀ-ÿ0-9_-]+)(?:\s+([\s\S]*))?$/.exec(raw);
+      if (!m) return null;
+      const key = m[1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const hit = SLASH_MAP[key];
+      if (!hit) return null;
+      return { ...hit, rest: (m[2] || '').trim() };
+    }
+
+    function updateCmdBar() {
+      const val = $('task').value;
+      const bar = $('cmdBar');
+      if (!val.startsWith('/')) { bar.hidden = true; return; }
+      const q = val.slice(1).split(/\s/)[0].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const matches = SLASH_COMMANDS.filter((c) => c.cmd.slice(1).normalize('NFD').replace(/[\u0300-\u036f]/g, '').startsWith(q));
+      if (!matches.length || /\s/.test(val.trimStart())) { bar.hidden = true; return; }
+      bar.innerHTML = matches.map((c) => `<button type="button" class="chip" data-cmd="${c.cmd}">${c.cmd} · ${c.label}</button>`).join('');
+      bar.hidden = false;
+    }
+
     async function send() {
-      const task = $('task').value.trim();
+      let task = $('task').value.trim();
       if (!task) return;
+      const parsed = parseSlash(task);
+      if (parsed) {
+        selectedChoice = parsed.choice;
+        renderTiers();
+        if (!parsed.rest) {
+          $('task').value = '';
+          updateCmdBar();
+          flash(`Mode : ${parsed.label}`);
+          return;
+        }
+        task = parsed.rest;
+      }
       $('task').value = '';
+      updateCmdBar();
       hidePopover();
       try {
         await api('/api/delegate', { task, model: selectedChoice || undefined });
@@ -785,7 +842,22 @@
     document.querySelectorAll('.tab-btn').forEach((b) => { b.onclick = () => switchTab(b.dataset.tab); });
     $('openCfg').onclick = () => switchTab('settings');
     $('go').onclick = send;
-    $('task').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); });
+    $('task').addEventListener('input', updateCmdBar);
+    $('task').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { send(); return; }
+      if (e.key === 'Enter' && !e.shiftKey && parseSlash($('task').value.trim()) && !parseSlash($('task').value.trim()).rest) {
+        e.preventDefault();
+        send();
+      }
+    });
+    $('useAllBtn').onclick = async () => {
+      $('cutoffInput').value = 0;
+      try {
+        await api('/api/settings', { cutoffPercent: 0 });
+        flash('Tout utiliser activé (0 %)', 'orchToast');
+        await poll();
+      } catch (e) { flash(e.message, 'orchToast', true); }
+    };
     $('gauge').onclick = async () => {
       try { await api('/api/refresh', {}); flash('Quota actualisé'); await poll(); }
       catch (e) { flash(e.message, 'toast', true); }
@@ -869,6 +941,19 @@
         hidePopover();
         renderTiers();
         flash('Modèle : ' + pick.textContent.trim().split('\n')[0]);
+        return;
+      }
+      const cmdBtn = e.target.closest('[data-cmd]');
+      if (cmdBtn) {
+        const parsed = parseSlash(cmdBtn.dataset.cmd);
+        if (parsed) {
+          selectedChoice = parsed.choice;
+          renderTiers();
+          $('task').value = '';
+          updateCmdBar();
+          $('task').focus();
+          flash(`Mode : ${parsed.label}`);
+        }
         return;
       }
       const chip = e.target.closest('[data-choice]');

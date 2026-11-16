@@ -304,7 +304,8 @@ function panelHtml(nonce: string): string {
     </div>
 
     <div class="composer">
-      <textarea id="task" placeholder="Décris la tâche… (Ctrl+Entrée)"></textarea>
+      <textarea id="task" placeholder="Décris la tâche… (/auto, /faible, /mid, /élevé)"></textarea>
+      <div class="tier-row" id="cmdBar" hidden></div>
       <div class="tier-row" id="attachedChips"></div>
       <div class="tier-row" id="tierRow">
         <button class="chip on" data-choice="">Auto</button>
@@ -341,7 +342,7 @@ function panelHtml(nonce: string): string {
       </div>
       <div class="field"><label>URL de base API</label><input type="text" id="baseUrlInput" /></div>
       <div class="grid-2">
-        <div class="field"><label>Coupe-circuit (%)</label><input type="number" id="cutoffInput" min="0" max="90" /></div>
+        <div class="field"><label>Coupe-circuit (%)</label><div style="display:flex;gap:6px;align-items:center"><input type="number" id="cutoffInput" min="0" max="90" /><button type="button" class="btn ghost sm" id="useAllBtn" title="Désactiver la réserve (0 %)">Tout utiliser</button></div></div>
         <div class="field"><label>Agents parallèles</label><input type="number" id="maxParallelInput" min="1" max="6" /></div>
       </div>
       <div class="field"><label>Power-up HTTP 429</label>
@@ -482,15 +483,68 @@ function panelHtml(nonce: string): string {
     const t = Number(el.dataset.start); if (t) el.textContent = fmt(Math.round((Date.now() - t) / 1000));
   }), 1000);
 
+  const SLASH_COMMANDS = [
+    { cmd: '/auto', choice: '', label: 'Auto' },
+    { cmd: '/faible', choice: 'tier:light', label: 'Modèle faible' },
+    { cmd: '/mid', choice: 'tier:medium', label: 'Modèle équilibré' },
+    { cmd: '/élevé', choice: 'tier:heavy', label: 'Modèle fort' },
+  ];
+  const SLASH_MAP = {
+    auto: { choice: '', label: 'Auto' },
+    faible: { choice: 'tier:light', label: 'Modèle faible' },
+    leger: { choice: 'tier:light', label: 'Modèle faible' },
+    light: { choice: 'tier:light', label: 'Modèle faible' },
+    mid: { choice: 'tier:medium', label: 'Modèle équilibré' },
+    moyen: { choice: 'tier:medium', label: 'Modèle équilibré' },
+    equilibre: { choice: 'tier:medium', label: 'Modèle équilibré' },
+    medium: { choice: 'tier:medium', label: 'Modèle équilibré' },
+    eleve: { choice: 'tier:heavy', label: 'Modèle fort' },
+    fort: { choice: 'tier:heavy', label: 'Modèle fort' },
+    heavy: { choice: 'tier:heavy', label: 'Modèle fort' },
+  };
+  function parseSlash(raw) {
+    const m = /^\\s*\\/([a-zA-ZÀ-ÿ0-9_-]+)(?:\\s+([\\s\\S]*))?$/.exec(raw);
+    if (!m) return null;
+    const key = m[1].toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+    const hit = SLASH_MAP[key];
+    return hit ? { ...hit, rest: (m[2] || '').trim() } : null;
+  }
+  function updateCmdBar() {
+    const val = $('task').value;
+    const bar = $('cmdBar');
+    if (!val.startsWith('/')) { bar.hidden = true; return; }
+    const q = val.slice(1).split(/\\s/)[0].toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+    const matches = SLASH_COMMANDS.filter(c => c.cmd.slice(1).normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').startsWith(q));
+    if (!matches.length || /\\s/.test(val.trimStart())) { bar.hidden = true; return; }
+    bar.innerHTML = matches.map(c => '<button type="button" class="chip" data-cmd="' + c.cmd + '">' + c.cmd + ' · ' + c.label + '</button>').join('');
+    bar.hidden = false;
+  }
   function send() {
-    const task = $('task').value.trim(); if (!task) return;
+    let task = $('task').value.trim(); if (!task) return;
+    const parsed = parseSlash(task);
+    if (parsed) {
+      selectedChoice = parsed.choice;
+      renderTiers();
+      if (!parsed.rest) { $('task').value = ''; updateCmdBar(); return; }
+      task = parsed.rest;
+    }
     vscode.postMessage({ type: 'delegate', task, model: selectedChoice || undefined });
     $('task').value = '';
+    updateCmdBar();
     hidePopover();
   }
   document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
   $('go').onclick = send;
-  $('task').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); });
+  $('task').addEventListener('input', updateCmdBar);
+  $('task').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { send(); return; }
+    const p = parseSlash($('task').value.trim());
+    if (e.key === 'Enter' && !e.shiftKey && p && !p.rest) { e.preventDefault(); send(); }
+  });
+  $('useAllBtn').onclick = () => {
+    $('cutoffInput').value = 0;
+    vscode.postMessage({ type: 'saveSettings', cutoffPercent: 0 });
+  };
   $('attach').onclick = () => vscode.postMessage({ type: 'attach' });
   $('log').onclick = () => vscode.postMessage({ type: 'log' });
   $('gauge').onclick = () => vscode.postMessage({ type: 'refresh' });
@@ -524,6 +578,12 @@ function panelHtml(nonce: string): string {
   };
   document.querySelectorAll('#mode button').forEach(b => b.onclick = () => vscode.postMessage({ type: 'mode', mode: b.dataset.mode }));
   document.addEventListener('click', e => {
+    const cmdBtn = e.target.closest('[data-cmd]');
+    if (cmdBtn) {
+      const parsed = parseSlash(cmdBtn.dataset.cmd);
+      if (parsed) { selectedChoice = parsed.choice; renderTiers(); $('task').value = ''; updateCmdBar(); $('task').focus(); }
+      return;
+    }
     const p = e.target.closest('[data-pick]'); if (p && !p.disabled) { selectedChoice = p.dataset.pick; hidePopover(); renderTiers(); return; }
     const ch = e.target.closest('[data-choice]'); if (ch) { selectedChoice = ch.dataset.choice; renderTiers(); return; }
     if (!e.target.closest('#tierPopover') && !e.target.closest('#tierRow')) hidePopover();

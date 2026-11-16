@@ -202,7 +202,7 @@ server.registerTool('fs_delegate', {
     parentJobId: z.string().optional().describe("Suite d'un job : seul son résumé est réutilisé."),
   },
 }, async (a) => {
-  const firstLine = a.task.split('\n')[0].replace(/^\s*\[[^\]]+\]\s*/, '');
+  const firstLine = a.task.split('\n')[0].replace(/^\s*(?:\[[^\]]+\]|\/[a-zA-ZÀ-ÿ0-9_-]+)\s*/, '');
   const job = {
     id: randomUUID().slice(0, 8),
     title: `${ATG} ${firstLine.slice(0, 70)}${firstLine.length > 70 ? '…' : ''}`,

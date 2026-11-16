@@ -17,7 +17,7 @@ const LIGHT = /(renomm|rename|commentaire|comment|docstring|readme|typo|formate|
 
 const TIER_ALIAS: Record<string, Tier> = {
   faible: 'light', leger: 'light', light: 'light',
-  equilibre: 'medium', intermediaire: 'medium', medium: 'medium',
+  mid: 'medium', moyen: 'medium', equilibre: 'medium', intermediaire: 'medium', medium: 'medium',
   fort: 'heavy', eleve: 'heavy', puissant: 'heavy', heavy: 'heavy',
 };
 
@@ -44,12 +44,19 @@ export function pickModel(raw: string, available: string[], cfg: RouteConfig, ex
   const pool = available.filter(id => (!cfg.allowed.length || has(id, cfg.allowed)) && !has(id, cfg.blocked));
   if (!pool.length) throw new Error('Aucun modèle autorisé disponible (vérifie listes blanche/noire).');
 
-  // Forçage : [faible] / [equilibre] / [fort] / [haiku] ... ou choix explicite dans le panneau.
+  // Forçage : /auto, /faible, /mid, /élevé, [faible] / [equilibre] / [fort] / [haiku] ... ou choix explicite dans le panneau.
   let prompt = raw;
   const tag = /^\s*\[([\w.\- ]+)\]\s*/.exec(raw);
   const tagModel = tag && tag[1].toUpperCase() !== 'ATG' ? tag[1] : undefined;
   if (tagModel) prompt = raw.slice(tag![0].length);
-  const wanted = explicit || tagModel;
+
+  const slash = /^\s*\/([a-zA-ZÀ-ÿ0-9_-]+)(?:\s+|$)/.exec(prompt);
+  const slashNorm = slash ? slash[1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
+  const SLASH_CMDS: Record<string, Tier | 'auto'> = { ...TIER_ALIAS, auto: 'auto' };
+  const slashTarget = SLASH_CMDS[slashNorm];
+  if (slashTarget) prompt = prompt.slice(slash![0].length);
+
+  const wanted = slashTarget === 'auto' ? undefined : (slashTarget || explicit || tagModel);
   const norm = wanted ? wanted.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^tier:/, '') : '';
   const forcedTier = TIER_ALIAS[norm];
 

@@ -232,11 +232,23 @@ export function pickModel(raw, available, state, explicit) {
   const tag = /^\s*\[([\w.\- ]+)\]\s*/.exec(raw);
   const tagModel = tag && tag[1].toUpperCase() !== 'ATG' ? tag[1] : undefined;
   if (tagModel) prompt = raw.slice(tag[0].length);
-  const wanted = explicit || tagModel;
+
+  const slash = /^\s*\/([a-zA-ZÀ-ÿ0-9_-]+)(?:\s+|$)/.exec(prompt);
+  const slashNorm = slash ? slash[1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
+  const SLASH_CMDS = {
+    auto: 'auto',
+    faible: 'light', leger: 'light', light: 'light',
+    mid: 'medium', moyen: 'medium', equilibre: 'medium', intermediaire: 'medium', medium: 'medium',
+    eleve: 'heavy', fort: 'heavy', puissant: 'heavy', heavy: 'heavy',
+  };
+  const slashTarget = SLASH_CMDS[slashNorm];
+  if (slashTarget) prompt = prompt.slice(slash[0].length);
+
+  const wanted = slashTarget === 'auto' ? undefined : (slashTarget || explicit || tagModel);
 
   const TIER_ALIAS = {
     faible: 'light', leger: 'light', light: 'light',
-    equilibre: 'medium', intermediaire: 'medium', medium: 'medium',
+    mid: 'medium', moyen: 'medium', equilibre: 'medium', intermediaire: 'medium', medium: 'medium',
     fort: 'heavy', eleve: 'heavy', puissant: 'heavy', heavy: 'heavy',
   };
   const normKey = wanted ? wanted.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^tier:/, '') : '';
