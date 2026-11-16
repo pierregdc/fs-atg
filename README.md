@@ -4,9 +4,13 @@ Extension IDE (`.vsix`) et plugin Antigravity (panneau latéral + serveur MCP + 
 
 ## Aperçu
 
-| Tableau de bord | Paramètres |
+| Tableau de bord | Agents actifs & Historique |
 | :---: | :---: |
-| ![Tableau de bord](docs/images/dashboard.png) | ![Paramètres](docs/images/settings.png) |
+| ![Tableau de bord](docs/images/dashboard.png) | ![Agents actifs](docs/images/active-agent.png) |
+
+| Liste des modèles (survol) | Paramètres |
+| :---: | :---: |
+| ![Modèles](docs/images/models-popover.png) | ![Paramètres](docs/images/settings.png) |
 
 ## Installation rapide (Antigravity)
 
