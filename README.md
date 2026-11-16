@@ -2,6 +2,12 @@
 
 Extension IDE (`.vsix`) et plugin Antigravity 2.0 (side panel + serveur MCP stdio + règle par défaut) permettant de déléguer la génération de code aux modèles **France Student** (ChatGPT & Claude).
 
+## Aperçu
+
+| Tableau de bord | Paramètres |
+| :---: | :---: |
+| ![Tableau de bord](docs/images/dashboard.png) | ![Paramètres](docs/images/settings.png) |
+
 ## Fonctionnalités
 
 - **Double compatibilité** :
