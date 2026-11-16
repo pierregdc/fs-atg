@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>France Student [ATG]</title>
+  <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASzSURBVGhD7VhbjF1jFP6m1dZdoo2G0NaYurTSqHPO3mudkRiioWlKCEGlLuGJEiIRlxeJNwkRqTQVjBAVE52aObP/9Z/21GSIoYJU6INbiw6pUGXKVMt0ZK2953bOmenLXM7D/pL1cvbeZ3/f/r/1r7V+IEWKFClSpEhRBcuKJyGI1iDouAncfUL55VpFnZFldzlI3gfLf2B/BCwlUDFEU+fxdk9NQskF0fmg6HWQ/AWWgZi8CRgAu16E7kVkO+qx0s0pf3z6sKRlNoLiuWB5DOT2xWTlX7DrActrYNkElp/j1bBre0HRQ8i0L0Bm46zyv5tCDMxAxp8J9reD5bOYtBwFy+9gvwWhv8LygP3p4ML1IBGQ/DG0MiQ7EMotCNvmA0/OKP/3yUQdQncqAr8K7Apg+dOIkxwGy3sgdxsyhXnAgN53Nsg9AXIbQO2XIpC7Qe4jsKitjoLdAZBsRhitQGPbKeUvmnjokoeyDOReActPZgty/SD3NUL/IEgW2crYvYV5YFkPloNg+Qfk3kTQOhfc1oBQHgXJbrD028qR/AjyG0DbLkJT53Hlr50YZD6ZhdDfB3J7jBB7/eq/gqIXwIUL0eDmgPzjCISNfChPJ6ujvtck7gNFz5qtNOFzfinYvRxbzmx1CCzfguSOyRHBLbo9qmWUkL5su3k451bbFqlJyfJ5ksiaE38Pkx+KPrDvQl5ythpqG9tyXWf8USyHNqGpWbfbCYYK0ESMiXSD/FUJURXTl2ydgzuNEiknPxj9thr6tdlfg6A0F2FhMVg+teskbyX1YoIxSoDvQrZUH3tcyfjxCI8XmgMlBFEWLDumVkBYmm8FKV+8ESzfH+OrjxW9yMu9aDT7TYOAQZBcm1ipnOAxwv2ArFuO3DvnTK+AzLbTwO6LSoJjhe1gWtQ2WqGbdgEKcivNEhVkq4ZW4qdMuKImBOhL456nnGxlkOsFddyAJV/OtmdrQkC4dTHIWoRKwpWhK7DTeilFbQjwa6sQHS9+Q7Z4sT1bEwLYvVqF5FihSbzLqrFi2gUsalb/f1OF6Hjxi80RiqkXIN1o3LZgqI8P/XXDU1jV0CKnVXfEb9rcyTPxFtzWMDWtBEcdCYFDIO9AUWjdpSYjyUvW38eDzUjy2krvAkkrSHrATps8/W0f2K9D4K4Eu+1DHa41c5MhQNtpcveDZQ/IHR5up+V5ZOUCE6K1gNzbcaNmheoIyG81q2iLvHzzwuQ/1iNw65K5Yv+QUHbfIfR3TU47rVARuegSkCVsPOfGA81XIHkA+WihtcIZdx4ougfsnrP+XlfP0DITl5XqQe4RULQblAw0OidrVc61L5088sOoM9+SWw0WtVQ8UsZfsAuB3Gotsh2faI5oDNQh33oGSO4EuQ+HR0p/AOy2IJCrp2akHIWWmWhsOysmJTtHDPX7ze86qGQKJ5q1wuIKkA5DSljtYkctH4OjNfFuNrVD/WgMHqvo8M5eE1NF6Jy7FyTNIPdGYrfB5O5B6B42u03vsUoZ1OeazEqYhsbJEQdbchChzsBtDZMzMk4M6sw2eiZE8kEyYupqvItcRz5J5ho9WixHU+fJCKO1IHeziUqRIkWKFClSVOJ/3Vji70GskJcAAAAASUVORK5CYII=">
+  <script src="/preload.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --fs-bg: var(--background, #0d1017);
+      --fs-card: var(--card, #141822);
+      --fs-surface: var(--secondary, #1c2130);
+      --fs-fg: var(--foreground, #eef2f8);
+      --fs-fg-soft: color-mix(in srgb, var(--fs-fg) 68%, transparent);
+      --fs-fg-faint: color-mix(in srgb, var(--fs-fg) 48%, transparent);
+      --fs-border: color-mix(in srgb, var(--fs-fg) 11%, transparent);
+      --fs-input-bg: color-mix(in srgb, var(--fs-fg) 4%, var(--fs-bg));
+      --fs-blue: #0d84ff;
+      --fs-indigo: #5b50e6;
+      --fs-ok: #10b981;
+      --fs-warn: #f59e0b;
+      --fs-bad: #ef4444;
+      --fs-r: 16px;
+      --fs-r-sm: 12px;
+      --fs-pill: 999px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--fs-bg) !important;
+      color: var(--fs-fg) !important;
+      font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+      font-size: 12.5px; line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+    body { padding: 12px; }
+    button, input, select, textarea { font: inherit; color: var(--fs-fg); }
+
+    svg.ico {
+      width: 14px; height: 14px; flex-shrink: 0;
+      stroke: currentColor; fill: none; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    svg.ico-sm { width: 12px; height: 12px; }
+
+    /* Top Pill Tabs */
+    .tabs {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+      background: var(--fs-card); border: 1px solid var(--fs-border);
+      border-radius: var(--fs-pill); padding: 4px; margin-bottom: 10px;
+    }
+    .tab-btn {
+      border: 0; background: transparent; color: var(--fs-fg-soft);
+      padding: 6px 10px; border-radius: var(--fs-pill); cursor: pointer;
+      font-size: 12px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      transition: background .15s, color .15s;
+    }
+    .tab-btn:hover { color: var(--fs-fg); }
+    .tab-btn.on { background: var(--fs-surface); color: var(--fs-fg); }
+    .view[hidden] { display: none; }
+
+    /* Warning banner */
+    .warnbox {
+      background: color-mix(in srgb, var(--fs-warn) 10%, var(--fs-card));
+      border: 1px solid color-mix(in srgb, var(--fs-warn) 38%, transparent);
+      border-radius: var(--fs-r);
+      padding: 10px 12px; margin-bottom: 10px;
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    }
+    .warnbox[hidden] { display: none; }
+    .warn-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .warn-ico {
+      width: 30px; height: 30px; border-radius: 999px;
+      background: color-mix(in srgb, var(--fs-warn) 18%, transparent); color: var(--fs-warn);
+      display: grid; place-items: center; flex-shrink: 0;
+    }
+    .warn-title { font-weight: 600; font-size: 12.5px; }
+    .warn-sub { font-size: 11px; color: var(--fs-fg-soft); }
+
+    /* Solid Light Hero Card */
+    .hero {
+      background: var(--fs-card);
+      border: 1px solid var(--fs-border);
+      border-radius: var(--fs-r);
+      padding: 13px 14px;
+      margin-bottom: 10px;
+    }
+    .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .brand-logo {
+      width: 22px; height: 22px; border-radius: 7px;
+      object-fit: contain; flex-shrink: 0;
+    }
+    .hero h1 { font-size: 14px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px; }
+    .badge {
+      font-size: 9.5px; font-weight: 800; border-radius: var(--fs-pill);
+      padding: 2px 7px; background: var(--fs-indigo); color: #fff; letter-spacing: .04em;
+    }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600;
+      padding: 3px 9px; border-radius: var(--fs-pill);
+      background: var(--fs-surface); color: var(--fs-fg-soft); flex-shrink: 0;
+    }
+    .status-pill.on { color: #34d399; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fs-fg-faint); }
+    .status-pill.on .dot { background: #34d399; }
+
+    .qrow { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; margin-bottom: 5px; color: var(--fs-fg-soft); }
+    .pct-val { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--fs-fg); }
+    .gauge-wrap { position: relative; padding-bottom: 14px; cursor: pointer; }
+    .gauge { height: 7px; background: var(--fs-surface); border-radius: var(--fs-pill); overflow: hidden; }
+    .gauge > div { height: 100%; width: 0; background: var(--fs-blue); border-radius: var(--fs-pill); transition: width .45s ease, background .25s; }
+    .gauge.low > div { background: var(--fs-warn); }
+    .gauge.crit > div { background: var(--fs-bad); }
+    .cutoff-tick {
+      position: absolute; top: -2px; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; pointer-events: none;
+    }
+    .cutoff-line { width: 2px; height: 11px; background: var(--fs-warn); border-radius: 2px; }
+    .cutoff-lbl { font-size: 9.5px; font-weight: 700; color: var(--fs-warn); margin-top: 1px; }
+    .meta { font-size: 11px; color: var(--fs-fg-soft); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+    /* Mode Selector */
+    .seg {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+      background: var(--fs-card); border: 1px solid var(--fs-border);
+      border-radius: var(--fs-pill); padding: 4px; margin-bottom: 10px;
+    }
+    .seg button {
+      border: 0; background: transparent; color: var(--fs-fg-soft);
+      padding: 6px 10px; border-radius: var(--fs-pill); cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      font-size: 12px; font-weight: 600; transition: background .15s, color .15s;
+    }
+    .seg button span.sub-txt { font-size: 10.5px; font-weight: 400; color: var(--fs-fg-soft); }
+    .seg button.on { background: var(--fs-blue); color: #fff; }
+    .seg button.on span.sub-txt { color: rgba(255,255,255,.85); }
+
+    /* Composer */
+    .composer, .settings-card {
+      background: var(--fs-card);
+      border: 1px solid var(--fs-border);
+      border-radius: var(--fs-r);
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    textarea, select, input[type="text"], input[type="password"], input[type="number"] {
+      width: 100%;
+      background: var(--fs-input-bg);
+      color: var(--fs-fg);
+      border: 1px solid var(--fs-border);
+      border-radius: var(--fs-r-sm);
+      padding: 8px 11px;
+      font-size: 12px;
+    }
+    textarea { min-height: 72px; resize: vertical; margin-bottom: 10px; font-size: 12.5px; }
+    textarea::placeholder, input::placeholder { color: var(--fs-fg-faint); }
+    textarea:focus, input:focus, select:focus { outline: none; border-color: var(--fs-blue); }
+
+    /* Tier Pills + Hover Popover */
+    .tier-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; position: relative; }
+    .tier-wrap { position: relative; }
+    .chip {
+      font-size: 11.5px; padding: 5px 11px; border-radius: var(--fs-pill);
+      background: var(--fs-surface); border: 1px solid var(--fs-border);
+      color: var(--fs-fg-soft); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+      transition: all .15s; user-select: none;
+    }
+    .chip:hover { color: var(--fs-fg); border-color: color-mix(in srgb, var(--fs-fg) 28%, transparent); }
+    .chip.on {
+      background: color-mix(in srgb, var(--fs-blue) 22%, var(--fs-card));
+      border-color: var(--fs-blue); color: var(--fs-fg); font-weight: 600;
+    }
+    .chip-cnt {
+      font-size: 10px; opacity: .75; background: color-mix(in srgb, var(--fs-fg) 10%, transparent);
+      padding: 0 5px; border-radius: var(--fs-pill);
+    }
+
+    .popover {
+      position: fixed; z-index: 999;
+      width: 240px; max-width: calc(100vw - 24px);
+      background: var(--fs-card);
+      border: 1px solid color-mix(in srgb, var(--fs-fg) 20%, transparent);
+      border-radius: 14px;
+      padding: 8px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, .45);
+    }
+    .popover[hidden] { display: none; }
+    .pop-head {
+      font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--fs-fg-soft); padding: 3px 6px 6px; border-bottom: 1px solid var(--fs-border); margin-bottom: 4px;
+      display: flex; justify-content: space-between;
+    }
+    .pop-item {
+      width: 100%; text-align: left; background: transparent; border: 0; border-radius: 9px;
+      padding: 6px 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; color: var(--fs-fg);
+    }
+    .pop-item:hover { background: var(--fs-surface); }
+    .pop-item.blocked { opacity: .45; text-decoration: line-through; cursor: not-allowed; }
+    .pop-prov {
+      font-size: 10px; color: var(--fs-fg-soft); background: var(--fs-surface);
+      padding: 1px 6px; border-radius: var(--fs-pill); text-transform: capitalize;
+    }
+
+    .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .spacer { flex: 1; }
+    .kbd-hint { font-size: 10.5px; color: var(--fs-fg-soft); display: flex; align-items: center; gap: 3px; }
+    kbd { background: var(--fs-surface); border-radius: 6px; padding: 1px 6px; font-size: 10px; }
+
+    /* Pill Buttons */
+    .btn {
+      background: var(--fs-blue); color: #fff; border: 0; border-radius: var(--fs-pill);
+      padding: 7px 15px; cursor: pointer; font-weight: 600; font-size: 12px;
+      display: inline-flex; align-items: center; gap: 6px; transition: filter .15s;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .btn.ghost { background: var(--fs-surface); border: 1px solid var(--fs-border); color: var(--fs-fg); font-weight: 500; }
+    .btn.danger { background: color-mix(in srgb, var(--fs-bad) 18%, var(--fs-card)); border: 1px solid color-mix(in srgb, var(--fs-bad) 42%, transparent); color: #fca5a5; }
+    .btn.sm { padding: 5px 12px; font-size: 11.5px; }
+
+    /* Section headers */
+    .sec-head { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 6px; }
+    .sec-title {
+      font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+      color: var(--fs-fg-soft); text-transform: uppercase; display: flex; align-items: center; gap: 6px;
+    }
+    .cnt { background: var(--fs-surface); border-radius: var(--fs-pill); padding: 0 7px; font-size: 10.5px; color: var(--fs-fg); }
+    .link-btn { background: none; border: 0; color: var(--fs-blue); cursor: pointer; font-size: 11px; font-weight: 600; padding: 0; }
+    .link-btn:hover { text-decoration: underline; }
+
+    /* Light Empty state */
+    .empty-txt { font-size: 11.5px; color: var(--fs-fg-faint); padding: 6px 4px; }
+
+    /* Active job cards */
+    .job-card {
+      background: var(--fs-card); border: 1px solid var(--fs-border);
+      border-radius: var(--fs-r); padding: 10px 12px; margin-bottom: 8px;
+    }
+    .job-top { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+    .tag { font-size: 9.5px; font-weight: 800; background: var(--fs-indigo); color: #fff; border-radius: var(--fs-pill); padding: 2px 6px; flex-shrink: 0; }
+    .job-title { font-size: 12.5px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .model-pill { font-size: 10.5px; background: var(--fs-surface); border-radius: var(--fs-pill); padding: 2px 8px; color: var(--fs-fg-soft); flex-shrink: 0; }
+    .x { background: none; border: 0; color: var(--fs-fg-soft); cursor: pointer; padding: 2px; display: grid; place-items: center; }
+    .x:hover { color: var(--fs-fg); }
+    .pbar { height: 4px; background: var(--fs-surface); border-radius: var(--fs-pill); overflow: hidden; margin-bottom: 6px; }
+    .pbar > div { height: 100%; width: 45%; background: var(--fs-blue); border-radius: var(--fs-pill); animation: indeterminate 1.3s ease-in-out infinite; }
+    @keyframes indeterminate { 0% { transform: translateX(-100%); width: 35%; } 50% { width: 65%; } 100% { transform: translateX(270%); width: 35%; } }
+    .job-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--fs-fg-soft); margin-bottom: 6px; }
+    .term {
+      background: var(--fs-input-bg); border-radius: 10px; padding: 6px 9px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 11px; color: var(--fs-fg-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* History list */
+    .hist-list { background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: var(--fs-r); overflow: hidden; }
+    .hist-item { padding: 9px 12px; border-bottom: 1px solid var(--fs-border); cursor: pointer; }
+    .hist-item:last-child { border-bottom: 0; }
+    .hist-item:hover { background: color-mix(in srgb, var(--fs-fg) 4%, transparent); }
+    .hist-row { display: flex; align-items: center; gap: 9px; }
+    .st-ico { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; flex-shrink: 0; }
+    .st-ico.done { background: color-mix(in srgb, var(--fs-ok) 18%, transparent); color: #34d399; }
+    .st-ico.warn { background: color-mix(in srgb, var(--fs-warn) 18%, transparent); color: #fbbf24; }
+    .st-ico.error { background: color-mix(in srgb, var(--fs-bad) 18%, transparent); color: #f87171; }
+    .st-ico.cancelled { background: color-mix(in srgb, var(--fs-warn) 18%, transparent); color: #fbbf24; }
+    .hist-main { flex: 1; min-width: 0; }
+    .hist-top { display: flex; align-items: center; gap: 6px; }
+    .hist-title { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hist-sub { font-size: 11px; color: var(--fs-fg-soft); margin-top: 1px; }
+    .hist-right { text-align: right; flex-shrink: 0; font-size: 11px; }
+    .hist-tok { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .hist-time { color: var(--fs-fg-soft); font-size: 10.5px; }
+    .hist-detail {
+      margin-top: 8px; background: var(--fs-input-bg); border-radius: 10px; padding: 8px 10px;
+      font-size: 11px; white-space: pre-wrap; max-height: 160px; overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    /* Rounded Settings & Pill Switches */
+    .settings-card { border-radius: 18px; padding: 14px; }
+    .settings-title { font-size: 13px; font-weight: 700; margin: 0 0 12px; display: flex; align-items: center; gap: 7px; }
+    .field { margin-bottom: 11px; }
+    .field label { display: block; font-size: 11.5px; font-weight: 600; margin-bottom: 4px; }
+    .field .f-help { font-size: 10.5px; color: var(--fs-fg-soft); margin-top: 3px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .toggle-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px; background: var(--fs-input-bg); border: 1px solid var(--fs-border); border-radius: 12px;
+    }
+    .toggle-row span { font-size: 12px; }
+    .switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: var(--fs-surface); border: 1px solid var(--fs-border);
+      border-radius: 999px; transition: .2s;
+    }
+    .slider:before {
+      content: ""; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px;
+      background: var(--fs-fg); border-radius: 50%; transition: .2s;
+    }
+    .switch input:checked + .slider { background: var(--fs-blue); border-color: var(--fs-blue); }
+    .switch input:checked + .slider:before { transform: translateX(14px); background: #fff; }
+
+    .foot-note {
+      font-size: 11px; color: var(--fs-fg-faint); text-align: center; margin-top: 12px;
+    }
+    .toast { font-size: 11.5px; font-weight: 600; color: #34d399; }
+    .toast.err { color: #f87171; }
+  </style>
+</head>
+<body>
+
+  <div class="tabs">
+    <button class="tab-btn on" data-tab="dash">
+      <svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>
+      Tableau de bord
+    </button>
+    <button class="tab-btn" data-tab="settings">
+      <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.79 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Paramètres
+    </button>
+  </div>
+
+  <!-- TAB 1: DASHBOARD -->
+  <div id="tab-dash" class="view">
+    <div id="nokey" class="warnbox" hidden>
+      <div class="warn-left">
+        <div class="warn-ico">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        </div>
+        <div>
+          <div class="warn-title">Aucune clé API enregistrée</div>
+          <div class="warn-sub">Configure ton jeton France Student.</div>
+        </div>
+      </div>
+      <button class="btn sm" id="openCfg">Configurer</button>
+    </div>
+
+    <div class="hero">
+      <div class="hero-top">
+        <div class="brand">
+          <img class="brand-logo" alt="France Student" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASzSURBVGhD7VhbjF1jFP6m1dZdoo2G0NaYurTSqHPO3mudkRiioWlKCEGlLuGJEiIRlxeJNwkRqTQVjBAVE52aObP/9Z/21GSIoYJU6INbiw6pUGXKVMt0ZK2953bOmenLXM7D/pL1cvbeZ3/f/r/1r7V+IEWKFClSpEhRBcuKJyGI1iDouAncfUL55VpFnZFldzlI3gfLf2B/BCwlUDFEU+fxdk9NQskF0fmg6HWQ/AWWgZi8CRgAu16E7kVkO+qx0s0pf3z6sKRlNoLiuWB5DOT2xWTlX7DrActrYNkElp/j1bBre0HRQ8i0L0Bm46zyv5tCDMxAxp8J9reD5bOYtBwFy+9gvwWhv8LygP3p4ML1IBGQ/DG0MiQ7EMotCNvmA0/OKP/3yUQdQncqAr8K7Apg+dOIkxwGy3sgdxsyhXnAgN53Nsg9AXIbQO2XIpC7Qe4jsKitjoLdAZBsRhitQGPbKeUvmnjokoeyDOReActPZgty/SD3NUL/IEgW2crYvYV5YFkPloNg+Qfk3kTQOhfc1oBQHgXJbrD028qR/AjyG0DbLkJT53Hlr50YZD6ZhdDfB3J7jBB7/eq/gqIXwIUL0eDmgPzjCISNfChPJ6ujvtck7gNFz5qtNOFzfinYvRxbzmx1CCzfguSOyRHBLbo9qmWUkL5su3k451bbFqlJyfJ5ksiaE38Pkx+KPrDvQl5ythpqG9tyXWf8USyHNqGpWbfbCYYK0ESMiXSD/FUJURXTl2ydgzuNEiknPxj9thr6tdlfg6A0F2FhMVg+teskbyX1YoIxSoDvQrZUH3tcyfjxCI8XmgMlBFEWLDumVkBYmm8FKV+8ESzfH+OrjxW9yMu9aDT7TYOAQZBcm1ipnOAxwv2ArFuO3DvnTK+AzLbTwO6LSoJjhe1gWtQ2WqGbdgEKcivNEhVkq4ZW4qdMuKImBOhL456nnGxlkOsFddyAJV/OtmdrQkC4dTHIWoRKwpWhK7DTeilFbQjwa6sQHS9+Q7Z4sT1bEwLYvVqF5FihSbzLqrFi2gUsalb/f1OF6Hjxi80RiqkXIN1o3LZgqI8P/XXDU1jV0CKnVXfEb9rcyTPxFtzWMDWtBEcdCYFDIO9AUWjdpSYjyUvW38eDzUjy2krvAkkrSHrATps8/W0f2K9D4K4Eu+1DHa41c5MhQNtpcveDZQ/IHR5up+V5ZOUCE6K1gNzbcaNmheoIyG81q2iLvHzzwuQ/1iNw65K5Yv+QUHbfIfR3TU47rVARuegSkCVsPOfGA81XIHkA+WihtcIZdx4ougfsnrP+XlfP0DITl5XqQe4RULQblAw0OidrVc61L5088sOoM9+SWw0WtVQ8UsZfsAuB3Gotsh2faI5oDNQh33oGSO4EuQ+HR0p/AOy2IJCrp2akHIWWmWhsOysmJTtHDPX7ze86qGQKJ5q1wuIKkA5DSljtYkctH4OjNfFuNrVD/WgMHqvo8M5eE1NF6Jy7FyTNIPdGYrfB5O5B6B42u03vsUoZ1OeazEqYhsbJEQdbchChzsBtDZMzMk4M6sw2eiZE8kEyYupqvItcRz5J5ho9WixHU+fJCKO1IHeziUqRIkWKFClSVOJ/3Vji70GskJcAAAAASUVORK5CYII=" />
+          <h1>France Student <span class="badge">ATG</span></h1>
+        </div>
+        <span class="status-pill" id="connPill"><span class="dot"></span><span id="connTxt">Hors ligne</span></span>
+      </div>
+      <div class="qrow"><span>Budget chat restant</span><span class="pct-val" id="pct">—</span></div>
+      <div class="gauge-wrap" id="gauge" title="Actualisé automatiquement (clic pour forcer)">
+        <div class="gauge" id="gaugeBar"><div id="bar"></div></div>
+        <div class="cutoff-tick" id="cutoffTick" style="left: 15%">
+          <div class="cutoff-line"></div>
+          <div class="cutoff-lbl" id="cutoffNum">15</div>
+        </div>
+      </div>
+      <div class="meta">
+        <span id="qtxt">Actualisation auto</span>
+        <span id="metaRight">Coupe-circuit : <b id="cutoff">15 %</b></span>
+      </div>
+    </div>
+
+    <div class="seg" id="mode">
+      <button data-mode="eco">
+        <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+        Éco <span class="sub-txt">· 1 agent</span>
+      </button>
+      <button data-mode="fast">
+        <svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Rapide <span class="sub-txt">· multi</span>
+      </button>
+    </div>
+
+    <div class="composer">
+      <textarea id="task" placeholder="Décris la tâche à déléguer…"></textarea>
+      <div class="tier-row" id="tierRow">
+        <button class="chip on" data-choice="">
+          <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+          Auto
+        </button>
+        <button class="chip" data-choice="tier:light" data-tier="light">
+          Modèle faible <span class="chip-cnt" id="cnt-light">0</span>
+        </button>
+        <button class="chip" data-choice="tier:medium" data-tier="medium">
+          Modèle équilibré <span class="chip-cnt" id="cnt-medium">0</span>
+        </button>
+        <button class="chip" data-choice="tier:heavy" data-tier="heavy">
+          Modèle fort <span class="chip-cnt" id="cnt-heavy">0</span>
+        </button>
+      </div>
+      <div class="actions">
+        <button class="btn" id="go">
+          Déléguer
+          <svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+        <span class="toast" id="toast"></span>
+        <span class="spacer"></span>
+        <span class="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Entrée</kbd></span>
+      </div>
+    </div>
+
+    <div id="tierPopover" class="popover" hidden>
+      <div class="pop-head"><span id="popTitle">Modèles</span><span id="popSub">Clic pour forcer</span></div>
+      <div id="popList"></div>
+    </div>
+
+    <div class="sec-head">
+      <div class="sec-title">Agents actifs <span class="cnt" id="activeCount">0</span></div>
+    </div>
+    <div id="active"></div>
+
+    <div class="sec-head">
+      <div class="sec-title">Historique <span class="cnt" id="historyCount">0</span></div>
+      <button class="link-btn" id="clearHistory" hidden>Tout effacer</button>
+    </div>
+    <div id="history"></div>
+
+    <div class="foot-note">Règle [ATG] active · Maintenir la souris sur un niveau pour voir ses modèles</div>
+  </div>
+
+  <!-- TAB 2: SETTINGS (ARRONDIES) -->
+  <div id="tab-settings" class="view" hidden>
+    <div class="settings-card">
+      <div class="settings-title">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        Connexion France Student
+      </div>
+      <div class="field">
+        <label>Clé API ou Jeton de session</label>
+        <input type="password" id="apiKeyInput" placeholder="Colle ta clé API ou ton sessionToken…" />
+        <div class="f-help" id="keyStateHelp">Aucune clé enregistrée.</div>
+      </div>
+      <div class="field">
+        <label>URL de base API</label>
+        <input type="text" id="baseUrlInput" value="https://api.francestudent.org" />
+      </div>
+      <div class="actions">
+        <button class="btn sm" id="saveKeyBtn">Enregistrer &amp; Tester</button>
+        <button class="btn danger sm" id="clearKeyBtn">Effacer</button>
+        <span class="toast" id="settingsToast"></span>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <div class="settings-title">
+        <svg class="ico" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        Limites &amp; Outils
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Coupe-circuit (%)</label>
+          <input type="number" id="cutoffInput" min="0" max="90" value="15" />
+        </div>
+        <div class="field">
+          <label>Agents parallèles</label>
+          <input type="number" id="maxParallelInput" min="1" max="6" value="3" />
+        </div>
+      </div>
+      <div class="field">
+        <div class="toggle-row">
+          <span>Résumé de raisonnement</span>
+          <label class="switch"><input type="checkbox" id="showReasoningInput" checked /><span class="slider"></span></label>
+        </div>
+      </div>
+      <div class="field">
+        <div class="toggle-row">
+          <span>Outils client natifs (<code>clientTools</code>)</span>
+          <label class="switch"><input type="checkbox" id="useClientToolsInput" checked /><span class="slider"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <div class="settings-title">
+        <svg class="ico" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        Catégories de modèles (Claude &amp; ChatGPT)
+      </div>
+      <div class="field">
+        <label>Modèle faible (légers)</label>
+        <input type="text" id="tierLightInput" placeholder="haiku, luna, mini, nano, flash" />
+      </div>
+      <div class="field">
+        <label>Modèle équilibré (intermédiaires)</label>
+        <input type="text" id="tierMediumInput" placeholder="sonnet, terra, gpt-5.6-sol, kimi-k2" />
+      </div>
+      <div class="field">
+        <label>Modèle fort (puissants)</label>
+        <input type="text" id="tierHeavyInput" placeholder="fable, opus, astra, gpt-6-sol, gpt-6.1-sol" />
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Autorisés</label>
+          <input type="text" id="allowedInput" placeholder="Vide = tous" />
+        </div>
+        <div class="field">
+          <label>Interdits</label>
+          <input type="text" id="blockedInput" placeholder="Ex: fable" />
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn sm" id="saveSettingsBtn">Appliquer</button>
+        <span class="toast" id="orchToast"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    let S = {
+      active: [], history: [],
+      models: [
+        'gpt-5.6-luna', 'gpt-6-luna', 'claude-haiku-5-5',
+        'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-6.1-terra', 'claude-sonnet-5-5',
+        'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-astra', 'claude-opus-5-5', 'claude-fable-5-2',
+      ],
+      tierModels: {
+        light: [
+          { id: 'gpt-5.6-luna', name: 'gpt-5.6-luna', provider: 'openai', blocked: false },
+          { id: 'gpt-6-luna', name: 'GPT 6 Luna', provider: 'openai', blocked: false },
+          { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', provider: 'anthropic', blocked: false },
+        ],
+        medium: [
+          { id: 'gpt-5.6-terra', name: 'gpt-5.6-terra', provider: 'openai', blocked: false },
+          { id: 'gpt-5.6-sol', name: 'gpt-5.6-sol', provider: 'openai', blocked: false },
+          { id: 'gpt-6.1-terra', name: 'GPT-6.1 Terra', provider: 'openai', blocked: false },
+          { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', provider: 'anthropic', blocked: false },
+        ],
+        heavy: [
+          { id: 'gpt-6-sol', name: 'GPT 6 Sol', provider: 'openai', blocked: false },
+          { id: 'gpt-6.1-sol', name: 'GPT 6.1 Sol', provider: 'openai', blocked: false },
+          { id: 'gpt-6-astra', name: 'GPT-6 Astra', provider: 'openai', blocked: false },
+          { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', provider: 'anthropic', blocked: false },
+          { id: 'claude-fable-5-2', name: 'Claude Fable 5.2', provider: 'anthropic', blocked: false },
+        ],
+      },
+      tiers: {
+        light: ['haiku', 'luna', 'mini', 'nano', 'flash'],
+        medium: ['sonnet', 'terra', 'gpt-5.6-sol', 'kimi-k2'],
+        heavy: ['fable', 'opus', 'astra', 'gpt-6-sol', 'gpt-6.1-sol', 'kimi-k3'],
+      },
+      allowedModels: [], blockedModels: [], cutoff: 15, maxParallel: 3, showReasoning: true, useClientTools: true, mode: 'eco',
+    };
+    let selectedChoice = ''; // '', 'tier:light', 'tier:medium', 'tier:heavy', or exact model id
+    let settingsLoaded = false;
+    let pollTimer = null;
+    let hoverTimer = null;
+    let popHideTimer = null;
+    const expandedHistory = new Set();
+
+    const ICO_CHECK = '<svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+    const ICO_WARN = '<svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    const ICO_X = '<svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    const ICO_PAUSE = '<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+
+    function syncTheme() {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--background').trim();
+      const m = bg.match(/\d+/g);
+      if (m && m.length >= 3) {
+        const lum = (0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2]) / 255;
+        document.documentElement.style.colorScheme = lum < 0.5 ? 'dark' : 'light';
+      }
+    }
+    window.addEventListener('message', (e) => { if (e.data?.type === 'theme-change') setTimeout(syncTheme, 0); });
+    syncTheme();
+
+    async function api(path, body) {
+      const fetcher = window.sidecar?.fetch ? window.sidecar.fetch.bind(window.sidecar) : fetch;
+      const res = await fetcher(path, body === undefined ? { method: 'GET' } : {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      return json;
+    }
+
+    function flash(msg, target = 'toast', isErr = false) {
+      const el = $(target);
+      el.textContent = msg;
+      el.classList.toggle('err', isErr);
+      setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 3500);
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+      $('tab-dash').hidden = tab !== 'dash';
+      $('tab-settings').hidden = tab !== 'settings';
+      if (tab === 'settings') syncSettingsForm();
+    }
+
+    function syncSettingsForm() {
+      $('cutoffInput').value = S.cutoff ?? 15;
+      $('maxParallelInput').value = S.maxParallel ?? 3;
+      $('baseUrlInput').value = S.baseUrl || 'https://api.francestudent.org';
+      $('showReasoningInput').checked = S.showReasoning !== false;
+      $('useClientToolsInput').checked = S.useClientTools !== false;
+      $('tierLightInput').value = (S.tiers?.light || []).join(', ');
+      $('tierMediumInput').value = (S.tiers?.medium || []).join(', ');
+      $('tierHeavyInput').value = (S.tiers?.heavy || []).join(', ');
+      $('allowedInput').value = (S.allowedModels || []).join(', ');
+      $('blockedInput').value = (S.blockedModels || []).join(', ');
+      $('keyStateHelp').textContent = S.hasKey ? 'Jeton enregistré et actif.' : 'Aucune clé enregistrée.';
+    }
+
+    function fmtSec(sec) { return sec >= 60 ? Math.floor(sec / 60) + ' min ' + (sec % 60) + ' s' : sec + ' s'; }
+    function fmtAgo(ts) {
+      if (!ts) return '';
+      const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
+      if (mins < 1) return "à l'instant";
+      if (mins < 60) return 'il y a ' + mins + ' min';
+      return 'il y a ' + Math.round(mins / 60) + ' h';
+    }
+    function fmtNum(n) {
+      if (n == null) return '';
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+      if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k';
+      return String(n);
+    }
+    function shortModel(id) { return String(id || '').replace(/^cb\//, ''); }
+
+    function renderTiers() {
+      const tm = S.tierModels || { light: [], medium: [], heavy: [] };
+      $('cnt-light').textContent = tm.light?.length ?? 0;
+      $('cnt-medium').textContent = tm.medium?.length ?? 0;
+      $('cnt-heavy').textContent = tm.heavy?.length ?? 0;
+
+      document.querySelectorAll('#tierRow .chip').forEach((btn) => {
+        const ch = btn.dataset.choice;
+        const tier = btn.dataset.tier;
+        const modelMatchesTier = tier && (tm[tier] || []).some((m) => m.id === selectedChoice);
+        btn.classList.toggle('on', selectedChoice === ch || Boolean(modelMatchesTier));
+      });
+    }
+
+    function showTierPopover(tier, anchorEl) {
+      const tm = S.tierModels || { light: [], medium: [], heavy: [] };
+      const list = tm[tier] || [];
+      const titles = { light: 'Modèles faibles (légers)', medium: 'Modèles équilibrés', heavy: 'Modèles forts (puissants)' };
+      $('popTitle').textContent = titles[tier] || 'Modèles';
+      $('popList').innerHTML = list.length
+        ? list.map((m) => `<button class="pop-item ${m.blocked ? 'blocked' : ''}" data-pick="${esc(m.id)}" ${m.blocked ? 'disabled' : ''}>
+            <span>${esc(m.name)}</span>
+            <span class="pop-prov">${esc(m.provider)}</span>
+          </button>`).join('')
+        : '<div class="empty-txt">Aucun modèle détecté</div>';
+
+      const rect = anchorEl.getBoundingClientRect();
+      const pop = $('tierPopover');
+      pop.hidden = false;
+      const top = Math.min(window.innerHeight - pop.offsetHeight - 10, rect.bottom + 6);
+      const left = Math.min(window.innerWidth - pop.offsetWidth - 10, Math.max(10, rect.left));
+      pop.style.top = top + 'px';
+      pop.style.left = left + 'px';
+    }
+
+    function hidePopover() {
+      clearTimeout(hoverTimer);
+      $('tierPopover').hidden = true;
+    }
+
+    function renderActive() {
+      $('activeCount').textContent = S.active.length;
+      if (!S.active.length) {
+        $('active').innerHTML = '<div class="empty-txt">Aucun agent actif</div>';
+        return;
+      }
+      $('active').innerHTML = S.active.map((j) => {
+        const title = esc(j.title.replace(/^\[ATG\]\s*/, ''));
+        const thought = (j.lastThoughts && j.lastThoughts.length)
+          ? j.lastThoughts[j.lastThoughts.length - 1]
+          : (j.summary || j.route || 'Génération en cours…');
+        return `<div class="job-card">
+          <div class="job-top">
+            <span class="tag">ATG</span>
+            <span class="job-title" title="${title}">${title}</span>
+            <span class="model-pill">${esc(shortModel(j.model) || 'routage…')}</span>
+            <button class="x" data-cancel="${j.jobId}" title="Annuler">${ICO_X}</button>
+          </div>
+          <div class="pbar"><div></div></div>
+          <div class="job-meta">
+            <span>${j.receivedChars ? j.receivedChars + ' car.' : 'Démarrage…'}</span>
+            <span data-start="${j.status === 'running' ? j.startedAt : ''}">${fmtSec(j.elapsedSec)}</span>
+          </div>
+          <div class="term">&gt; ${esc(thought)}</div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderHistory() {
+      $('historyCount').textContent = S.history.length;
+      $('clearHistory').hidden = S.history.length === 0;
+      if (!S.history.length) {
+        $('history').innerHTML = '<div class="empty-txt">Pas encore d\'historique</div>';
+        return;
+      }
+      $('history').innerHTML = '<div class="hist-list">' + S.history.slice(0, 20).map((j) => {
+        const title = esc(j.title.replace(/^\[ATG\]\s*/, ''));
+        const noWrite = j.status === 'done' && (!j.filesWritten || !j.filesWritten.length);
+        const icoClass = noWrite ? 'warn' : j.status;
+        const ico = j.status === 'done' ? (noWrite ? ICO_WARN : ICO_CHECK) : j.status === 'error' ? ICO_X : ICO_PAUSE;
+        const sub = [
+          shortModel(j.model) || 'Auto',
+          j.filesWritten?.length ? j.filesWritten.length + ' fichier(s)' : (noWrite ? 'aucun fichier écrit' : ''),
+          j.error ? j.error : (j.receivedChars ? j.receivedChars + ' car.' : 'terminé'),
+        ].filter(Boolean).join(' · ');
+        const tok = j.usage?.total_tokens ? fmtNum(j.usage.total_tokens) + ' tok' : (j.receivedChars ? j.receivedChars + ' c' : '—');
+        const open = expandedHistory.has(j.jobId);
+        const detail = [
+          j.filesWritten?.length ? 'Fichiers : ' + j.filesWritten.join(', ') : '',
+          j.summary || j.error || '',
+        ].filter(Boolean).join('\n\n');
+        return `<div class="hist-item" data-hist="${j.jobId}">
+          <div class="hist-row">
+            <div class="st-ico ${icoClass}" title="${noWrite ? 'Terminé sans écriture de fichier' : ''}">${ico}</div>
+            <div class="hist-main">
+              <div class="hist-top"><span class="tag">ATG</span><span class="hist-title">${title}</span></div>
+              <div class="hist-sub">${esc(sub)}</div>
+            </div>
+            <div class="hist-right">
+              <div class="hist-tok">${esc(tok)}</div>
+              <div class="hist-time">${fmtAgo(j.endedAt || j.startedAt)}</div>
+            </div>
+          </div>
+          ${open && detail ? `<div class="hist-detail">${esc(detail)}</div>` : ''}
+        </div>`;
+      }).join('') + '</div>';
+    }
+
+    function render() {
+      $('nokey').hidden = !!S.hasKey;
+      const qObj = S.quota;
+      const connected = !!S.hasKey && qObj && qObj.remainingPct != null;
+      $('connPill').className = 'status-pill' + (connected ? ' on' : '');
+      $('connTxt').textContent = connected ? 'Connecté' : (S.hasKey ? 'Clé enregistrée' : 'Hors ligne');
+
+      const q = qObj && qObj.remainingPct;
+      $('pct').textContent = q == null ? '—' : Math.round(q) + ' %';
+      $('bar').style.width = (q == null ? 0 : q) + '%';
+      $('gaugeBar').className = 'gauge' + (q == null ? '' : q < S.cutoff ? ' crit' : q < S.cutoff * 2 ? ' low' : '');
+      $('cutoffTick').style.left = S.cutoff + '%';
+      $('cutoffNum').textContent = S.cutoff;
+
+      const metaParts = [];
+      if (qObj?.at) metaParts.push('Mis à jour ' + fmtAgo(qObj.at));
+      if (qObj?.resetAt) metaParts.push('Reset ' + new Date(qObj.resetAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+      $('qtxt').textContent = metaParts.join(' · ') || 'Actualisation auto';
+      $('metaRight').innerHTML = `Coupe-circuit : <b id="cutoff">${S.cutoff} %</b>`;
+
+      document.querySelectorAll('#mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === S.mode));
+      renderTiers();
+      renderActive();
+      renderHistory();
+      if (!settingsLoaded) { syncSettingsForm(); settingsLoaded = true; }
+    }
+
+    function schedulePoll() {
+      clearTimeout(pollTimer);
+      const delay = S.active?.length ? 800 : 4000;
+      pollTimer = setTimeout(poll, delay);
+    }
+
+    async function poll() {
+      try { S = await api('/api/state'); render(); } catch { /* ignore */ }
+      schedulePoll();
+    }
+
+    async function send() {
+      const task = $('task').value.trim();
+      if (!task) return;
+      $('task').value = '';
+      hidePopover();
+      try {
+        await api('/api/delegate', { task, model: selectedChoice || undefined });
+        flash('Délégué');
+        await poll();
+      } catch (e) { flash(e.message, 'toast', true); }
+    }
+
+    document.querySelectorAll('.tab-btn').forEach((b) => { b.onclick = () => switchTab(b.dataset.tab); });
+    $('openCfg').onclick = () => switchTab('settings');
+    $('go').onclick = send;
+    $('task').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); });
+    $('gauge').onclick = async () => {
+      try { await api('/api/refresh', {}); flash('Quota actualisé'); await poll(); }
+      catch (e) { flash(e.message, 'toast', true); }
+    };
+
+    // Hover & long-press popover on tier chips
+    document.querySelectorAll('#tierRow .chip[data-tier]').forEach((btn) => {
+      const tier = btn.dataset.tier;
+      btn.addEventListener('mouseenter', () => {
+        clearTimeout(popHideTimer);
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => showTierPopover(tier, btn), 320);
+      });
+      btn.addEventListener('pointerdown', () => {
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => showTierPopover(tier, btn), 320);
+      });
+      btn.addEventListener('mouseleave', () => {
+        clearTimeout(hoverTimer);
+        popHideTimer = setTimeout(hidePopover, 220);
+      });
+    });
+    $('tierPopover').addEventListener('mouseenter', () => clearTimeout(popHideTimer));
+    $('tierPopover').addEventListener('mouseleave', () => { popHideTimer = setTimeout(hidePopover, 160); });
+
+    $('saveKeyBtn').onclick = async () => {
+      try {
+        const key = $('apiKeyInput').value.trim();
+        await api('/api/settings', { baseUrl: $('baseUrlInput').value.trim() });
+        if (key) {
+          await api('/api/key', { apiKey: key });
+          $('apiKeyInput').value = '';
+          flash('Clé validée', 'settingsToast');
+        } else {
+          await api('/api/refresh', {});
+          flash('Connexion testée', 'settingsToast');
+        }
+        await poll();
+        syncSettingsForm();
+      } catch (e) { flash(e.message, 'settingsToast', true); }
+    };
+    $('clearKeyBtn').onclick = async () => {
+      try {
+        await api('/api/key', { apiKey: '' });
+        flash('Clé effacée', 'settingsToast');
+        await poll();
+        syncSettingsForm();
+      } catch (e) { flash(e.message, 'settingsToast', true); }
+    };
+    $('saveSettingsBtn').onclick = async () => {
+      try {
+        const split = (v) => v.split(',').map((s) => s.trim()).filter(Boolean);
+        await api('/api/settings', {
+          cutoffPercent: Number($('cutoffInput').value),
+          maxParallel: Number($('maxParallelInput').value),
+          showReasoning: $('showReasoningInput').checked,
+          useClientTools: $('useClientToolsInput').checked,
+          tiers: {
+            light: split($('tierLightInput').value),
+            medium: split($('tierMediumInput').value),
+            heavy: split($('tierHeavyInput').value),
+          },
+          allowedModels: split($('allowedInput').value),
+          blockedModels: split($('blockedInput').value),
+        });
+        flash('Paramètres appliqués', 'orchToast');
+        await poll();
+      } catch (e) { flash(e.message, 'orchToast', true); }
+    };
+    $('clearHistory').onclick = async () => { await api('/api/clear-history', {}); await poll(); };
+    document.querySelectorAll('#mode button').forEach((b) => {
+      b.onclick = async () => {
+        try { await api('/api/settings', { mode: b.dataset.mode }); await poll(); }
+        catch (e) { flash(e.message, 'toast', true); }
+      };
+    });
+    document.addEventListener('click', async (e) => {
+      const pick = e.target.closest('[data-pick]');
+      if (pick && !pick.disabled) {
+        selectedChoice = pick.dataset.pick;
+        hidePopover();
+        renderTiers();
+        flash('Modèle : ' + pick.textContent.trim().split('\n')[0]);
+        return;
+      }
+      const chip = e.target.closest('[data-choice]');
+      if (chip) {
+        selectedChoice = chip.dataset.choice;
+        renderTiers();
+        return;
+      }
+      if (!e.target.closest('#tierPopover') && !e.target.closest('#tierRow')) hidePopover();
+      const cancel = e.target.closest('[data-cancel]');
+      if (cancel) { await api('/api/cancel', { id: cancel.dataset.cancel }); await poll(); return; }
+      const hist = e.target.closest('[data-hist]');
+      if (hist) {
+        const id = hist.dataset.hist;
+        if (expandedHistory.has(id)) expandedHistory.delete(id); else expandedHistory.add(id);
+        renderHistory();
+      }
+    });
+
+    setInterval(() => document.querySelectorAll('[data-start]').forEach((el) => {
+      const t = Number(el.dataset.start);
+      if (t) el.textContent = fmtSec(Math.round((Date.now() - t) / 1000));
+    }), 1000);
+    renderTiers();
+    poll();
+  </script>
+</body>
+</html>

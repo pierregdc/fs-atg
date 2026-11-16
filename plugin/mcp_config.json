@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "fs-atg": {
+      "command": "node",
+      "args": ["C:/Users/peter/.gemini/config/plugins/fs-atg/mcp_server.mjs"]
+    }
+  }
+}

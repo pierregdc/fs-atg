@@ -1,0 +1,10 @@
+.vscode/**
+.vscodeignore
+.gitignore
+src/**
+plugin/**
+tsconfig.json
+node_modules/**
+*.vsix
+.fsatg/**
+.env*

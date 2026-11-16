@@ -1,0 +1,21 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "France Student [ATG]",
+  "description": "Panneau de contrôle France Student [ATG] : quota en temps réel, coupe-circuit, mode Éco/Rapide, routage local des modèles, délégation directe et suivi des raisonnements.",
+  "has_web_ui": true,
+  "agent_permissions": {
+    "allows_user_interactions": false
+  },
+  "ui_config": {
+    "display_name": "France Student [ATG]",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "France Student [ATG]"
+      }
+    ]
+  }
+}

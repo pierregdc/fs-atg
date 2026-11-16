@@ -1,0 +1,12 @@
+{
+  "name": "fs-atg",
+  "displayName": "France Student [ATG]",
+  "description": "Intégration France Student pour Antigravity : délégation asynchrone de génération de code (fs_delegate / fs_job_status), suivi du quota avec coupe-circuit, routage local des modèles (Éco/Rapide) et panneau latéral temps réel.",
+  "version": "0.1.0",
+  "logo": "assets/logo.png",
+  "suggestedPrompts": [
+    "Délègue cette tâche de code à France Student avec fs_delegate",
+    "Vérifie mon quota France Student restant avec fs_quota",
+    "Ouvre le panneau France Student [ATG] pour suivre les jobs en cours"
+  ]
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.vsix
+.fsatg/
+.fsatg_state.json
+.fsatg_live.json
+.env*
+.DS_Store
+Thumbs.db

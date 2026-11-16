@@ -1,0 +1,178 @@
+{
+  "name": "fs-atg",
+  "displayName": "France Student pour Antigravity [ATG]",
+  "publisher": "ton-pseudo",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "fsatg",
+          "title": "France Student",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "fsatg": [
+        {
+          "type": "webview",
+          "id": "fsatg.panel",
+          "name": "Agents [ATG]"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "fsatg.setApiKey",
+        "title": "France Student : Enregistrer la clé API"
+      },
+      {
+        "command": "fsatg.clearApiKey",
+        "title": "France Student : Oublier la clé API"
+      },
+      {
+        "command": "fsatg.delegate",
+        "title": "France Student : Déléguer une tâche [ATG]"
+      },
+      {
+        "command": "fsatg.openLog",
+        "title": "France Student : Ouvrir fs_live.log"
+      },
+      {
+        "command": "fsatg.copyMcpConfig",
+        "title": "France Student : Copier la config MCP"
+      }
+    ],
+    "configuration": {
+      "title": "France Student [ATG]",
+      "properties": {
+        "francestudent.baseUrl": {
+          "type": "string",
+          "default": "https://api.francestudent.org"
+        },
+        "francestudent.cutoffPercent": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0,
+          "maximum": 90,
+          "description": "Coupe-circuit : bloque les délégations sous ce % restant."
+        },
+        "francestudent.autoPowerUp": {
+          "type": "string",
+          "enum": [
+            "off",
+            "ask",
+            "auto"
+          ],
+          "default": "ask",
+          "description": "Power-up de rate limit, uniquement sur HTTP 429."
+        },
+        "francestudent.mode": {
+          "type": "string",
+          "enum": [
+            "eco",
+            "fast"
+          ],
+          "default": "eco"
+        },
+        "francestudent.maxParallel": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 6
+        },
+        "francestudent.allowedModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Liste blanche (sous-chaînes). Vide = tout."
+        },
+        "francestudent.blockedModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Liste noire (prioritaire sur le forçage)."
+        },
+        "francestudent.tiers": {
+          "type": "object",
+          "default": {
+            "light": [
+              "haiku",
+              "luna",
+              "mini",
+              "nano",
+              "flash"
+            ],
+            "medium": [
+              "sonnet",
+              "terra",
+              "gpt-5.6-sol",
+              "kimi-k2"
+            ],
+            "heavy": [
+              "fable",
+              "opus",
+              "astra",
+              "gpt-6-sol",
+              "gpt-6.1-sol",
+              "kimi-k3"
+            ]
+          }
+        },
+        "francestudent.autoApply": {
+          "type": "boolean",
+          "default": false,
+          "description": "Écrire sans diff ni confirmation."
+        },
+        "francestudent.useClientTools": {
+          "type": "boolean",
+          "default": true,
+          "description": "Activer les outils client natifs (/chats/stream)."
+        },
+        "francestudent.showReasoning": {
+          "type": "boolean",
+          "default": true
+        },
+        "francestudent.heartbeatMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1
+        },
+        "francestudent.inlineFileKB": {
+          "type": "number",
+          "default": 48,
+          "description": "Au-delà, le fichier est envoyé via /filesv2."
+        },
+        "francestudent.mcpPort": {
+          "type": "number",
+          "default": 3047
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
