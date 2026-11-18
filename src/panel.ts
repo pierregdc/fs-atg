@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
-import { FranceStudentClient, DEFAULT_AGENTS } from './api';
+import { FranceStudentClient } from './api';
 import { QuotaGuard } from './quota';
 import { Orchestrator } from './orchestrator';
-import { classifyTier, routeConfig, Tier } from './router';
+import { classifyTier, ExecutionMode, routeConfig, RoutingProfile, Tier } from './router';
 
 const LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASzSURBVGhD7VhbjF1jFP6m1dZdoo2G0NaYurTSqHPO3mudkRiioWlKCEGlLuGJEiIRlxeJNwkRqTQVjBAVE52aObP/9Z/21GSIoYJU6INbiw6pUGXKVMt0ZK2953bOmenLXM7D/pL1cvbeZ3/f/r/1r7V+IEWKFClSpEhRBcuKJyGI1iDouAncfUL55VpFnZFldzlI3gfLf2B/BCwlUDFEU+fxdk9NQskF0fmg6HWQ/AWWgZi8CRgAu16E7kVkO+qx0s0pf3z6sKRlNoLiuWB5DOT2xWTlX7DrActrYNkElp/j1bBre0HRQ8i0L0Bm46zyv5tCDMxAxp8J9reD5bOYtBwFy+9gvwWhv8LygP3p4ML1IBGQ/DG0MiQ7EMotCNvmA0/OKP/3yUQdQncqAr8K7Apg+dOIkxwGy3sgdxsyhXnAgN53Nsg9AXIbQO2XIpC7Qe4jsKitjoLdAZBsRhitQGPbKeUvmnjokoeyDOReActPZgty/SD3NUL/IEgW2crYvYV5YFkPloNg+Qfk3kTQOhfc1oBQHgXJbrD028qR/AjyG0DbLkJT53Hlr50YZD6ZhdDfB3J7jBB7/eq/gqIXwIUL0eDmgPzjCISNfChPJ6ujvtck7gNFz5qtNOFzfinYvRxbzmx1CCzfguSOyRHBLbo9qmWUkL5su3k451bbFqlJyfJ5ksiaE38Pkx+KPrDvQl5ythpqG9tyXWf8USyHNqGpWbfbCYYK0ESMiXSD/FUJURXTl2ydgzuNEiknPxj9thr6tdlfg6A0F2FhMVg+teskbyX1YoIxSoDvQrZUH3tcyfjxCI8XmgMlBFEWLDumVkBYmm8FKV+8ESzfH+OrjxW9yMu9aDT7TYOAQZBcm1ipnOAxwv2ArFuO3DvnTK+AzLbTwO6LSoJjhe1gWtQ2WqGbdgEKcivNEhVkq4ZW4qdMuKImBOhL456nnGxlkOsFddyAJV/OtmdrQkC4dTHIWoRKwpWhK7DTeilFbQjwa6sQHS9+Q7Z4sT1bEwLYvVqF5FihSbzLqrFi2gUsalb/f1OF6Hjxi80RiqkXIN1o3LZgqI8P/XXDU1jV0CKnVXfEb9rcyTPxFtzWMDWtBEcdCYFDIO9AUWjdpSYjyUvW38eDzUjy2krvAkkrSHrATps8/W0f2K9D4K4Eu+1DHa41c5MhQNtpcveDZQ/IHR5up+V5ZOUCE6K1gNzbcaNmheoIyG81q2iLvHzzwuQ/1iNw65K5Yv+QUHbfIfR3TU47rVARuegSkCVsPOfGA81XIHkA+WihtcIZdx4ougfsnrP+XlfP0DITl5XqQe4RULQblAw0OidrVc61L5088sOoM9+SWw0WtVQ8UsZfsAuB3Gotsh2faI5oDNQh33oGSO4EuQ+HR0p/AOy2IJCrp2akHIWWmWhsOysmJTtHDPX7ze86qGQKJ5q1wuIKkA5DSljtYkctH4OjNfFuNrVD/WgMHqvo8M5eE1NF6Jy7FyTNIPdGYrfB5O5B6B42u03vsUoZ1OeazEqYhsbJEQdbchChzsBtDZMzMk4M6sw2eiZE8kEyYupqvItcRz5J5ho9WixHU+fJCKO1IHeziUqRIkWKFClSVOJ/3Vji70GskJcAAAAASUVORK5CYII=';
 
@@ -49,7 +49,11 @@ export class PanelProvider implements vscode.WebviewViewProvider {
   private async state() {
     const c = vscode.workspace.getConfiguration('francestudent');
     const cfg = routeConfig();
-    const models = await this.orch.models().catch(() => DEFAULT_AGENTS.map(a => a.model));
+    const routedModels = await this.orch.models().catch(() => []);
+    // Local routing defaults may be useful when the API is temporarily down,
+    // but presenting them as live availability would be misleading.
+    const modelsVerified = this.client.modelsVerified();
+    const models = modelsVerified ? routedModels : [];
     const tierModels: Record<Tier, Array<{ id: string; name: string; provider: string; blocked: boolean }>> = {
       light: [],
       medium: [],
@@ -62,6 +66,8 @@ export class PanelProvider implements vscode.WebviewViewProvider {
       const meta = this.client.getModelMeta(id);
       tierModels[classifyTier(id, cfg)].push({ ...meta, blocked });
     }
+    const session = await this.orch.session('status').catch(() => ({ chatId: undefined, usagePercent: undefined }));
+    const diagnostics = await this.orch.diagnostics(session);
     return {
       type: 'state',
       hasKey: await this.client.hasKey(),
@@ -69,19 +75,26 @@ export class PanelProvider implements vscode.WebviewViewProvider {
       cutoff: c.get('cutoffPercent', 15),
       mode: c.get('mode', 'eco'),
       maxParallel: c.get('maxParallel', 3),
-      baseUrl: c.get('baseUrl', 'https://api.francestudent.org'),
       autoPowerUp: c.get('autoPowerUp', 'ask'),
       autoApply: c.get('autoApply', false),
       useClientTools: c.get('useClientTools', true),
+      reuseChat: c.get('reuseChat', true),
+      contextCompactPercent: c.get('contextCompactPercent', 80),
+      contextMode: c.get('contextMode', 'minimal'),
+      routingProfile: cfg.routingProfile,
       showReasoning: c.get('showReasoning', true),
       allowedModels: cfg.allowed,
       blockedModels: cfg.blocked,
       tiers: cfg.tiers,
       tierModels,
       models,
+      modelsVerified,
+      modelsError: modelsVerified ? undefined : 'Disponibilité des modèles non vérifiée auprès du fournisseur.',
       attached: this.attached,
       active: this.orch.active().map(j => this.orch.publicView(j)),
       history: this.orch.historyList().map(j => this.orch.publicView(j)),
+      session,
+      diagnostics,
     };
   }
 
@@ -93,7 +106,24 @@ export class PanelProvider implements vscode.WebviewViewProvider {
         this.push();
         break;
       case 'delegate':
-        this.orch.submit({ task: m.task, model: m.model || undefined, files: this.attached, source: 'panel' });
+        if (typeof m.task !== 'string' || !m.task.trim()) return;
+        {
+          const executionMode = ['apply', 'plan', 'dry-run'].includes(m.executionMode)
+            ? m.executionMode as ExecutionMode
+            : undefined;
+          const routingProfile = ['eco', 'fast', 'quality', 'security', 'refactor'].includes(m.routingProfile)
+            ? m.routingProfile as RoutingProfile
+            : undefined;
+          this.orch.submit({
+            task: m.task,
+            model: typeof m.model === 'string' ? m.model || undefined : undefined,
+            files: this.attached,
+            contextMode: ['minimal', 'targeted', 'smart'].includes(m.contextMode) ? m.contextMode : undefined,
+            executionMode,
+            routingProfile,
+            source: 'panel',
+          });
+        }
         this.attached = [];
         this.push();
         break;
@@ -109,12 +139,15 @@ export class PanelProvider implements vscode.WebviewViewProvider {
       case 'clearHistory': this.orch.clearHistory(); this.push(); break;
       case 'mode': await cfg.update('mode', m.mode, vscode.ConfigurationTarget.Global); break;
       case 'saveSettings':
-        if (typeof m.baseUrl === 'string' && m.baseUrl.trim()) await cfg.update('baseUrl', m.baseUrl.trim(), vscode.ConfigurationTarget.Global);
         if (typeof m.cutoffPercent === 'number') await cfg.update('cutoffPercent', Math.max(0, Math.min(90, m.cutoffPercent)), vscode.ConfigurationTarget.Global);
         if (typeof m.maxParallel === 'number') await cfg.update('maxParallel', Math.max(1, Math.min(6, m.maxParallel)), vscode.ConfigurationTarget.Global);
         if (typeof m.autoPowerUp === 'string') await cfg.update('autoPowerUp', m.autoPowerUp, vscode.ConfigurationTarget.Global);
         if (typeof m.autoApply === 'boolean') await cfg.update('autoApply', m.autoApply, vscode.ConfigurationTarget.Global);
         if (typeof m.useClientTools === 'boolean') await cfg.update('useClientTools', m.useClientTools, vscode.ConfigurationTarget.Global);
+        if (typeof m.reuseChat === 'boolean') await cfg.update('reuseChat', m.reuseChat, vscode.ConfigurationTarget.Global);
+        if (typeof m.contextCompactPercent === 'number') await cfg.update('contextCompactPercent', Math.max(50, Math.min(95, m.contextCompactPercent)), vscode.ConfigurationTarget.Global);
+        if (['minimal', 'targeted', 'smart'].includes(m.contextMode)) await cfg.update('contextMode', m.contextMode, vscode.ConfigurationTarget.Global);
+        if (['eco', 'fast', 'quality', 'security', 'refactor'].includes(m.routingProfile)) await cfg.update('routingProfile', m.routingProfile, vscode.ConfigurationTarget.Global);
         if (typeof m.showReasoning === 'boolean') await cfg.update('showReasoning', m.showReasoning, vscode.ConfigurationTarget.Global);
         if (Array.isArray(m.allowedModels)) await cfg.update('allowedModels', m.allowedModels, vscode.ConfigurationTarget.Global);
         if (Array.isArray(m.blockedModels)) await cfg.update('blockedModels', m.blockedModels, vscode.ConfigurationTarget.Global);
@@ -122,7 +155,32 @@ export class PanelProvider implements vscode.WebviewViewProvider {
         this.push();
         vscode.window.setStatusBarMessage('[ATG] Paramètres enregistrés', 3000);
         break;
+      case 'applyReview':
+        try {
+          const result = await this.orch.applyReview(String(m.id ?? ''));
+          vscode.window.setStatusBarMessage(`[ATG] ${result.message ?? `${result.written.length} fichier(s) applique(s).`}`, 5000);
+        } catch (error) {
+          vscode.window.showWarningMessage(`[ATG] ${(error as Error).message}`);
+        }
+        this.push();
+        break;
+      case 'undo': {
+        const result = await this.orch.undo(String(m.id ?? ''));
+        const notes = [
+          result.restored.length ? `${result.restored.length} restaure(s)` : '',
+          result.changed.length ? `${result.changed.length} modifie(s), non ecrase(s)` : '',
+          result.unavailable.length ? `${result.unavailable.length} indisponible(s)` : '',
+        ].filter(Boolean).join(' - ');
+        vscode.window.setStatusBarMessage(`[ATG] ${notes || 'Aucune restauration disponible.'}`, 6000);
+        this.push();
+        break;
+      }
+      case 'refreshDiagnostics': await this.orch.refreshDiagnostics(); this.push(); break;
       case 'refresh': await this.quota.snapshot(true).catch(e => vscode.window.showWarningMessage(String(e.message))); break;
+      case 'session':
+        await this.orch.session(m.action === 'compact' || m.action === 'new' ? m.action : 'status');
+        this.push();
+        break;
       case 'log': await vscode.commands.executeCommand('fsatg.openLog'); break;
       case 'key': await vscode.commands.executeCommand('fsatg.setApiKey'); this.push(); break;
       case 'clearKey': await vscode.commands.executeCommand('fsatg.clearApiKey'); this.push(); break;
@@ -266,6 +324,92 @@ function panelHtml(nonce: string): string {
   .slider:before { content: ""; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: var(--fs-fg); border-radius: 50%; transition: .2s; }
   .switch input:checked + .slider { background: var(--fs-blue); border-color: var(--fs-blue); }
   .switch input:checked + .slider:before { transform: translateX(14px); background: #fff; }
+
+  /* Visual system v2: calm, information-first, and deliberately compact. */
+  :root {
+    --fs-canvas: var(--vscode-sideBar-background, #10131a);
+    --fs-panel: color-mix(in srgb, var(--vscode-editor-background, #171b24) 90%, var(--fs-bg));
+    --fs-elev: color-mix(in srgb, var(--fs-surface) 74%, var(--fs-card));
+    --fs-line: color-mix(in srgb, var(--fs-fg) 13%, transparent);
+    --fs-accent-soft: color-mix(in srgb, var(--fs-blue) 16%, transparent);
+  }
+  body {
+    padding: 12px 10px 20px;
+    background: radial-gradient(110% 340px at 80% -80px, color-mix(in srgb, var(--fs-blue) 13%, transparent), transparent 62%), var(--fs-canvas);
+    font-size: 12px;
+  }
+  .tabs {
+    position: sticky; top: 0; z-index: 5;
+    grid-template-columns: 1fr 1fr;
+    margin: -2px 0 14px; padding: 3px;
+    background: color-mix(in srgb, var(--fs-canvas) 88%, transparent);
+    border: 1px solid var(--fs-line); border-radius: 10px;
+    backdrop-filter: blur(12px);
+  }
+  .tab-btn { min-height: 30px; padding: 5px 8px; border-radius: 7px; font-size: 11.5px; letter-spacing: .01em; }
+  .tab-btn.on { background: var(--fs-elev); box-shadow: 0 1px 0 color-mix(in srgb, #fff 11%, transparent) inset; }
+  .warnbox, .hero, .composer, .settings-card, .job-card, .hist-list {
+    background: var(--fs-panel); border-color: var(--fs-line); border-radius: 12px;
+    box-shadow: none;
+  }
+  .warnbox { padding: 10px; margin-bottom: 10px; }
+  .hero { padding: 13px; margin-bottom: 10px; overflow: hidden; position: relative; }
+  .hero::before { content: ''; position: absolute; width: 130px; height: 130px; right: -68px; top: -72px; border-radius: 50%; background: color-mix(in srgb, var(--fs-blue) 13%, transparent); pointer-events: none; }
+  .hero-top, .qrow, .meta { position: relative; }
+  .brand { gap: 8px; }
+  .brand-logo { width: 24px; height: 24px; border-radius: 8px; background: var(--fs-elev); padding: 2px; }
+  .hero h1 { font-size: 13px; letter-spacing: -.01em; }
+  .badge { background: var(--fs-accent-soft); color: var(--fs-fg); border: 1px solid color-mix(in srgb, var(--fs-blue) 48%, transparent); }
+  .status-pill { background: transparent; border: 1px solid var(--fs-line); padding: 3px 7px; font-size: 10px; }
+  .qrow { margin-top: 15px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .055em; }
+  .pct-val { font-size: 18px; letter-spacing: -.04em; }
+  .gauge-wrap { padding-bottom: 13px; }
+  .gauge { height: 5px; background: color-mix(in srgb, var(--fs-fg) 10%, transparent); }
+  .meta { padding-top: 2px; font-size: 10px; }
+  .seg { padding: 3px; margin-bottom: 10px; border-color: var(--fs-line); border-radius: 10px; background: var(--fs-panel); }
+  .seg button { min-height: 32px; padding: 5px; border-radius: 7px; font-size: 11px; }
+  .seg button.on { background: var(--fs-accent-soft); color: var(--fs-fg); box-shadow: none; }
+  .composer { padding: 12px; margin-bottom: 14px; }
+  textarea, select, input[type="text"], input[type="number"] { border-color: var(--fs-line); border-radius: 9px; background: var(--fs-elev); font-size: 12px; }
+  textarea { min-height: 92px; line-height: 1.5; padding: 10px; }
+  textarea::placeholder { color: var(--fs-fg-faint); }
+  .tier-row { gap: 5px; margin-bottom: 8px; }
+  .chip { min-height: 27px; padding: 4px 8px; border-color: var(--fs-line); background: transparent; font-size: 10.5px; }
+  .chip:hover { border-color: color-mix(in srgb, var(--fs-blue) 55%, var(--fs-line)); }
+  .chip.on { background: var(--fs-accent-soft); border-color: color-mix(in srgb, var(--fs-blue) 65%, var(--fs-line)); }
+  .chip-cnt { background: transparent; padding: 0 0 0 3px; }
+  .actions { gap: 7px; }
+  .btn { min-height: 31px; padding: 6px 11px; border-radius: 8px; font-size: 11px; }
+  .btn.ghost { background: transparent; border-color: var(--fs-line); }
+  .btn.ghost:hover { background: var(--fs-elev); }
+  .sec-head { margin: 16px 2px 7px; }
+  .sec-title { font-size: 10px; letter-spacing: .1em; }
+  .cnt { border: 1px solid var(--fs-line); background: transparent; }
+  .job-card { padding: 10px; margin-bottom: 6px; border-left: 2px solid var(--fs-blue); }
+  .job-top { margin-bottom: 7px; }
+  .tag { background: transparent; border: 1px solid var(--fs-line); color: var(--fs-fg-soft); padding: 1px 5px; }
+  .model-pill { background: transparent; border: 1px solid var(--fs-line); font-size: 9.5px; }
+  .pbar { height: 3px; background: color-mix(in srgb, var(--fs-fg) 8%, transparent); }
+  .term { border: 1px solid var(--fs-line); background: transparent; color: var(--fs-fg-soft); }
+  .hist-list { overflow: hidden; }
+  .hist-item { padding: 9px 10px; }
+  .hist-item:hover { background: color-mix(in srgb, var(--fs-blue) 5%, transparent); }
+  .st-ico { width: 19px; height: 19px; }
+  .hist-detail { background: var(--fs-elev); border: 1px solid var(--fs-line); border-radius: 8px; }
+  .settings-card { padding: 12px; margin-bottom: 10px; }
+  .field { margin-bottom: 12px; }
+  .field label { color: var(--fs-fg-soft); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
+  .toggle-row { gap: 9px; padding: 8px 9px; background: transparent; border-color: var(--fs-line); border-radius: 9px; }
+  .popover { background: var(--fs-panel); border-color: color-mix(in srgb, var(--fs-blue) 35%, var(--fs-line)); box-shadow: 0 14px 34px rgba(0, 0, 0, .35); }
+  .pop-item:hover { background: var(--fs-elev); }
+  .empty-txt { padding: 8px 2px; color: var(--fs-fg-faint); }
+  @media (max-width: 260px) { .grid-2 { grid-template-columns: 1fr; } .sub-txt { display: none; } }
+  .review-actions { display:flex; gap:6px; margin-top:7px; flex-wrap:wrap; }
+  .token-note { margin-top:5px; color:var(--fs-fg-faint); font-size:10.5px; }
+  .diagnostic-grid { display:grid; gap:6px; margin-top:8px; }
+  .diagnostic-row { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--fs-border); font-size:11px; }
+  .diagnostic-row:last-child { border-bottom:0; }
+  .diagnostic-value { text-align:right; color:var(--fs-fg-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 </style></head>
 <body>
   <div class="tabs">
@@ -288,14 +432,14 @@ function panelHtml(nonce: string): string {
           <img class="brand-logo" alt="France Student" src="${LOGO_DATA_URI}" />
           <h1>France Student <span class="badge">ATG</span></h1>
         </div>
-        <span class="status-pill" id="connPill"><span class="dot"></span><span id="connTxt">Hors ligne</span></span>
+        <span class="status-pill" id="connPill"><span class="dot"></span><span id="connTxt">Vérification…</span></span>
       </div>
       <div class="qrow"><span>Budget chat restant</span><span class="pct-val" id="pct">—</span></div>
       <div class="gauge-wrap" id="gauge" title="Actualisé automatiquement (clic pour forcer)">
         <div class="gauge" id="gaugeBar"><div id="bar"></div></div>
-        <div class="cutoff-tick" id="cutoffTick" style="left:15%"><div class="cutoff-line"></div><div class="cutoff-lbl" id="cutoffNum">15</div></div>
+        <div class="cutoff-tick" id="cutoffTick" hidden><div class="cutoff-line"></div><div class="cutoff-lbl" id="cutoffNum">—</div></div>
       </div>
-      <div class="meta"><span id="qtxt">Actualisation auto</span><span>Coupe-circuit : <b id="cutoff">15 %</b></span></div>
+      <div class="meta"><span id="qtxt">Vérification en cours…</span><span>Coupe-circuit : <b id="cutoff">—</b></span></div>
     </div>
 
     <div class="seg" id="mode">
@@ -304,14 +448,14 @@ function panelHtml(nonce: string): string {
     </div>
 
     <div class="composer">
-      <textarea id="task" placeholder="Décris la tâche… (/auto, /faible, /mid, /élevé)"></textarea>
+      <textarea id="task" placeholder="Décris la tâche… (/plan, /dry-run, /eco, /security, /fable)"></textarea>
       <div class="tier-row" id="cmdBar" hidden></div>
       <div class="tier-row" id="attachedChips"></div>
       <div class="tier-row" id="tierRow">
         <button class="chip on" data-choice="">Auto</button>
-        <button class="chip" data-choice="tier:light" data-tier="light">Modèle faible <span class="chip-cnt" id="cnt-light">0</span></button>
-        <button class="chip" data-choice="tier:medium" data-tier="medium">Modèle équilibré <span class="chip-cnt" id="cnt-medium">0</span></button>
-        <button class="chip" data-choice="tier:heavy" data-tier="heavy">Modèle fort <span class="chip-cnt" id="cnt-heavy">0</span></button>
+        <button class="chip" data-choice="tier:light" data-tier="light">Modèle faible <span class="chip-cnt" id="cnt-light">—</span></button>
+        <button class="chip" data-choice="tier:medium" data-tier="medium">Modèle équilibré <span class="chip-cnt" id="cnt-medium">—</span></button>
+        <button class="chip" data-choice="tier:heavy" data-tier="heavy">Modèle fort <span class="chip-cnt" id="cnt-heavy">—</span></button>
       </div>
       <div class="actions">
         <button class="btn" id="go">Déléguer</button>
@@ -325,11 +469,11 @@ function panelHtml(nonce: string): string {
       <div id="popList"></div>
     </div>
 
-    <div class="sec-head"><div class="sec-title">Agents actifs <span class="cnt" id="activeCount">0</span></div></div>
+    <div class="sec-head"><div class="sec-title">Agents actifs <span class="cnt" id="activeCount">—</span></div></div>
     <div id="active"></div>
 
     <div class="sec-head">
-      <div class="sec-title">Historique <span class="cnt" id="historyCount">0</span></div>
+      <div class="sec-title">Historique <span class="cnt" id="historyCount">—</span></div>
       <button class="link-btn" id="clearHistory" hidden>Tout effacer</button>
     </div>
     <div id="history"></div>
@@ -340,7 +484,6 @@ function panelHtml(nonce: string): string {
       <div class="field"><label>Clé API / Jeton de session</label>
         <div class="actions"><button class="btn sm" id="keyBtn">Enregistrer</button><button class="btn danger sm" id="clearKeyBtn">Oublier</button><button class="btn ghost sm" id="copyMcpBtn">Config MCP</button></div>
       </div>
-      <div class="field"><label>URL de base API</label><input type="text" id="baseUrlInput" /></div>
       <div class="grid-2">
         <div class="field"><label>Coupe-circuit (%)</label><div style="display:flex;gap:6px;align-items:center"><input type="number" id="cutoffInput" min="0" max="90" /><button type="button" class="btn ghost sm" id="useAllBtn" title="Désactiver la réserve (0 %)">Tout utiliser</button></div></div>
         <div class="field"><label>Agents parallèles</label><input type="number" id="maxParallelInput" min="1" max="6" /></div>
@@ -350,9 +493,13 @@ function panelHtml(nonce: string): string {
       </div>
       <div class="field"><div class="toggle-row"><span>Appliquer sans confirmation</span><label class="switch"><input type="checkbox" id="autoApplyInput" /><span class="slider"></span></label></div></div>
       <div class="field"><div class="toggle-row"><span>Outils client natifs</span><label class="switch"><input type="checkbox" id="useClientToolsInput" /><span class="slider"></span></label></div></div>
+       <div class="field"><div class="toggle-row"><span>Chat direct persistant (contexte compacté automatiquement)</span><label class="switch"><input type="checkbox" id="reuseChatInput" /><span class="slider"></span></label></div></div>
+       <div class="field"><label>Compacter le contexte à partir de (%)</label><input type="number" id="contextCompactInput" min="50" max="95" /></div>
+       <div class="field"><label>Contexte envoyé</label><select id="contextModeInput"><option value="minimal">Minimal — demande seule</option><option value="targeted">Ciblé — fichiers choisis</option><option value="smart">Intelligent — index local de symboles/imports</option></select></div>
       <div class="field"><div class="toggle-row"><span>Résumé de raisonnement</span><label class="switch"><input type="checkbox" id="showReasoningInput" /><span class="slider"></span></label></div></div>
     </div>
     <div class="settings-card">
+      <div class="field"><label>Profil de routage</label><select id="routingProfileInput"><option value="eco">Éco — modèle léger par défaut</option><option value="fast">Rapide — modèle léger</option><option value="quality">Qualité — modèle puissant</option><option value="security">Sécurité — modèle puissant</option><option value="refactor">Refactorisation — modèle puissant</option></select></div>
       <div class="field"><label>Modèle faible (légers)</label><input type="text" id="tierLightInput" /></div>
       <div class="field"><label>Modèle équilibré (intermédiaires)</label><input type="text" id="tierMediumInput" /></div>
       <div class="field"><label>Modèle fort (puissants)</label><input type="text" id="tierHeavyInput" /></div>
@@ -362,6 +509,12 @@ function panelHtml(nonce: string): string {
       </div>
       <button class="btn sm" id="saveSettingsBtn">Enregistrer les paramètres</button>
     </div>
+    <div class="settings-card">
+      <div class="field"><label>Diagnostic vérifiable</label>
+        <div class="actions"><button class="btn ghost sm" id="refreshDiagnosticsBtn">Actualiser</button></div>
+        <div id="diagnostics" class="diagnostic-grid"><div class="empty-txt">Diagnostic en cours…</div></div>
+      </div>
+    </div>
   </div>
 
 <script nonce="${nonce}">
@@ -369,15 +522,12 @@ function panelHtml(nonce: string): string {
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let S = {
+    loaded: false,
     active: [], history: [],
-    models: ['gpt-5.6-luna', 'gpt-6-luna', 'claude-haiku-5-5', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-6.1-terra', 'claude-sonnet-5-5', 'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-astra', 'claude-opus-5-5', 'claude-fable-5-2'],
-    tierModels: {
-      light: [{ id:'gpt-5.6-luna', name:'gpt-5.6-luna', provider:'openai', blocked:false }, { id:'gpt-6-luna', name:'GPT 6 Luna', provider:'openai', blocked:false }, { id:'claude-haiku-5-5', name:'Claude Haiku 5.5', provider:'anthropic', blocked:false }],
-      medium: [{ id:'gpt-5.6-terra', name:'gpt-5.6-terra', provider:'openai', blocked:false }, { id:'gpt-5.6-sol', name:'gpt-5.6-sol', provider:'openai', blocked:false }, { id:'gpt-6.1-terra', name:'GPT-6.1 Terra', provider:'openai', blocked:false }, { id:'claude-sonnet-5-5', name:'Claude Sonnet 5.5', provider:'anthropic', blocked:false }],
-      heavy: [{ id:'gpt-6-sol', name:'GPT 6 Sol', provider:'openai', blocked:false }, { id:'gpt-6.1-sol', name:'GPT 6.1 Sol', provider:'openai', blocked:false }, { id:'gpt-6-astra', name:'GPT-6 Astra', provider:'openai', blocked:false }, { id:'claude-opus-5-5', name:'Claude Opus 5.5', provider:'anthropic', blocked:false }, { id:'claude-fable-5-2', name:'Claude Fable 5.2', provider:'anthropic', blocked:false }]
-    },
-    tiers: { light:['haiku','luna','mini','nano','flash'], medium:['sonnet','terra','gpt-5.6-sol','kimi-k2'], heavy:['fable','opus','astra','gpt-6-sol','gpt-6.1-sol','kimi-k3'] },
-    attached: [], cutoff: 15, mode: 'eco'
+    models: [], modelsVerified: false, modelsError: 'Chargement des données réelles…',
+    tierModels: { light: [], medium: [], heavy: [] },
+    tiers: { light: [], medium: [], heavy: [] },
+    attached: [], cutoff: null, mode: '', routingProfile: 'eco', diagnostics: null
   };
   let selectedChoice = '';
   let settingsLoaded = false;
@@ -385,7 +535,7 @@ function panelHtml(nonce: string): string {
   let popHideTimer = null;
   const expanded = new Set();
 
-  window.addEventListener('message', e => { if (e.data.type === 'state') { S = e.data; render(); } });
+  window.addEventListener('message', e => { if (e.data.type === 'state') { S = { ...e.data, loaded: true }; render(); } });
   function fmt(sec) { return sec >= 60 ? Math.floor(sec / 60) + ' min ' + (sec % 60) + ' s' : sec + ' s'; }
   function switchTab(tab) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -393,12 +543,15 @@ function panelHtml(nonce: string): string {
     $('tab-settings').hidden = tab !== 'settings';
   }
   function syncSettings() {
-    $('baseUrlInput').value = S.baseUrl || 'https://api.francestudent.org';
     $('cutoffInput').value = S.cutoff ?? 15;
     $('maxParallelInput').value = S.maxParallel ?? 3;
     $('powerUpInput').value = S.autoPowerUp || 'ask';
     $('autoApplyInput').checked = !!S.autoApply;
     $('useClientToolsInput').checked = S.useClientTools !== false;
+    $('reuseChatInput').checked = S.reuseChat !== false;
+    $('contextCompactInput').value = S.contextCompactPercent ?? 80;
+    $('contextModeInput').value = S.contextMode || 'minimal';
+    $('routingProfileInput').value = S.routingProfile || 'eco';
     $('showReasoningInput').checked = S.showReasoning !== false;
     $('tierLightInput').value = (S.tiers?.light || []).join(', ');
     $('tierMediumInput').value = (S.tiers?.medium || []).join(', ');
@@ -408,14 +561,18 @@ function panelHtml(nonce: string): string {
   }
   function renderTiers() {
     const tm = S.tierModels || { light: [], medium: [], heavy: [] };
-    $('cnt-light').textContent = tm.light?.length ?? 0;
-    $('cnt-medium').textContent = tm.medium?.length ?? 0;
-    $('cnt-heavy').textContent = tm.heavy?.length ?? 0;
+    const count = tier => S.modelsVerified ? (tm[tier]?.length ?? 0) : '—';
+    $('cnt-light').textContent = count('light');
+    $('cnt-medium').textContent = count('medium');
+    $('cnt-heavy').textContent = count('heavy');
     document.querySelectorAll('#tierRow .chip').forEach(btn => {
       const ch = btn.dataset.choice;
       const tier = btn.dataset.tier;
       const match = tier && (tm[tier] || []).some(m => m.id === selectedChoice);
       btn.classList.toggle('on', selectedChoice === ch || Boolean(match));
+      // Tier selection is meaningful only after the supplier list is verified.
+      btn.disabled = Boolean(tier && !S.modelsVerified);
+      btn.title = tier && !S.modelsVerified ? (S.modelsError || 'Disponibilité non vérifiée') : '';
     });
   }
   function showTierPopover(tier, anchor) {
@@ -425,7 +582,7 @@ function panelHtml(nonce: string): string {
     $('popList').innerHTML = list.length ? list.map(m =>
       '<button class="pop-item ' + (m.blocked ? 'blocked' : '') + '" data-pick="' + esc(m.id) + '" ' + (m.blocked ? 'disabled' : '') + '>' +
       '<span>' + esc(m.name) + '</span><span class="pop-prov">' + esc(m.provider) + '</span></button>'
-    ).join('') : '<div class="empty-txt">Aucun modèle</div>';
+    ).join('') : '<div class="empty-txt">' + esc(S.modelsVerified ? 'Aucun modèle disponible' : (S.modelsError || 'Disponibilité non vérifiée')) + '</div>';
     const r = anchor.getBoundingClientRect();
     const pop = $('tierPopover');
     pop.hidden = false;
@@ -434,24 +591,87 @@ function panelHtml(nonce: string): string {
   }
   function hidePopover() { clearTimeout(hoverTimer); $('tierPopover').hidden = true; }
 
+  function diagTime(value) {
+    return typeof value === 'number' ? new Date(value).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'non vérifié';
+  }
+  function renderDiagnostics() {
+    const target = $('diagnostics');
+    const d = S.diagnostics;
+    if (!target || !d) return;
+    const api = d.api || {};
+    const models = d.models || {};
+    const session = d.session || {};
+    const network = d.network || {};
+    const quota = d.quota || {};
+    const err = api.lastError ? (api.lastError.scope + ' : ' + api.lastError.message) : '';
+    const rows = [
+      ['Clé', d.credential?.configured ? 'présente dans SecretStorage (valeur masquée)' : 'absente'],
+      ['API', err || (api.lastValidatedAt ? 'dernière validation ' + diagTime(api.lastValidatedAt) : 'non validée')],
+      ['Modèles', models.verified ? 'liste fournisseur vérifiée' : 'liste non vérifiée'],
+      ['Quota', quota.at ? (quota.remainingPct == null ? 'réponse sans pourcentage exploitable' : Math.round(quota.remainingPct) + ' % — ' + diagTime(quota.at)) : 'non vérifié'],
+      ['MCP', d.mcp?.status + (d.mcp?.detail ? ' — ' + d.mcp.detail : '')],
+      ['Session', session.active ? ('active' + (session.usagePercent == null ? '' : ' — ' + Math.round(session.usagePercent) + ' %')) : 'aucune session directe'],
+      ['Réseau', (network.state || 'unknown') + (network.detail ? ' — ' + network.detail : '')],
+    ];
+    target.innerHTML = rows.map(row => '<div class="diagnostic-row"><span>' + esc(row[0]) + '</span><span class="diagnostic-value" title="' + esc(row[1]) + '">' + esc(row[1]) + '</span></div>').join('');
+  }
+
+  function tokenDetail(job) {
+    const accounting = job.tokenAccounting || {};
+    const values = [];
+    if (typeof accounting.localInputEstimate === 'number') {
+      values.push('Entrée : ≈ ' + accounting.localInputEstimate + ' tokens (estimation locale, caractères/4).');
+    }
+    const provider = accounting.providerTokens;
+    if (accounting.providerReported && provider && typeof provider === 'object') {
+      const labels = { inputTokens: 'entrée', outputTokens: 'sortie', reasoningTokens: 'raisonnement', totalTokens: 'total' };
+      const reported = Object.entries(provider).filter(([, value]) => typeof value === 'number')
+        .map(([key, value]) => (labels[key] || key) + ' ' + value).join(', ');
+      if (reported) values.push('Fournisseur : ' + reported + '.');
+    } else if (accounting.providerReported) {
+      values.push('Fournisseur : mesures reçues, format non affichable.');
+    } else {
+      values.push('Fournisseur : aucune mesure retournée.');
+    }
+    return values.join('\n');
+  }
+
+  function undoDetail(job) {
+    const undo = job.undo || {};
+    const values = [];
+    if (undo.available) values.push('Restauration disponible dans cette session : ' + (undo.captured || []).join(', ') + '.');
+    if ((undo.omitted || []).length) values.push('Non restaurable (limite de taille) : ' + undo.omitted.join(', ') + '.');
+    if ((job.undoChanged || []).length) values.push('Non restauré, fichier modifié depuis l’application : ' + job.undoChanged.join(', ') + '.');
+    if ((job.undoUnavailable || []).length) values.push('Indisponible : ' + job.undoUnavailable.join(', ') + '.');
+    return values.join('\n');
+  }
+
   function render() {
-    $('nokey').hidden = !!S.hasKey;
+    const loaded = S.loaded === true;
+    $('nokey').hidden = !loaded || !!S.hasKey;
     const q = S.quota && S.quota.remainingPct;
-    const connected = !!S.hasKey && q != null;
+    const connected = loaded && !!S.hasKey && q != null;
     $('connPill').className = 'status-pill' + (connected ? ' on' : '');
-    $('connTxt').textContent = connected ? 'Connecté' : (S.hasKey ? 'Clé enregistrée' : 'Hors ligne');
+    $('connTxt').textContent = !loaded ? 'Vérification…' : (connected ? 'API vérifiée' : (S.hasKey ? 'Clé enregistrée' : 'Hors ligne'));
     $('pct').textContent = q == null ? '—' : Math.round(q) + ' %';
     $('bar').style.width = (q == null ? 0 : q) + '%';
     $('gaugeBar').className = 'gauge' + (q == null ? '' : q < S.cutoff ? ' crit' : q < S.cutoff * 2 ? ' low' : '');
-    $('cutoffTick').style.left = S.cutoff + '%';
-    $('cutoffNum').textContent = S.cutoff;
-    $('cutoff').textContent = S.cutoff + ' %';
-    $('qtxt').textContent = S.quota?.at ? 'Mis à jour à ' + new Date(S.quota.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'Actualisation auto';
+    const hasCutoff = typeof S.cutoff === 'number';
+    $('cutoffTick').hidden = !hasCutoff;
+    if (hasCutoff) {
+      $('cutoffTick').style.left = S.cutoff + '%';
+      $('cutoffNum').textContent = S.cutoff;
+      $('cutoff').textContent = S.cutoff + ' %';
+    } else {
+      $('cutoff').textContent = '—';
+    }
+    $('qtxt').textContent = !loaded ? 'Vérification en cours…' : (S.quota?.at ? 'Mis à jour à ' + new Date(S.quota.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'Actualisation auto');
     document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === S.mode));
 
     renderTiers();
+    renderDiagnostics();
     $('attachedChips').innerHTML = S.attached.map(f => '<span class="chip" data-detach="' + esc(f) + '">' + esc(f) + ' ✕</span>').join('');
-    $('activeCount').textContent = S.active.length;
+    $('activeCount').textContent = loaded ? S.active.length : '—';
     $('active').innerHTML = S.active.length ? S.active.map(j => {
       const title = esc(j.title.replace(/^\\[ATG\\]\\s*/, ''));
       const thought = (j.lastThoughts && j.lastThoughts.length) ? j.lastThoughts[j.lastThoughts.length - 1] : (j.summary || j.route || 'En cours…');
@@ -462,19 +682,31 @@ function panelHtml(nonce: string): string {
         '<div class="term">&gt; ' + esc(thought) + '</div></div>';
     }).join('') : '<div class="empty-txt">Aucun agent actif</div>';
 
-    $('historyCount').textContent = S.history.length;
+    $('historyCount').textContent = loaded ? S.history.length : '—';
     $('clearHistory').hidden = S.history.length === 0;
     $('history').innerHTML = S.history.length ? '<div class="hist-list">' + S.history.slice(0, 20).map(j => {
       const title = esc(j.title.replace(/^\\[ATG\\]\\s*/, ''));
-      const noWrite = j.status === 'done' && (!j.filesWritten || !j.filesWritten.length);
+      const noWrite = j.status === 'done' && (!j.executionMode || j.executionMode === 'apply') && (!j.filesWritten || !j.filesWritten.length);
       const icoClass = noWrite ? 'warn' : j.status;
       const ico = j.status === 'done' ? (noWrite ? '!' : '✓') : j.status === 'error' ? '✕' : '⏸';
-      const detail = [j.filesWritten?.length ? 'Fichiers : ' + j.filesWritten.join(', ') : '', j.summary || j.error || ''].filter(Boolean).join('\\n\\n');
+      const refusalDetail = (j.refusals || []).map(r => 'Refus ' + r.model + ' : ' + r.reason).join('\\n');
+      const detail = [j.filesWritten?.length ? 'Fichiers : ' + j.filesWritten.join(', ') : '', refusalDetail, j.summary || j.error || ''].filter(Boolean).join('\\n\\n');
+      const refusalSuffix = j.refusals?.length ? ' · ' + j.refusals.length + ' refus' : '';
+      const auditDetail = [
+        j.proposedFiles?.length ? 'Proposition : ' + j.proposedFiles.join(', ') : '',
+        j.executionMode ? 'Mode : ' + j.executionMode + (j.routingProfile ? ' | profil ' + j.routingProfile : '') : '',
+        tokenDetail(j),
+        undoDetail(j),
+      ].filter(Boolean).join('\n\n');
+      const actions = (j.reviewReady || j.undo?.available) ? '<div class="review-actions">' +
+        (j.reviewReady ? '<button type="button" class="btn sm" data-apply-review="' + esc(j.jobId) + '">Voir / appliquer la proposition</button>' : '') +
+        (j.undo?.available ? '<button type="button" class="btn ghost sm" data-undo="' + esc(j.jobId) + '">Restaurer</button>' : '') +
+        '</div>' : '';
       return '<div class="hist-item" data-hist="' + j.jobId + '"><div class="hist-row">' +
         '<div class="st-ico ' + icoClass + '" title="' + (noWrite ? 'Terminé sans écriture de fichier' : '') + '">' + ico + '</div>' +
         '<div class="hist-main"><div class="hist-top"><span class="tag">ATG</span><span class="hist-title">' + title + '</span></div>' +
-        '<div class="hist-sub">' + esc(j.model || 'Auto') + (noWrite ? ' · aucun fichier' : '') + ' · ' + esc(j.error || (j.receivedChars + ' car.')) + '</div></div></div>' +
-        (expanded.has(j.jobId) && detail ? '<div class="hist-detail">' + esc(detail) + '</div>' : '') + '</div>';
+        '<div class="hist-sub">' + esc(j.model || 'Auto') + refusalSuffix + (noWrite ? ' · aucun fichier' : '') + ' · ' + esc(j.error || (j.receivedChars + ' car.')) + '</div></div></div>' +
+        (expanded.has(j.jobId) && (detail || auditDetail) ? '<div class="hist-detail">' + esc([detail, auditDetail].filter(Boolean).join('\n\n')) + '</div>' : '') + actions + '</div>';
     }).join('') + '</div>' : '<div class="empty-txt">Pas encore d\\'historique</div>';
     if (!settingsLoaded) { syncSettings(); settingsLoaded = true; }
   }
@@ -484,12 +716,45 @@ function panelHtml(nonce: string): string {
   }), 1000);
 
   const SLASH_COMMANDS = [
+    { cmd: '/send', label: 'Envoyer la demande' },
+    { cmd: '/plan', executionMode: 'plan', label: 'Plan sans écriture' },
+    { cmd: '/dry-run', executionMode: 'dry-run', label: 'Simulation révisable, sans écriture' },
+    { cmd: '/eco', routingProfile: 'eco', label: 'Profil éco' },
+    { cmd: '/fast', routingProfile: 'fast', label: 'Profil rapide' },
+    { cmd: '/quality', routingProfile: 'quality', label: 'Profil qualité' },
+    { cmd: '/security', routingProfile: 'security', label: 'Profil sécurité' },
+    { cmd: '/refactor', routingProfile: 'refactor', label: 'Profil refactorisation' },
+    { cmd: '/medium', choice: 'tier:medium', label: 'Niveau équilibré' },
+    { cmd: '/fable', choice: 'fable', label: 'Claude Fable' },
+    { cmd: '/gpt', choice: 'gpt-', label: 'Premier GPT autorisé' },
+    { cmd: '/claude', choice: 'claude-', label: 'Premier Claude autorisé' },
+    { cmd: '/new', action: 'new', label: 'Nouvelle session' },
+    { cmd: '/compact', action: 'compact', label: 'Compacter la session' },
     { cmd: '/auto', choice: '', label: 'Auto' },
     { cmd: '/faible', choice: 'tier:light', label: 'Modèle faible' },
     { cmd: '/mid', choice: 'tier:medium', label: 'Modèle équilibré' },
     { cmd: '/élevé', choice: 'tier:heavy', label: 'Modèle fort' },
   ];
   const SLASH_MAP = {
+    send: { label: 'Envoyer' },
+    plan: { executionMode: 'plan', label: 'Plan sans écriture' },
+    'dry-run': { executionMode: 'dry-run', label: 'Simulation révisable' },
+    dryrun: { executionMode: 'dry-run', label: 'Simulation révisable' },
+    preview: { executionMode: 'dry-run', label: 'Simulation révisable' },
+    eco: { routingProfile: 'eco', label: 'Profil éco' },
+    fast: { routingProfile: 'fast', label: 'Profil rapide' },
+    rapide: { routingProfile: 'fast', label: 'Profil rapide' },
+    quality: { routingProfile: 'quality', label: 'Profil qualité' },
+    qualite: { routingProfile: 'quality', label: 'Profil qualité' },
+    security: { routingProfile: 'security', label: 'Profil sécurité' },
+    securite: { routingProfile: 'security', label: 'Profil sécurité' },
+    refactor: { routingProfile: 'refactor', label: 'Profil refactorisation' },
+    refacto: { routingProfile: 'refactor', label: 'Profil refactorisation' },
+    fable: { choice: 'fable', label: 'Claude Fable' },
+    gpt: { choice: 'gpt-', label: 'Premier GPT autorisé' },
+    claude: { choice: 'claude-', label: 'Premier Claude autorisé' },
+    new: { action: 'new', label: 'Nouvelle session' },
+    compact: { action: 'compact', label: 'Session compactée' },
     auto: { choice: '', label: 'Auto' },
     faible: { choice: 'tier:light', label: 'Modèle faible' },
     leger: { choice: 'tier:light', label: 'Modèle faible' },
@@ -521,14 +786,18 @@ function panelHtml(nonce: string): string {
   }
   function send() {
     let task = $('task').value.trim(); if (!task) return;
+    let executionMode;
+    let routingProfile;
     const parsed = parseSlash(task);
     if (parsed) {
-      selectedChoice = parsed.choice;
-      renderTiers();
+      if (Object.prototype.hasOwnProperty.call(parsed, 'choice')) { selectedChoice = parsed.choice; renderTiers(); }
+      executionMode = parsed.executionMode;
+      routingProfile = parsed.routingProfile;
+      if (parsed.action) vscode.postMessage({ type: 'session', action: parsed.action });
       if (!parsed.rest) { $('task').value = ''; updateCmdBar(); return; }
       task = parsed.rest;
     }
-    vscode.postMessage({ type: 'delegate', task, model: selectedChoice || undefined });
+    vscode.postMessage({ type: 'delegate', task, model: selectedChoice || undefined, contextMode: S.contextMode || 'minimal', executionMode, routingProfile });
     $('task').value = '';
     updateCmdBar();
     hidePopover();
@@ -551,6 +820,7 @@ function panelHtml(nonce: string): string {
   $('setkey').onclick = $('keyBtn').onclick = () => vscode.postMessage({ type: 'key' });
   $('clearKeyBtn').onclick = () => vscode.postMessage({ type: 'clearKey' });
   $('copyMcpBtn').onclick = () => vscode.postMessage({ type: 'copyMcp' });
+  $('refreshDiagnosticsBtn').onclick = () => vscode.postMessage({ type: 'refreshDiagnostics' });
   $('clearHistory').onclick = () => vscode.postMessage({ type: 'clearHistory' });
   document.querySelectorAll('#tierRow .chip[data-tier]').forEach(btn => {
     const tier = btn.dataset.tier;
@@ -564,12 +834,15 @@ function panelHtml(nonce: string): string {
     const split = v => v.split(',').map(s => s.trim()).filter(Boolean);
     vscode.postMessage({
       type: 'saveSettings',
-      baseUrl: $('baseUrlInput').value.trim(),
       cutoffPercent: Number($('cutoffInput').value),
       maxParallel: Number($('maxParallelInput').value),
       autoPowerUp: $('powerUpInput').value,
       autoApply: $('autoApplyInput').checked,
       useClientTools: $('useClientToolsInput').checked,
+      reuseChat: $('reuseChatInput').checked,
+      contextCompactPercent: Number($('contextCompactInput').value),
+      contextMode: $('contextModeInput').value,
+      routingProfile: $('routingProfileInput').value,
       showReasoning: $('showReasoningInput').checked,
       tiers: { light: split($('tierLightInput').value), medium: split($('tierMediumInput').value), heavy: split($('tierHeavyInput').value) },
       allowedModels: split($('allowedInput').value),
@@ -578,10 +851,19 @@ function panelHtml(nonce: string): string {
   };
   document.querySelectorAll('#mode button').forEach(b => b.onclick = () => vscode.postMessage({ type: 'mode', mode: b.dataset.mode }));
   document.addEventListener('click', e => {
+    const applyReview = e.target.closest('[data-apply-review]');
+    if (applyReview) { e.stopPropagation(); vscode.postMessage({ type: 'applyReview', id: applyReview.dataset.applyReview }); return; }
+    const undo = e.target.closest('[data-undo]');
+    if (undo) { e.stopPropagation(); vscode.postMessage({ type: 'undo', id: undo.dataset.undo }); return; }
     const cmdBtn = e.target.closest('[data-cmd]');
     if (cmdBtn) {
       const parsed = parseSlash(cmdBtn.dataset.cmd);
-      if (parsed) { selectedChoice = parsed.choice; renderTiers(); $('task').value = ''; updateCmdBar(); $('task').focus(); }
+      if (parsed) {
+        if (Object.prototype.hasOwnProperty.call(parsed, 'choice')) { selectedChoice = parsed.choice; renderTiers(); }
+        if (parsed.action) vscode.postMessage({ type: 'session', action: parsed.action });
+        $('task').value = (parsed.executionMode || parsed.routingProfile) ? cmdBtn.dataset.cmd + ' ' : '';
+        updateCmdBar(); $('task').focus();
+      }
       return;
     }
     const p = e.target.closest('[data-pick]'); if (p && !p.disabled) { selectedChoice = p.dataset.pick; hidePopover(); renderTiers(); return; }

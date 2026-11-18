@@ -2,7 +2,12 @@
   "name": "fs-atg",
   "displayName": "France Student pour Antigravity [ATG]",
   "publisher": "pierregdc",
-  "version": "0.1.0",
+  "version": "0.6.3",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pierregdc/fs-atg.git"
+  },
+  "homepage": "https://github.com/pierregdc/fs-atg#readme",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -11,7 +16,9 @@
     "onStartupFinished"
   ],
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js"
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js",
+    "test": "node --test test/*.test.mjs",
+    "test:api-contract": "node scripts/verify_api_contract.mjs"
   },
   "contributes": {
     "viewsContainers": {
@@ -57,10 +64,6 @@
     "configuration": {
       "title": "France Student [ATG]",
       "properties": {
-        "francestudent.baseUrl": {
-          "type": "string",
-          "default": "https://api.francestudent.org"
-        },
         "francestudent.cutoffPercent": {
           "type": "number",
           "default": 15,
@@ -85,6 +88,18 @@
             "fast"
           ],
           "default": "eco"
+        },
+        "francestudent.routingProfile": {
+          "type": "string",
+          "enum": [
+            "eco",
+            "fast",
+            "quality",
+            "security",
+            "refactor"
+          ],
+          "default": "eco",
+          "description": "Profil de routage local : eco et fast privilegient les modeles legers; quality, security et refactor privilegient les modeles forts."
         },
         "francestudent.maxParallel": {
           "type": "number",
@@ -144,6 +159,28 @@
           "default": true,
           "description": "Activer les outils client natifs (/chats/stream)."
         },
+        "francestudent.reuseChat": {
+          "type": "boolean",
+          "default": true,
+          "description": "RÃ©utiliser un chat France Student par workspace au lieu de renvoyer le contexte Ã  chaque tÃ¢che."
+        },
+        "francestudent.contextCompactPercent": {
+          "type": "number",
+          "default": 80,
+          "minimum": 50,
+          "maximum": 95,
+          "description": "Compacter automatiquement le chat rÃ©utilisÃ© Ã  partir de ce pourcentage de contexte."
+        },
+        "francestudent.contextMode": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "targeted",
+            "smart"
+          ],
+          "default": "minimal",
+          "description": "Contexte initial : minimal (demande seule), targeted (fichiers choisis) ou smart (petit plan de chemins)."
+        },
         "francestudent.showReasoning": {
           "type": "boolean",
           "default": true
@@ -167,7 +204,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",
-    "zod": "^3.23.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

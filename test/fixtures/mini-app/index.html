@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini tâches</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <h1>Mes tâches</h1>
+      <form id="task-form">
+        <label for="task-input">Nouvelle tâche</label>
+        <input id="task-input" name="task" autocomplete="off" required />
+        <button type="submit">Ajouter</button>
+      </form>
+      <p id="empty-state">Aucune tâche pour le moment.</p>
+      <ul id="task-list" aria-live="polite"></ul>
+    </main>
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>

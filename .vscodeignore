@@ -2,9 +2,11 @@
 .vscodeignore
 .gitignore
 src/**
-plugin/**
 tsconfig.json
 node_modules/**
 *.vsix
 .fsatg/**
+.fsatg_*
+plugin/**/.fsatg_*
+plugin/**/node_modules/**
 .env*

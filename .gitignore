@@ -4,6 +4,7 @@ dist/
 .fsatg/
 .fsatg_state.json
 .fsatg_live.json
+.fsatg_reviews/
 .env*
 .DS_Store
 Thumbs.db

@@ -72,6 +72,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     ctx.subscriptions.push(await startMcpServer(orch, quota, token, port));
     log.write(`${ATG} Serveur MCP prêt sur 127.0.0.1:${port}`);
   } catch (e) {
+    orch.setMcpStatus('error', (e as Error).message);
     vscode.window.showWarningMessage(`${ATG} Serveur MCP non démarré (port ${port} occupé ?) : ${(e as Error).message}`);
   }
 
