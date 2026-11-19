@@ -80,6 +80,14 @@ La mesure officielle de consommation Antigravity reste accessible directement vi
 - **Demande** : trouver le Top 3 des modèles IA du moment.
 - **Résultat** : `search_web` natif prend **1 étape**, passer par France Student prend aussi **1 étape**. Aucun intérêt à déléguer une recherche simple.
 
+### 6. Créer un jeu d'échecs 2D complet (`0 %` d'économie sur le neuf, utile pour `/patch` ensuite)
+- **Antigravity seul** : génère et écrit directement `6 650` car. en 1 étape.
+- **Via France Student (`Plan B`)** : génère `16 970` car. (`11 947` tokens côté France Student).
+
+| Échecs 2D Antigravity natif (`6 650` car.) | Échecs 2D France Student (`16 970` car.) |
+| :---: | :---: |
+| ![Échecs Antigravity](docs/images/chess-antigravity.png) | ![Échecs France Student](docs/images/chess-fs.png) |
+
 ## Installation rapide
 
 ```bash
