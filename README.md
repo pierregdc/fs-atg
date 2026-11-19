@@ -1,4 +1,4 @@
-# France Student pour Antigravity (`fs-atg` v0.7.0)
+# France Student pour Antigravity (`fs-atg` v1.0.0)
 
 Plugin Antigravity (panneau latéral + serveur MCP) pour déléguer plans, diagnostics, recherches multi-sources et blocs de code ciblés aux **14 modèles France Student**, en mode **lecture seule sur le PC**.
 

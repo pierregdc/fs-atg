@@ -20,7 +20,7 @@ if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertif
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
-export const CONNECTOR_VERSION = '0.7.0';
+export const CONNECTOR_VERSION = '1.0.0';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const RULES_PATH = join(__dirname, 'rules', 'AGENTS.md');
 export const RECENT_MODEL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;

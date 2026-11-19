@@ -2,7 +2,7 @@
   "name": "fs-atg",
   "displayName": "France Student [ATG]",
   "description": "Générateur France Student pour Antigravity : génération sans écriture directe sur le PC, modèles forts prioritaires, mode Auto/Manuel, Plan B robuste, catalogue des modèles et journal de bord intégré.",
-  "version": "0.7.0",
+  "version": "1.0.0",
   "logo": "assets/logo.png",
   "suggestedPrompts": [
     "Utilise /patch pour modifier ce fichier en économisant les tokens Antigravity",
