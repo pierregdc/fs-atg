@@ -1,10 +1,10 @@
 # France Student pour Antigravity (`fs-atg` v0.7.0)
 
-Plugin Antigravity (panneau latéral + serveur MCP) pour déléguer la génération de code et les réponses aux modèles **France Student** tout en économisant **70 % à 90 %** des tokens Antigravity.
+Plugin Antigravity (panneau latéral + serveur MCP) pour déléguer plans, diagnostics, recherches multi-sources et blocs de code ciblés aux **14 modèles France Student**, en mode **lecture seule sur le PC**.
 
 ## Aperçu
 
-| Accueil (Auto / Manuel & Historique) | Modèles (ID, date & badge Nouveau) |
+| Accueil (Jauge unique, Auto/Manuel & Profil) | Modèles (14 modèles FS, date & badge Nouveau) |
 | :---: | :---: |
 | ![Accueil](docs/images/screen-accueil.png) | ![Modèles](docs/images/screen-modeles.png) |
 
@@ -12,13 +12,20 @@ Plugin Antigravity (panneau latéral + serveur MCP) pour déléguer la générat
 | :---: | :---: |
 | ![Journal](docs/images/screen-journal.png) | ![Réglages](docs/images/screen-reglages.png) |
 
-## Fonctionnalités principales
+## Nouveautés & fonctionnalités clés
 
-- **Lecture seule sur le PC** : France Student n'écrit jamais sur le disque ; il renvoie le code/texte dans `response`, qu'Antigravity copie, applique ou complète.
-- **Modèles forts prioritaires** : routage par défaut sur la classe forte (`claude-opus-5-5`, `claude-fable-5-2`, `gpt-6.2-astra`, `gpt-6.2-sol`, `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-sol`) avec repli automatique jusqu'à 3 modèles.
-- **Plan A + Plan B** : bascule automatique sur session isolée ou découpage en petits blocs (`planB: true`, `parts: [...]`) en cas d'échec.
-- **Mode Automatique / Manuel** : interrupteur en 1 clic dans le panneau (`Automatique` par défaut ou `Manuel` sur commande `/send`, `/plan`, `/high`, `/logs`, etc.).
-- **Onglet Modèles & Journal de bord** : liste des modèles (ID copiable, date d'ajout, badge `Nouveau` < 14 jours) et logs rotatifs (`fs_logs`) avec masquage des secrets.
+- **Jauge unique interactive (`Accueil`)** : une seule barre regroupe le **budget chat restant** (bleu/noir, sans violet) et le **curseur du coupe-circuit** déplaçable directement à la souris ou au clavier (`0`–`90 %`, raccourcis `0%` `10%` `15%` `25%`), avec sélecteur de profil et mode `Auto / Manuel` sur la même vue.
+- **14 modèles France Student uniquement** : catalogue synchronisé avec `/v1/models` (ID copiable, date d'ajout réelle et badge `Nouveau` < 14 jours) ; priorité aux modèles fiables et **bascule automatique vers Claude (`claude-sonnet-5-5`)** si un modèle tente une redirection `create_artifact` sans code inline.
+- **Prompts & réponses ultra-compacts** : consignes sans texte superflu ni commentaires inutiles, plans télégraphiques en 15 lignes max, et calcul d'économie nette réaliste dans `Éco. ATG` (qui déduit le coût de lecture côté Antigravity).
+- **Lecture seule sur le PC** : France Student n'écrit jamais sur le disque ; il renvoie le résultat dans `response`.
+- **Plan A + Plan B** : réessai automatique sur session isolée ou découpage en petits blocs (`planB: true`, `parts: [...]`).
+- **Journal de bord (`fs_logs`)** : logs rotatifs filtrables conservant les compteurs numériques `usage` tout en masquant clés API et jetons.
+
+## Quand déléguer pour économiser vraiment ?
+
+- **Gain réel élevé (~50 % à 80 %)** : plans d'architecture, revues de code, audits multi-fichiers, comparatifs multi-critères, débogage et fonctions/patches ciblés.
+- **À garder en natif (~0 % de gain en délégation)** : micro-éditions (`< 10` lignes), **1 recherche `search_web` ponctuelle**, ou génération complète d'un gros fichier neuf si Antigravity doit ensuite tout réécrire ligne par ligne via `write_file`.
+- La mesure officielle de consommation Antigravity reste accessible directement via `/usage`.
 
 ## Installation rapide
 
