@@ -8,3 +8,6 @@ dist/
 .env*
 .DS_Store
 Thumbs.db
+
+.fsatg_logs.jsonl*
+.fsatg_state.json
