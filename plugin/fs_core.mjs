@@ -132,16 +132,16 @@ export function saveState(st) {
 export function syncAgentsRule(autoDelegate = true) {
   const auto = Boolean(autoDelegate);
   const header = auto
-    ? 'Pour toute tâche non triviale (génération de code, composant, refactor, debug, plan ou analyse technique) et toute commande France Student, appelle **immédiatement** `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers avant**. Utilise Antigravity seul uniquement pour de micro-éditions (<10 lignes déjà visibles) ou si l’utilisateur refuse France Student.'
+    ? 'Mode Automatique actif : délègue immédiatement à `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers avant** pour les **plans, revues/audits, recherches approfondies multi-sources, explications, debug complexe et logiques/fonctions ciblées**. Garde en natif : micro-éditions (<10 lignes), **1 recherche web simple ponctuelle** (`search_web`), et **création complète d’un gros fichier neuf** si Antigravity devait de toute façon tout réécrire via `write_file` (ou demande alors uniquement les parties complexes/scripts courts pour économiser vraiment).'
     : 'Mode Manuel actif : n’appelle `fs_delegate` **que** si l’utilisateur mentionne explicitement France Student, `@[plugin:fs-atg]` ou une commande (`/send`, `/plan`, `/high`, `/medium`, `/low`, `/eco`, `/fast`, `/logs`). Pour toute commande France Student, appelle immédiatement `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`).';
   const content = [
     '# France Student [ATG]',
     '',
     header,
     '',
-    '- **Lecture seule sur le PC** : France Student n’écrit jamais sur disque ; il renvoie le code et les réponses dans `response`. Récupère ces blocs pour les copier/appliquer dans le workspace ou les compléter sans tout réécrire toi-même (objectif 70–90 % d’économie de tokens).',
-    '- **Phrases simples et normales** : formule des consignes claires en langage naturel (1 bloc ou 1 fichier ciblé par appel si complexe).',
-    '- **Plan B** : si Plan A échoue ou revient incomplet, relance en `planB: true` avec `parts` (2–4 petits blocs indépendants simples) puis assemble les résultats ; en ultime recours seulement, termine nativement.',
+    '- **Lecture seule sur le PC (économie maximale)** : France Student n’écrit jamais sur disque ; il renvoie le résultat dans `response`. Pour économiser les tokens Antigravity, demande des **réponses compactes, plans télégraphiques, diagnostics ou blocs/patches ciblés** plutôt que de gros fichiers entiers à recopier ligne par ligne.',
+    '- **Consignes concises** : formule des demandes simples en langage naturel en exigeant du code sans blabla ni commentaires superflus.',
+    '- **Plan B** : si Plan A échoue ou est incomplet, relance en `planB: true` avec `parts` (2–4 petits blocs indépendants, modèle Claude recommandé pour le code web inline sans artefact) ; en ultime recours seulement, termine nativement.',
     '- **Journal de bord** : si l’utilisateur signale un problème avec France Student, appelle immédiatement `fs_logs` (et `fs_diagnostics` si besoin).',
     '- N’appelle `fs_job_status` (`waitSeconds=45`) que si `status` est `waiting` ou `running`. `/new` et `/compact` appellent `fs_session`. Ne révèle jamais de clé ; `fs_quota` concerne France Student, `/usage` mesure Antigravity.',
     '',
@@ -746,10 +746,17 @@ export function refusalReasonFromEvent(event) {
   return structured ? (reason || MISSING_REFUSAL_REASON) : null;
 }
 
-/** A text-only fallback is deliberately conservative: it must begin with an explicit refusal. */
+const ARTIFACT_STUB_PATTERN = /(?:create_artifact|panneau latéral|j[’']ai créé un artefact|est disponibles? dans [«"'])/i;
+
+/** A text-only fallback detects explicit refusals and short server-artifact redirects. */
 export function refusalReasonFromText(text) {
   const value = String(text ?? '').trim();
-  if (!value || value.length > 1800 || /```/.test(value)) return null;
+  if (!value || value.length > 1800) return null;
+  const hasRealCode = /```[\s\S]{80,}```/.test(value);
+  if (!hasRealCode && value.length < 500 && ARTIFACT_STUB_PATTERN.test(value)) {
+    return 'Redirection vers artefact serveur sans code inline';
+  }
+  if (/```/.test(value)) return null;
   return REFUSAL_TEXT_AT_START.test(value) ? value : null;
 }
 
@@ -1477,9 +1484,15 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
   let chatId = request.chatId;
   const maxAttempts = 3;
 
-  const pickNextCandidate = (current) => {
+  const pickNextCandidate = (current, reason = '') => {
     const allowed = [...new Set(availableModels || [])].filter((c) => !tried.has(c) && modelIsAllowed(c, request.state));
     if (!allowed.length) return null;
+    if (/artefact/i.test(String(reason))) {
+      for (const kw of ['sonnet', 'opus', 'haiku']) {
+        const hit = allowed.find((id) => id.toLowerCase().includes(kw));
+        if (hit) return hit;
+      }
+    }
     const sameTier = sameTierFallbackModels(current, availableModels, request.state).filter((c) => !tried.has(c));
     if (classifyTier(current, request.state) === 'heavy' && sameTier.length) {
       for (const kw of HEAVY_PRIORITY) {
@@ -1548,7 +1561,7 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
         throw error;
       }
 
-      const next = pickNextCandidate(model);
+      const next = pickNextCandidate(model, msg);
       if (!next) {
         throw error;
       }
@@ -1563,22 +1576,28 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
 }
 
 /**
- * Estimates Antigravity tokens/turns saved when France Student generates the
- * response/code cleanly so Antigravity only copies/applies it.
+ * Estimates net Antigravity tokens conservatively saved by offloading reasoning,
+ * search synthesis, or planning to France Student (deducting MCP response read overhead).
  */
 export function estimateAntigravityJobSavings(job, { waitedInline = false, partsCount = 1 } = {}) {
   const outputChars = Number(job?.receivedChars ?? 0);
-  const offloadedOutputTokens = Math.max(0, Math.round(outputChars / 4));
-  const baseTurns = offloadedOutputTokens >= 400 ? 3 : offloadedOutputTokens >= 120 ? 2 : 1;
-  const turnsSavedEst = (waitedInline ? 1 : 0) + Math.max(Number(partsCount) || 1, baseTurns);
-  const inputTokensSavedEst = turnsSavedEst * 12_000;
-  const outputTokensSavedEst = Math.round(offloadedOutputTokens * 1.35);
+  const responseTokens = Math.max(0, Math.round(outputChars / 4));
+  const mode = String(job?.executionMode || 'generate');
+  const isPlanOrReadOnly = mode === 'plan' || mode === 'dry-run';
+  // Read/write tool copy overhead: if full code blocks are returned for Antigravity to write_file,
+  // Antigravity still pays ~responseTokens to read/write them; real net savings come from offloaded reasoning/exploration.
+  const avoidedExplorationTokens = isPlanOrReadOnly
+    ? 2_200
+    : (responseTokens >= 300 ? 2_800 : 900);
+  const readCostTokens = Math.round(responseTokens * (isPlanOrReadOnly ? 0.35 : 0.65));
+  const netSaved = Math.max(0, avoidedExplorationTokens + Math.round(responseTokens * 0.8) - readCostTokens);
+  const turnsSavedEst = (waitedInline ? 1 : 0) + Math.max(1, Number(partsCount) || 1);
   return {
     source: 'local-estimate',
     turnsSavedEst,
-    inputTokensSavedEst,
-    outputTokensSavedEst,
-    totalTokensSavedEst: inputTokensSavedEst + outputTokensSavedEst,
+    inputTokensSavedEst: Math.max(0, avoidedExplorationTokens - readCostTokens),
+    outputTokensSavedEst: Math.round(responseTokens * 0.8),
+    totalTokensSavedEst: netSaved,
   };
 }
 

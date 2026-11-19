@@ -39,12 +39,12 @@ import {
 } from './fs_core.mjs';
 import { LOG_PATH, countRecentErrors, logEvent, readLogs } from './logger.mjs';
 
-const NATURAL_INSTRUCTIONS = `Réponds clairement et directement en français (ou dans la langue de la demande).
-Si du code est demandé, n'utilise JAMAIS l'outil create_artifact / artefact / canvas : écris l'intégralité du code en texte directement dans ton message (dans un bloc Markdown), sans blabla inutile.`;
+const NATURAL_INSTRUCTIONS = `Réponds en français (ou langue de la demande) de façon ultra-concise et dense : zéro introduction, zéro conclusion, zéro reformulation.
+Si du code est demandé : N'UTILISE JAMAIS create_artifact / artefact / canvas. Écris uniquement le bloc de code ou patch ciblé directement en Markdown, sans commentaires évidents ni texte superflu autour.`;
 
-const PLAN_INSTRUCTIONS = `Propose un plan clair, concret et concis : étapes, fichiers concernés et points d'attention, sans rédiger le code complet.`;
+const PLAN_INSTRUCTIONS = `Réponds en style télégraphique (15 lignes max) : fichiers exacts, étapes clés et risques majeurs uniquement. Zéro code complet, zéro blabla.`;
 
-const PLAN_B_PART_INSTRUCTIONS = `Fournis uniquement le bloc de code ou la réponse demandée pour cette partie précise, de façon complète, autonome et prête à être copiée, sans commentaire superflu.`;
+const PLAN_B_PART_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Donne uniquement le bloc de code ou patch demandé pour cette partie, complet, compact, sans commentaires superflus ni texte autour.`;
 
 const FINAL = new Set(['done', 'error', 'cancelled']);
 const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'dry-run']);
@@ -593,7 +593,7 @@ const server = new McpServer({ name: 'fs-atg', version: CONNECTOR_VERSION });
 
 server.registerTool('fs_delegate', {
   title: 'Déléguer à France Student [ATG]',
-  description: 'Demande à France Student de générer une réponse ou un bloc de code sans jamais écrire sur le PC. Renvoie directement le texte/code dans response pour qu’Antigravity puisse le copier ou l’assembler. Privilégie les modèles forts et le mode 1 appel (waitSeconds=45).',
+  description: 'Délègue à France Student (lecture seule PC) plans, diagnostics, recherches multi-sources, explications et blocs/patches ciblés. Renvoie une réponse compacte dans response pour économiser les tokens Antigravity (éviter pour 1 simple search_web ponctuel ou pour recopier un gros fichier neuf entier via write_file).',
   inputSchema: {
     task: z.string().min(3).describe('Consigne claire en phrases normales (commandes possibles : /send, /plan, /eco, /fast, /low, /medium, /high).'),
     workspaceRoot: z.string().optional().describe('Chemin du workspace (lecture seule uniquement pour files/session). Jamais écrit.'),
