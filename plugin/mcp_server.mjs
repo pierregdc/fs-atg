@@ -40,7 +40,7 @@ import {
 import { LOG_PATH, countRecentErrors, logEvent, readLogs } from './logger.mjs';
 
 const NATURAL_INSTRUCTIONS = `Réponds clairement et directement en français (ou dans la langue de la demande).
-Si du code est demandé, fournis un code complet, propre et directement utilisable dans des blocs Markdown standards, sans blabla inutile.`;
+Si du code est demandé, n'utilise JAMAIS l'outil create_artifact / artefact / canvas : écris l'intégralité du code en texte directement dans ton message (dans un bloc Markdown), sans blabla inutile.`;
 
 const PLAN_INSTRUCTIONS = `Propose un plan clair, concret et concis : étapes, fichiers concernés et points d'attention, sans rédiger le code complet.`;
 

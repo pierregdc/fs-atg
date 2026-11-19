@@ -10,7 +10,7 @@ const MAX_LOG_LINES = 400;
 const KEEP_LOG_LINES = 250;
 const VALID_LEVELS = new Set(['info', 'warn', 'error']);
 const VALID_SOURCES = new Set(['mcp', 'panel', 'core']);
-const SECRET_KEY_RE = /api[-_]?key|token|secret|authorization|password|cookie/i;
+const SECRET_KEY_RE = /^(?:api[-_]?key|session[-_]?token|access[-_]?token|refresh[-_]?token|token|secret|authorization|password|cookie)$/i;
 
 function redactString(str) {
   return String(str)

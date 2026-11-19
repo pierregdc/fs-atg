@@ -24,7 +24,7 @@ export const CONNECTOR_VERSION = '0.7.0';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const RULES_PATH = join(__dirname, 'rules', 'AGENTS.md');
 export const RECENT_MODEL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
-export const HEAVY_PRIORITY = Object.freeze(['opus', 'fable', 'gpt-6.2-astra', 'gpt-6.2-sol', 'astra', 'gpt-6.1-sol', 'gpt-6-sol', 'kimi-k3']);
+export const HEAVY_PRIORITY = Object.freeze(['opus', 'gpt-6.2-astra', 'gpt-6.2-sol', 'astra', 'gpt-6.1-sol', 'gpt-6-sol', 'fable', 'kimi-k3']);
 
 // Shared, inspectable connector metadata. It is never account or quota data.
 export const MCP_TOOL_CATALOG = Object.freeze([
