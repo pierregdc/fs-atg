@@ -438,15 +438,29 @@ function asList(value) {
  * metadata available without making model routing depend on a single shape.
  */
 export async function fetchModelCatalog(state) {
-  const v1 = await fsJson(state, 'GET', '/v1/models').catch(() => null);
-  const v1List = asList(v1);
-  if (v1List.length) return { available: true, source: '/v1/models', models: v1List, raw: v1 };
-  const fallback = await fsJson(state, 'GET', '/models').catch(() => null);
+  const [modelsRes, v1Res] = await Promise.all([
+    fsJson(state, 'GET', '/models').catch(() => null),
+    fsJson(state, 'GET', '/v1/models').catch(() => null),
+  ]);
+  const v1Created = new Map();
+  for (const m of asList(v1Res)) {
+    if (m?.id && m.created) v1Created.set(m.id, m.created);
+  }
+  const primaryList = asList(modelsRes);
+  if (primaryList.length) {
+    const merged = primaryList.map((m) => ({
+      ...m,
+      created: m.created || v1Created.get(m.id) || 0,
+    }));
+    return { available: true, source: '/models', models: merged, raw: modelsRes };
+  }
+  // Fallback only if /models is empty: exclude Antigravity (ag/*) and WorkBuddy (cb/*) proxies.
+  const fsOnly = asList(v1Res).filter((m) => m?.id && !m.id.startsWith('ag/') && !m.id.startsWith('cb/'));
   return {
-    available: fallback !== null,
-    source: fallback ? '/models' : null,
-    models: asList(fallback),
-    raw: fallback,
+    available: fsOnly.length > 0,
+    source: fsOnly.length ? '/v1/models' : null,
+    models: fsOnly,
+    raw: v1Res,
   };
 }
 
@@ -528,14 +542,22 @@ function normalizeTimestampMs(raw) {
 }
 
 export async function fetchAgentsAndModels(state) {
-  const [agents, v1] = await Promise.all([
+  const [agents, fsModels, v1] = await Promise.all([
     fsJson(state, 'GET', '/chats/agents').catch(() => null),
+    fsJson(state, 'GET', '/models').catch(() => null),
     fsJson(state, 'GET', '/v1/models').catch(() => null),
   ]);
+  const v1Created = new Map();
+  for (const m of v1?.data ?? []) {
+    if (!m?.id) continue;
+    const ts = normalizeTimestampMs(m.created ?? m.createdAt ?? m.addedAt);
+    if (ts) v1Created.set(m.id, ts);
+  }
   const agentMap = new Map();
   const metaMap = new Map();
   const ids = [];
 
+  // Only France Student chat models (/chats/agents), enriched with real API created dates from /v1/models.
   if (Array.isArray(agents) && agents.length) {
     for (const a of agents) {
       if (a?.isActive === false) continue;
@@ -548,28 +570,23 @@ export async function fetchAgentsAndModels(state) {
           provider: String(a.modelProvider || (modelId.startsWith('claude') ? 'anthropic' : 'openai')),
           contextWindow: typeof a.contextWindow === 'number' ? a.contextWindow : null,
           isDefault: Boolean(a.isDefault),
-          apiCreatedAt: normalizeTimestampMs(a.createdAt ?? a.created ?? a.addedAt),
+          apiCreatedAt: normalizeTimestampMs(a.createdAt ?? a.created ?? a.addedAt) ?? v1Created.get(modelId) ?? null,
         });
         ids.push(modelId);
       }
     }
   }
 
-  for (const m of v1?.data ?? []) {
-    if (!m?.id) continue;
-    const apiCreatedAt = normalizeTimestampMs(m.created ?? m.createdAt ?? m.addedAt);
-    if (metaMap.has(m.id)) {
-      const existing = metaMap.get(m.id);
-      if (apiCreatedAt && !existing.apiCreatedAt) existing.apiCreatedAt = apiCreatedAt;
-      continue;
-    }
+  // Merge any active France Student /models entry not listed in /chats/agents.
+  for (const m of asList(fsModels)) {
+    if (!m?.id || metaMap.has(m.id)) continue;
     metaMap.set(m.id, {
       id: m.id,
       name: m.name || m.id,
       provider: m.owned_by || (m.id.startsWith('claude') ? 'anthropic' : 'openai'),
       contextWindow: typeof m.contextWindow === 'number' ? m.contextWindow : null,
       isDefault: false,
-      apiCreatedAt,
+      apiCreatedAt: normalizeTimestampMs(m.created ?? m.createdAt ?? m.addedAt) ?? v1Created.get(m.id) ?? null,
     });
     ids.push(m.id);
   }
@@ -580,9 +597,7 @@ export async function fetchAgentsAndModels(state) {
       agentMap,
       metaMap,
       available: true,
-      source: (Array.isArray(agents) && agents.length && v1?.data?.length)
-        ? 'chats/agents+v1/models'
-        : (Array.isArray(agents) && agents.length ? 'chats/agents' : 'v1/models'),
+      source: 'francestudent',
     };
   }
   return defaultModelsBundle();
