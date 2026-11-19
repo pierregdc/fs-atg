@@ -1,6 +1,6 @@
 import tls from 'node:tls';
 import { randomUUID } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -9,6 +9,7 @@ import {
   saveStateCredential,
   stateCredentialStatus,
 } from './credential_store.mjs';
+import { logEvent } from './logger.mjs';
 
 // Load Windows / OS system root certificates so HTTPS works even when intermediate CAs rely on the OS store.
 if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertificates === 'function') {
@@ -19,18 +20,21 @@ if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertif
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
-export const CONNECTOR_VERSION = '0.6.3';
+export const CONNECTOR_VERSION = '0.7.0';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
+export const RULES_PATH = join(__dirname, 'rules', 'AGENTS.md');
+export const RECENT_MODEL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+export const HEAVY_PRIORITY = Object.freeze(['opus', 'fable', 'gpt-6.2-astra', 'gpt-6.2-sol', 'astra', 'gpt-6.1-sol', 'gpt-6-sol', 'kimi-k3']);
+
 // Shared, inspectable connector metadata. It is never account or quota data.
 export const MCP_TOOL_CATALOG = Object.freeze([
-  { name: 'fs_delegate', label: 'Déléguer', writesWorkspace: true },
-  { name: 'fs_session', label: 'Session', writesWorkspace: false },
+  { name: 'fs_delegate', label: 'Déléguer', writesWorkspace: false },
   { name: 'fs_job_status', label: 'Suivi', writesWorkspace: false },
-  { name: 'fs_apply_review', label: 'Appliquer une revue', writesWorkspace: true },
-  { name: 'fs_undo_review', label: 'Restaurer une revue', writesWorkspace: true },
-  { name: 'fs_status', label: 'État du connecteur', writesWorkspace: false },
-  { name: 'fs_diagnostics', label: 'Diagnostic', writesWorkspace: false },
+  { name: 'fs_logs', label: 'Journal de bord', writesWorkspace: false },
+  { name: 'fs_session', label: 'Session', writesWorkspace: false },
   { name: 'fs_quota', label: 'Quota France Student', writesWorkspace: false },
+  { name: 'fs_diagnostics', label: 'Diagnostic', writesWorkspace: false },
+  { name: 'fs_status', label: 'État du connecteur', writesWorkspace: false },
   { name: 'fs_catalog', label: 'Catalogue', writesWorkspace: false },
   { name: 'fs_cancel', label: 'Annuler', writesWorkspace: false },
 ]);
@@ -44,8 +48,11 @@ export const LIVE_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_liv
 export const SLOT_DIR = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_slots');
 export const LIVE_JOB_TTL_MS = 30_000;
 
-const MAX_TOOL_OUTPUT = 38_000; // cap below 40,000 char backend limit
-const MAX_BATCH_OUTPUT = 115_000; // cap below 120,000 char backend limit
+export const BASELINE_MODEL_IDS = new Set([
+  'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.6-sol',
+  'gpt-6-sol', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra',
+  'claude-opus-5-5', 'claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-fable-5-2',
+]);
 
 export const DEFAULT_AGENTS = [
   { id: 66, name: 'gpt-5.6-terra', model: 'gpt-5.6-terra', modelProvider: 'openai' },
@@ -56,6 +63,8 @@ export const DEFAULT_AGENTS = [
   { id: -1003, name: 'GPT 6.1 Sol', model: 'gpt-6.1-sol', modelProvider: 'openai' },
   { id: -1004, name: 'GPT-6 Astra', model: 'gpt-6-astra', modelProvider: 'openai' },
   { id: -1005, name: 'GPT-6.1 Terra', model: 'gpt-6.1-terra', modelProvider: 'openai' },
+  { id: -1006, name: 'GPT-6.2 Astra', model: 'gpt-6.2-astra', modelProvider: 'openai' },
+  { id: -1007, name: 'GPT-6.2 Sol', model: 'gpt-6.2-sol', modelProvider: 'openai' },
   { id: -2001, name: 'Claude Opus 5.5', model: 'claude-opus-5-5', modelProvider: 'anthropic' },
   { id: -2002, name: 'Claude Haiku 5.5', model: 'claude-haiku-5-5', modelProvider: 'anthropic' },
   { id: -2003, name: 'Claude Sonnet 5.5', model: 'claude-sonnet-5-5', modelProvider: 'anthropic' },
@@ -69,22 +78,23 @@ export const DEFAULT_STATE = {
   credentialVersion: '',
   cutoffPercent: 15,
   mode: 'eco',
-  routingProfile: 'eco',
+  routingProfile: 'quality',
+  autoDelegate: true,
   maxParallel: 3,
   showReasoning: true,
-  useClientTools: true,
+  useClientTools: false,
   reuseChat: true,
   contextCompactPercent: 80,
-  // Minimal does not inject a project map or the content of files. It is the
-  // default because the model can ask for exactly the lines it needs.
+  // Minimal does not inject a project map or the content of files.
   contextMode: 'minimal',
   directChats: {},
+  knownModels: {},
   allowedModels: [],
   blockedModels: [],
   tiers: {
     light: ['haiku', 'luna', 'mini', 'nano', 'flash'],
     medium: ['sonnet', 'terra', 'gpt-5.6-sol', 'kimi-k2'],
-    heavy: ['fable', 'opus', 'astra', 'gpt-6-sol', 'gpt-6.1-sol', 'kimi-k3'],
+    heavy: ['fable', 'opus', 'astra', 'gpt-6.2', 'gpt-6-sol', 'gpt-6.1-sol', 'kimi-k3'],
   },
   history: [],
 };
@@ -100,12 +110,46 @@ export function loadState() {
 }
 
 export function saveState(st) {
+  const payload = JSON.stringify(st, null, 2);
+  const tmp = `${STATE_PATH}.${process.pid}.tmp`;
   try {
     mkdirSync(dirname(STATE_PATH), { recursive: true });
-    writeFileSync(STATE_PATH, JSON.stringify(st, null, 2), 'utf-8');
+    writeFileSync(tmp, payload, 'utf-8');
+    try {
+      renameSync(tmp, STATE_PATH);
+    } catch {
+      try { unlinkSync(tmp); } catch { /* ignore */ }
+      writeFileSync(STATE_PATH, payload, 'utf-8');
+    }
     return true;
-  } catch { /* ignore */ }
+  } catch {
+    try { unlinkSync(tmp); } catch { /* ignore */ }
+  }
   return false;
+}
+
+/** Keeps rules/AGENTS.md synchronized with the Auto vs Manual toggle in the UI. */
+export function syncAgentsRule(autoDelegate = true) {
+  const auto = Boolean(autoDelegate);
+  const header = auto
+    ? 'Pour toute tâche non triviale (génération de code, composant, refactor, debug, plan ou analyse technique) et toute commande France Student, appelle **immédiatement** `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers avant**. Utilise Antigravity seul uniquement pour de micro-éditions (<10 lignes déjà visibles) ou si l’utilisateur refuse France Student.'
+    : 'Mode Manuel actif : n’appelle `fs_delegate` **que** si l’utilisateur mentionne explicitement France Student, `@[plugin:fs-atg]` ou une commande (`/send`, `/plan`, `/high`, `/medium`, `/low`, `/eco`, `/fast`, `/logs`). Pour toute commande France Student, appelle immédiatement `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`).';
+  const content = [
+    '# France Student [ATG]',
+    '',
+    header,
+    '',
+    '- **Lecture seule sur le PC** : France Student n’écrit jamais sur disque ; il renvoie le code et les réponses dans `response`. Récupère ces blocs pour les copier/appliquer dans le workspace ou les compléter sans tout réécrire toi-même (objectif 70–90 % d’économie de tokens).',
+    '- **Phrases simples et normales** : formule des consignes claires en langage naturel (1 bloc ou 1 fichier ciblé par appel si complexe).',
+    '- **Plan B** : si Plan A échoue ou revient incomplet, relance en `planB: true` avec `parts` (2–4 petits blocs indépendants simples) puis assemble les résultats ; en ultime recours seulement, termine nativement.',
+    '- **Journal de bord** : si l’utilisateur signale un problème avec France Student, appelle immédiatement `fs_logs` (et `fs_diagnostics` si besoin).',
+    '- N’appelle `fs_job_status` (`waitSeconds=45`) que si `status` est `waiting` ou `running`. `/new` et `/compact` appellent `fs_session`. Ne révèle jamais de clé ; `fs_quota` concerne France Student, `/usage` mesure Antigravity.',
+    '',
+  ].join('\n');
+  mkdirSync(dirname(RULES_PATH), { recursive: true });
+  writeFileSync(RULES_PATH, content, 'utf-8');
+  logEvent('info', 'core', 'settings.rule_synced', `Règle Antigravity mise à jour : mode ${auto ? 'Automatique' : 'Manuel'}.`, { autoDelegate: auto });
+  return { autoDelegate: auto, path: RULES_PATH };
 }
 
 /** Allows a deployment to keep its credential outside the local JSON state. */
@@ -457,10 +501,29 @@ export function defaultModelsBundle() {
   const ids = [];
   for (const a of DEFAULT_AGENTS) {
     agentMap.set(a.model, a.id);
-    metaMap.set(a.model, { id: a.model, name: a.name, provider: a.modelProvider });
+    metaMap.set(a.model, {
+      id: a.model,
+      name: a.name,
+      provider: a.modelProvider,
+      contextWindow: null,
+      isDefault: false,
+      apiCreatedAt: null,
+    });
     ids.push(a.model);
   }
   return { ids, agentMap, metaMap, available: false, source: 'local-fallback' };
+}
+
+function normalizeTimestampMs(raw) {
+  const num = Number(raw);
+  if (Number.isFinite(num) && num > 0) {
+    return num > 1e12 ? num : num * 1000;
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    const parsed = Date.parse(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
 }
 
 export async function fetchAgentsAndModels(state) {
@@ -478,6 +541,9 @@ export async function fetchAgentsAndModels(state) {
           id: modelId,
           name: String(a.name || modelId),
           provider: String(a.modelProvider || (modelId.startsWith('claude') ? 'anthropic' : 'openai')),
+          contextWindow: typeof a.contextWindow === 'number' ? a.contextWindow : null,
+          isDefault: Boolean(a.isDefault),
+          apiCreatedAt: normalizeTimestampMs(a.createdAt ?? a.created ?? a.addedAt),
         });
         ids.push(modelId);
       }
@@ -487,7 +553,14 @@ export async function fetchAgentsAndModels(state) {
   try {
     const r = await fsJson(state, 'GET', '/v1/models');
     const list = (r?.data ?? []).map((m) => {
-      metaMap.set(m.id, { id: m.id, name: m.name || m.id, provider: m.owned_by || 'api' });
+      metaMap.set(m.id, {
+        id: m.id,
+        name: m.name || m.id,
+        provider: m.owned_by || 'api',
+        contextWindow: typeof m.contextWindow === 'number' ? m.contextWindow : null,
+        isDefault: false,
+        apiCreatedAt: normalizeTimestampMs(m.created ?? m.createdAt ?? m.addedAt),
+      });
       return m.id;
     });
     if (list.length) return { ids: list, agentMap, metaMap, available: true, source: 'v1/models' };
@@ -495,7 +568,76 @@ export async function fetchAgentsAndModels(state) {
   return defaultModelsBundle();
 }
 
-const HEAVY = /(architect|refactor|migration|sécurité|security|concurren|optimi[sz]|algorithm|debug|bug|race condition|performance|plusieurs fichiers)/i;
+/**
+ * Enriches the model list with ID, tier, real API creation date when present,
+ * local first-seen date otherwise, and a 14-day "Nouveau" badge.
+ */
+export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { persist = true } = {}) {
+  const rawMap = new Map();
+  for (const item of apiModelsRaw || []) {
+    if (item?.id) rawMap.set(item.id, item);
+  }
+  const known = { ...(state?.knownModels || {}) };
+  let changed = false;
+  const now = Date.now();
+  const tierRank = { heavy: 0, medium: 1, light: 2 };
+  const rows = [];
+
+  for (const id of ids || []) {
+    const meta = metaMap?.get(id);
+    const raw = rawMap.get(id);
+    const apiCreatedAt = normalizeTimestampMs(meta?.apiCreatedAt ?? raw?.createdAt ?? raw?.created ?? raw?.addedAt);
+    let rec = known[id];
+    if (!rec) {
+      const isBaseline = BASELINE_MODEL_IDS.has(id);
+      rec = {
+        firstSeenAt: isBaseline ? null : now,
+        baseline: isBaseline,
+        ...(apiCreatedAt ? { apiCreatedAt } : {}),
+      };
+      known[id] = rec;
+      changed = true;
+    } else if (apiCreatedAt && !rec.apiCreatedAt) {
+      rec = { ...rec, apiCreatedAt };
+      known[id] = rec;
+      changed = true;
+    }
+    const tier = classifyTier(id, state);
+    const addedAt = apiCreatedAt ?? rec.firstSeenAt ?? null;
+    const addedSource = apiCreatedAt ? 'api' : (rec.firstSeenAt ? 'detected' : 'unknown');
+    const isNew = Boolean(
+      (apiCreatedAt && (now - apiCreatedAt <= RECENT_MODEL_WINDOW_MS)) ||
+      (!rec.baseline && rec.firstSeenAt && (now - rec.firstSeenAt <= RECENT_MODEL_WINDOW_MS))
+    );
+    rows.push({
+      id,
+      name: meta?.name || id,
+      provider: meta?.provider || raw?.owned_by || (id.startsWith('claude') ? 'anthropic' : 'openai'),
+      tier,
+      blocked: !modelIsAllowed(id, state),
+      contextWindow: meta?.contextWindow ?? null,
+      addedAt,
+      addedSource,
+      isNew,
+    });
+  }
+
+  if (changed && state) {
+    state.knownModels = known;
+    if (persist) saveState(state);
+  }
+
+  rows.sort((a, b) => {
+    if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
+    const tr = (tierRank[a.tier] ?? 9) - (tierRank[b.tier] ?? 9);
+    if (tr !== 0) return tr;
+    return a.id.localeCompare(b.id);
+  });
+  return rows;
+}
+
+const HEAVY = /(architect|refactor|migration|sécurité|security|concurren|optimi[sz]|algorithm|debug|bug|race condition|performance|plusieurs fichiers|full[\s-]?stack|audit|économie|economie)/i;
+const CODING_MEDIUM = /(cr[ée]{1,2}|g[ée]n[èe]re|impl[ée]ment|d[ée]velopp|corrig|am[ée]lior|ajout|modifi|composant|interface|script|fonction|classe|endpoint|route|backend|frontend|base de donn|sql|test|build|vid[ée]o|application|\bapi\b|\bapp\b|\bhtml\b|\bcss\b|\bjs\b|\bts\b|\bpy\b)/i;
 const LIGHT = /(renomm|rename|commentaire|comment|docstring|readme|typo|formate|format|tradui|translate|lint|import)/i;
 
 export function classifyTier(id, state) {
@@ -671,8 +813,11 @@ export function clientToolsForExecutionMode(clientTools, executionMode = 'apply'
 
 function profileTier(profile, prompt) {
   switch (profile) {
-    case 'eco': return HEAVY.test(prompt) ? 'medium' : 'light';
-    case 'fast': return 'light';
+    case 'eco':
+      if (HEAVY.test(prompt) || prompt.length > 3500) return 'medium';
+      if (CODING_MEDIUM.test(prompt) && !LIGHT.test(prompt)) return 'medium';
+      return 'light';
+    case 'fast': return CODING_MEDIUM.test(prompt) ? 'medium' : 'light';
     case 'quality':
     case 'security':
     case 'refactor': return 'heavy';
@@ -706,7 +851,17 @@ export function pickModel(raw, available, state, explicit) {
   const order = tier === 'heavy' ? ['heavy', 'medium', 'light']
     : tier === 'light' ? ['light', 'medium', 'heavy'] : ['medium', 'heavy', 'light'];
   for (const t of order) {
-    const hit = pool.find((id) => classifyTier(id, state) === t);
+    let hit;
+    if (t === 'heavy') {
+      const heavyPool = pool.filter((id) => classifyTier(id, state) === 'heavy');
+      for (const kw of HEAVY_PRIORITY) {
+        hit = heavyPool.find((id) => id.toLowerCase().includes(kw));
+        if (hit) break;
+      }
+      if (!hit) hit = heavyPool[0];
+    } else {
+      hit = pool.find((id) => classifyTier(id, state) === t);
+    }
     if (hit) {
       const label = t === 'light' ? 'faible' : t === 'heavy' ? 'fort' : 'équilibré';
       return {
@@ -1058,6 +1213,8 @@ export function tokenMeasurementForPrompt(prompt, usage) {
   };
 }
 
+const DEFAULT_STREAM_TIMEOUT_MS = 120_000;
+
 export async function streamGeneration({
   state,
   model,
@@ -1065,21 +1222,33 @@ export async function streamGeneration({
   instructions,
   prompt,
   chatId: existingChatId,
-  workspaceRoot,
-  clientTools,
   signal,
+  timeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
   onText,
   onReasoning,
   onChatId,
-  onToolCall,
-  onLocalWrite,
 }) {
   const base = OFFICIAL_API_BASE_URL;
   const apiKey = await resolveApiKey(state);
   if (!apiKey) throw new Error('Aucune clé API / sessionToken enregistré.');
   const agentId = agentMap?.get(model);
-  const writtenSet = new Set();
   const localPromptEstimateTokens = estimateTokens(prompt);
+
+  const timeoutCtrl = new AbortController();
+  const timeoutTimer = setTimeout(() => {
+    const err = new Error(`Délai dépassé (${Math.round(timeoutMs / 1000)}s).`);
+    err.retryable = true;
+    timeoutCtrl.abort(err);
+  }, Math.max(10_000, Number(timeoutMs) || DEFAULT_STREAM_TIMEOUT_MS));
+  const onParentAbort = () => timeoutCtrl.abort(new Error('Annulé.'));
+  if (signal) {
+    if (signal.aborted) {
+      clearTimeout(timeoutTimer);
+      throw new Error('Annulé.');
+    }
+    signal.addEventListener('abort', onParentAbort, { once: true });
+  }
+  const effectiveSignal = timeoutCtrl.signal;
 
   const runOpenAiResponses = async () => {
     const body = {
@@ -1091,7 +1260,7 @@ export async function streamGeneration({
     if (state.showReasoning) body.reasoning = { summary: 'auto' };
     const res = await fetch(base + '/v1/responses', {
       method: 'POST',
-      signal,
+      signal: effectiveSignal,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -1125,18 +1294,13 @@ export async function streamGeneration({
     return { text, usage, written: [], tokenMeasurement: tokenMeasurementForPrompt(prompt, usage) };
   };
 
-  const runChatStream = async (id, toolsToSend, existingChatId) => {
-    let chatId = existingChatId ?? null;
+  // Mode strictement sans écriture ni clientTools : uniquement des phrases normales.
+  const runChatStream = async (id, chatIdToUse) => {
+    let chatId = chatIdToUse ?? null;
     let totalText = '';
     let lastUsage = null;
-    // The provider is never an authority to grant local filesystem access.
-    // Even if it returns an unexpected tool call, execute only a name that we
-    // explicitly offered for this particular turn. In plan/dry-run modes the
-    // supplied list contains read-only tools; after a no-tools fallback it is
-    // empty, so no call can write to the workspace.
-    const allowedClientTools = new Set(toolsToSend ?? []);
 
-    const consumeTurn = async (res, turn = { text: '', pendingCalls: [] }, allowResume = true) => {
+    const consumeTurn = async (res, turn = { text: '' }, allowResume = true) => {
       if (!res.ok || !res.body) {
         const txt = (await res.text().catch(() => '')).slice(0, 220);
         throw providerFailure({ message: txt }, `HTTP ${res.status}${txt ? ' — ' + txt : ''}`, { status: res.status, chatId });
@@ -1144,73 +1308,62 @@ export async function streamGeneration({
       let lastEventId;
       let completed = false;
       try {
-      for await (const frame of readSseFrames(res.body)) {
-        if (frame.id) lastEventId = frame.id;
-        const ev = frame.event;
-        if (ev?.type === 'stream.open' && ev.chat_id) {
-          chatId = ev.chat_id;
-          onChatId?.(chatId);
-        } else if (ev?.type === 'response.output_text.delta') {
-          const d = ev.delta ?? '';
-          turn.text += d;
-          totalText += d;
-          onText?.(d);
-        } else if (ev?.type === 'response.reasoning_summary_text.delta') {
-          onReasoning?.(ev.delta ?? '');
-        } else if (ev?.type === 'completed' || ev?.type === 'response.completed' || ev?.type === 'stream.completed') {
-          const refusal = refusalReasonFromEvent(ev);
-          if (refusal) throw new ModelRefusalError(refusal, { chatId });
-          completed = true;
-          if (!turn.text && ev.message?.content) {
-            totalText += (totalText ? '\n' : '') + ev.message.content;
+        for await (const frame of readSseFrames(res.body)) {
+          if (frame.id) lastEventId = frame.id;
+          const ev = frame.event;
+          if (ev?.type === 'stream.open' && ev.chat_id) {
+            chatId = ev.chat_id;
+            onChatId?.(chatId);
+          } else if (ev?.type === 'response.output_text.delta') {
+            const d = ev.delta ?? '';
+            turn.text += d;
+            totalText += d;
+            onText?.(d);
+          } else if (ev?.type === 'response.reasoning_summary_text.delta') {
+            onReasoning?.(ev.delta ?? '');
+          } else if (ev?.type === 'completed' || ev?.type === 'response.completed' || ev?.type === 'stream.completed') {
+            const refusal = refusalReasonFromEvent(ev);
+            if (refusal) throw new ModelRefusalError(refusal, { chatId });
+            completed = true;
+            if (!turn.text && ev.message?.content) {
+              totalText += (totalText ? '\n' : '') + ev.message.content;
+            }
+            const tu = ev.message?.tokenUsage;
+            if (tu) {
+              lastUsage = {
+                ...(tu.promptTokenCount !== undefined ? { input_tokens: tu.promptTokenCount } : {}),
+                ...(tu.candidatesTokenCount !== undefined ? { output_tokens: tu.candidatesTokenCount } : {}),
+                ...(tu.totalTokenCount !== undefined ? { total_tokens: tu.totalTokenCount } : {}),
+                ...(tu.reasoningTokenCount !== undefined ? { reasoning_tokens: tu.reasoningTokenCount } : {}),
+              };
+            }
+          } else if (ev?.type === 'response.output_refusal.delta' || ev?.type === 'response.refusal.delta') {
+            throw providerFailure(ev, MISSING_REFUSAL_REASON, { chatId });
+          } else if (ev?.type === 'error' || ev?.type === 'response.failed') {
+            const error = providerFailure(ev, 'Échec de génération.', { chatId });
+            error.noResume = true;
+            throw error;
+          } else if (ev?.type === 'cancelled') {
+            const error = new Error('Génération annulée.');
+            error.noResume = true;
+            throw error;
           }
-          if (Array.isArray(ev.message?.toolCalls) && ev.message.toolCalls.length) {
-            turn.pendingCalls = ev.message.toolCalls;
-          }
-          const tu = ev.message?.tokenUsage;
-          if (tu) {
-            lastUsage = {
-              // Do not turn unavailable provider measurements into zeroes:
-              // zero is a real measurement, while an omitted field is unknown.
-              ...(tu.promptTokenCount !== undefined ? { input_tokens: tu.promptTokenCount } : {}),
-              ...(tu.candidatesTokenCount !== undefined ? { output_tokens: tu.candidatesTokenCount } : {}),
-              ...(tu.totalTokenCount !== undefined ? { total_tokens: tu.totalTokenCount } : {}),
-              ...(tu.reasoningTokenCount !== undefined ? { reasoning_tokens: tu.reasoningTokenCount } : {}),
-            };
-          }
-        } else if (ev?.type === 'response.output_refusal.delta' || ev?.type === 'response.refusal.delta') {
-          throw providerFailure(ev, MISSING_REFUSAL_REASON, { chatId });
-        } else if (ev?.type === 'error' || ev?.type === 'response.failed') {
-          const error = providerFailure(ev, 'Échec de génération.', { chatId });
-          error.noResume = true;
-          throw error;
-        } else if (ev?.type === 'cancelled') {
-          const error = new Error('Génération annulée.');
-          error.noResume = true;
-          throw error;
         }
-       }
       } catch (error) {
-        // Reattach once rather than resending the entire user request after a
-        // transient connection loss. The API needs an SSE event id to resume.
-        if (allowResume && !error?.noResume && chatId && lastEventId && !signal?.aborted) {
-          const resumed = await resumeChatStream(state, chatId, lastEventId, signal);
+        if (allowResume && !error?.noResume && chatId && lastEventId && !effectiveSignal.aborted) {
+          const resumed = await resumeChatStream(state, chatId, lastEventId, effectiveSignal);
           return consumeTurn(resumed, turn, false);
         }
         throw error;
       }
-      // A TCP/SSE stream can end cleanly from fetch's point of view even
-      // though the provider never sent its terminal event. Treat that as a
-      // transport interruption, not as a successful empty completion.
       if (!completed) {
         const error = new Error('Flux SSE interrompu avant la fin.');
-        if (allowResume && chatId && lastEventId && !signal?.aborted) {
-          const resumed = await resumeChatStream(state, chatId, lastEventId, signal);
+        if (allowResume && chatId && lastEventId && !effectiveSignal.aborted) {
+          const resumed = await resumeChatStream(state, chatId, lastEventId, effectiveSignal);
           return consumeTurn(resumed, turn, false);
         }
         throw error;
       }
-      return turn.pendingCalls;
     };
 
     const headers = {
@@ -1220,68 +1373,17 @@ export async function streamGeneration({
     };
 
     const continuing = Boolean(chatId);
-    const payload = continuing ? {
-      content: prompt,
-      agentId: id,
-      ...(toolsToSend?.length ? { clientTools: toolsToSend } : {}),
-    } : {
-      agentId: id,
-      // L'instruction de travail est conservée par le chat ; les tours suivants
-      // n'envoient donc que la nouvelle demande.
-      initialContent: `${instructions}\n\nTâche initiale :\n${prompt}`,
-      ...(toolsToSend?.length ? { clientTools: toolsToSend } : {}),
-    };
-    let pendingCalls = await consumeTurn(await fetch(base + (continuing ? `/chats/${chatId}` : '/chats/stream'), {
+    const initialContent = instructions ? `${instructions}\n\n${prompt}` : prompt;
+    const payload = continuing
+      ? { content: prompt, agentId: id }
+      : { agentId: id, initialContent };
+
+    await consumeTurn(await fetch(base + (continuing ? `/chats/${chatId}` : '/chats/stream'), {
       method: 'POST',
-      signal,
+      signal: effectiveSignal,
       headers,
       body: JSON.stringify(payload),
     }));
-
-    let turns = 0;
-    while (pendingCalls.length && workspaceRoot && turns < 15) {
-      turns++;
-      let batchBytes = 0;
-      const toolResults = [];
-      for (const call of pendingCalls.slice(0, 32)) {
-        const callId = call.callId ?? call.call_id;
-        if (!allowedClientTools.has(call?.name)) {
-          toolResults.push({
-            callId,
-            output: `Outil non autorise pour ce mode : ${String(call?.name ?? 'inconnu')}.`,
-            isError: true,
-          });
-          continue;
-        }
-        onToolCall?.(call);
-        const writesBefore = writtenSet.size;
-        const res = executeClientTool(workspaceRoot, call, writtenSet);
-        if (writtenSet.size > writesBefore) onLocalWrite?.(call);
-        let out = String(res.output ?? '');
-        if (out.length > MAX_TOOL_OUTPUT) {
-          out = out.slice(0, MAX_TOOL_OUTPUT) + '\n[tronqué à 38 000 car. : lis une plage plus étroite]';
-        }
-        if (batchBytes + out.length > MAX_BATCH_OUTPUT) {
-          out = out.slice(0, Math.max(0, MAX_BATCH_OUTPUT - batchBytes));
-        }
-        batchBytes += out.length;
-        toolResults.push({
-          callId,
-          output: out,
-          ...(res.isError ? { isError: true } : {}),
-        });
-      }
-      pendingCalls = await consumeTurn(await fetch(base + `/chats/${chatId}`, {
-        method: 'POST',
-        signal,
-        headers,
-        body: JSON.stringify({ toolResults }),
-      }));
-    }
-
-    if (pendingCalls.length) {
-      throw new Error('Trop d’appels outils successifs ou workspace indisponible.');
-    }
 
     const refusal = refusalReasonFromText(totalText);
     if (refusal) throw new ModelRefusalError(refusal, { chatId });
@@ -1289,7 +1391,7 @@ export async function streamGeneration({
     return {
       text: totalText,
       usage: lastUsage,
-      written: [...writtenSet],
+      written: [],
       chatId,
       tokenMeasurement: {
         localPromptEstimateTokens,
@@ -1298,93 +1400,166 @@ export async function streamGeneration({
     };
   };
 
-  const tryChatWithFallbackTools = async (id, chatId) => {
-    const tools = (state.useClientTools !== false && workspaceRoot && clientTools?.length) ? clientTools : undefined;
+  const tryChatCleanly = async (id, chatId) => {
     try {
-      return await runChatStream(id, tools, chatId);
+      return await runChatStream(id, chatId);
     } catch (e) {
-      if (chatId && e?.status === 404) {
-        return await runChatStream(id, tools, undefined);
-      }
-      // Fallback cleanly without clientTools if account lacks 2026_11_client_tools (403) or model is Gemini (400).
-      if (!(e instanceof ModelRefusalError) && tools && (e?.status === 403 || e?.status === 400)) {
-        return await runChatStream(id, undefined, chatId);
+      const status = Number(e?.status ?? 0);
+      if (chatId && !effectiveSignal.aborted && !(e instanceof ModelRefusalError) && (status === 400 || status === 404 || status === 410 || status >= 500)) {
+        logEvent('warn', 'core', 'chat.reset_on_error', `Session ${chatId} réinitialisée après erreur HTTP ${status || '?'} (${model}).`, { model, chatId, status });
+        return await runChatStream(id, undefined);
       }
       throw e;
     }
   };
 
-  if (agentId !== undefined && agentId !== null) {
-    return await tryChatWithFallbackTools(agentId, existingChatId);
-  }
   try {
-    return await runOpenAiResponses();
-  } catch (e) {
-    if (e?.status === 401 && agentMap?.size) {
-      const fallbackId = agentMap.values().next().value;
-      return await tryChatWithFallbackTools(fallbackId, existingChatId);
+    if (agentId !== undefined && agentId !== null) {
+      return await tryChatCleanly(agentId, existingChatId);
     }
-    throw e;
+    try {
+      return await runOpenAiResponses();
+    } catch (e) {
+      if (e?.status === 401 && agentMap?.size) {
+        const fallbackId = agentMap.values().next().value;
+        return await tryChatCleanly(fallbackId, existingChatId);
+      }
+      throw e;
+    }
+  } finally {
+    clearTimeout(timeoutTimer);
+    if (signal) signal.removeEventListener('abort', onParentAbort);
   }
 }
 
 /**
- * Retry only one genuine provider refusal, then only with one other allowed
- * model in the same tier. A fresh chat is used for the retry so a refusal does not
- * contaminate the persistent conversation. Transport, cancellation and local
- * writes are deliberately never retried here. Read-only inspection is safe to
- * repeat in the fresh fallback chat.
+ * Retries refusals, empty completions, timeouts or transient failures up to
+ * 3 distinct models total, prioritizing strong models first.
  */
 export async function streamGenerationWithRefusalFallback({ availableModels = [], onRetry, ...request }) {
   const tried = new Set();
   const refusals = [];
   let model = request.model;
   let chatId = request.chatId;
+  const maxAttempts = 3;
+
+  const pickNextCandidate = (current) => {
+    const allowed = [...new Set(availableModels || [])].filter((c) => !tried.has(c) && modelIsAllowed(c, request.state));
+    if (!allowed.length) return null;
+    const sameTier = sameTierFallbackModels(current, availableModels, request.state).filter((c) => !tried.has(c));
+    if (classifyTier(current, request.state) === 'heavy' && sameTier.length) {
+      for (const kw of HEAVY_PRIORITY) {
+        const hit = sameTier.find((id) => id.toLowerCase().includes(kw));
+        if (hit) return hit;
+      }
+      return sameTier[0];
+    }
+    for (const kw of HEAVY_PRIORITY) {
+      const hit = allowed.find((id) => classifyTier(id, request.state) === 'heavy' && id.toLowerCase().includes(kw));
+      if (hit) return hit;
+    }
+    if (sameTier.length) return sameTier[0];
+    for (const t of ['heavy', 'medium', 'light']) {
+      const hit = allowed.find((c) => classifyTier(c, request.state) === t);
+      if (hit) return hit;
+    }
+    return allowed[0] ?? null;
+  };
 
   for (;;) {
     tried.add(model);
-    let wroteLocalFiles = false;
+    const attemptNum = tried.size;
+    const t0 = Date.now();
+    logEvent('info', 'core', 'stream.attempt', `Essai ${attemptNum}/${maxAttempts} avec ${model}.`, { model, attempt: attemptNum, hasChatId: Boolean(chatId) });
     try {
       const result = await streamGeneration({
         ...request,
         model,
         chatId,
-        onToolCall: (call) => {
-          request.onToolCall?.(call);
-        },
-        onLocalWrite: (call) => {
-          wroteLocalFiles = true;
-          request.onLocalWrite?.(call);
-        },
+      });
+      if (!String(result?.text ?? '').trim()) {
+        const emptyErr = new Error('Réponse vide reçue du modèle.');
+        emptyErr.retryable = true;
+        throw emptyErr;
+      }
+      logEvent('info', 'core', 'stream.done', `Réponse reçue de ${model} (${result.text.length} car., ${Math.round((Date.now() - t0) / 1000)}s).`, {
+        model,
+        chars: result.text.length,
+        durationMs: Date.now() - t0,
+        usage: result.usage ?? null,
       });
       return { ...result, model, refusals, attemptedModels: [...tried] };
     } catch (error) {
-      if (!(error instanceof ModelRefusalError)) throw error;
+      const isRefusal = error instanceof ModelRefusalError;
+      const status = Number(error?.status ?? 0);
+      const msg = String(error?.message ?? '');
+      const isAuthErr = status === 401 || status === 403;
+      const isTransient = !isAuthErr && (
+        Boolean(error?.retryable) ||
+        status === 429 ||
+        status >= 500 ||
+        /Flux SSE interrompu|Délai dépassé|fetch failed|ECONNRESET|ETIMEDOUT/i.test(msg)
+      );
 
-      const refusal = { model, reason: error.message || MISSING_REFUSAL_REASON };
-      refusals.push(refusal);
+      if (isRefusal) {
+        refusals.push({ model, reason: msg || MISSING_REFUSAL_REASON });
+        logEvent('warn', 'core', 'stream.refusal', `Refus sur ${model} : ${msg || MISSING_REFUSAL_REASON}`, { model, attempt: attemptNum });
+      } else {
+        logEvent('error', 'core', 'stream.error', `Échec sur ${model} : ${msg}`, { model, status: status || null, attempt: attemptNum });
+      }
       error.refusals = refusals;
       error.attemptedModels = [...tried];
-      // A local write can already have changed the workspace. Keep the actual
-      // refusal in history, but never risk a duplicate edit by retrying. A
-      // read/search/list call is safe to repeat in a fresh fallback chat.
-      if (request.signal?.aborted || wroteLocalFiles) throw error;
-      // One alternative is enough: avoid spending an unbounded amount of
-      // context/quota cycling through a tier after repeated refusals.
-      if (refusals.length >= 2) throw error;
 
-      const next = sameTierFallbackModels(model, availableModels, request.state)
-        .find((candidate) => !tried.has(candidate));
+      if (request.signal?.aborted || (!isRefusal && !isTransient) || tried.size >= maxAttempts) {
+        throw error;
+      }
+
+      const next = pickNextCandidate(model);
       if (!next) {
         throw error;
       }
 
-      onRetry?.({ from: model, to: next, reason: refusal.reason, attempt: refusals.length + 1 });
+      const reason = isRefusal ? (msg || MISSING_REFUSAL_REASON) : msg.slice(0, 120);
+      logEvent('warn', 'core', 'stream.fallback', `Bascule ${model} → ${next} (essai ${tried.size + 1}/${maxAttempts}).`, { from: model, to: next, reason });
+      onRetry?.({ from: model, to: next, reason, attempt: tried.size + 1 });
       model = next;
-      // Never append a fallback request to the chat that just refused it.
       chatId = undefined;
     }
   }
+}
+
+/**
+ * Estimates Antigravity tokens/turns saved when France Student generates the
+ * response/code cleanly so Antigravity only copies/applies it.
+ */
+export function estimateAntigravityJobSavings(job, { waitedInline = false, partsCount = 1 } = {}) {
+  const outputChars = Number(job?.receivedChars ?? 0);
+  const offloadedOutputTokens = Math.max(0, Math.round(outputChars / 4));
+  const baseTurns = offloadedOutputTokens >= 400 ? 3 : offloadedOutputTokens >= 120 ? 2 : 1;
+  const turnsSavedEst = (waitedInline ? 1 : 0) + Math.max(Number(partsCount) || 1, baseTurns);
+  const inputTokensSavedEst = turnsSavedEst * 12_000;
+  const outputTokensSavedEst = Math.round(offloadedOutputTokens * 1.35);
+  return {
+    source: 'local-estimate',
+    turnsSavedEst,
+    inputTokensSavedEst,
+    outputTokensSavedEst,
+    totalTokensSavedEst: inputTokensSavedEst + outputTokensSavedEst,
+  };
+}
+
+export function recordAntigravitySavings(state, jobSavings) {
+  if (!state || !jobSavings) return state;
+  const prev = state.antigravitySavings || {};
+  state.antigravitySavings = {
+    jobsOffloaded: Number(prev.jobsOffloaded ?? 0) + 1,
+    turnsSavedEst: Number(prev.turnsSavedEst ?? 0) + Number(jobSavings.turnsSavedEst ?? 0),
+    inputTokensSavedEst: Number(prev.inputTokensSavedEst ?? 0) + Number(jobSavings.inputTokensSavedEst ?? 0),
+    outputTokensSavedEst: Number(prev.outputTokensSavedEst ?? 0) + Number(jobSavings.outputTokensSavedEst ?? 0),
+    totalTokensSavedEst: Number(prev.totalTokensSavedEst ?? 0) + Number(jobSavings.totalTokensSavedEst ?? 0),
+    updatedAt: Date.now(),
+  };
+  return state;
 }
 
 const FILE_RE = /<<<FILE[ \t]+([^\n]+)\n([\s\S]*?)\n?>>>END/g;

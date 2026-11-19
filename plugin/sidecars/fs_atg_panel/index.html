@@ -9,545 +9,367 @@
   <style>
     :root {
       color-scheme: dark;
-      --fs-bg: var(--background, #0d1017);
-      --fs-card: var(--card, #141822);
-      --fs-surface: var(--secondary, #1c2130);
-      --fs-fg: var(--foreground, #eef2f8);
-      --fs-fg-soft: color-mix(in srgb, var(--fs-fg) 68%, transparent);
-      --fs-fg-faint: color-mix(in srgb, var(--fs-fg) 48%, transparent);
-      --fs-border: color-mix(in srgb, var(--fs-fg) 11%, transparent);
-      --fs-input-bg: color-mix(in srgb, var(--fs-fg) 4%, var(--fs-bg));
-      --fs-blue: #0d84ff;
-      --fs-indigo: #5b50e6;
+      --fs-bg: var(--background, #090d16);
+      --fs-card: var(--card, #111827);
+      --fs-fg: var(--foreground, #eef3fb);
+      --fs-muted: color-mix(in srgb, var(--fs-fg) 64%, transparent);
+      --fs-faint: color-mix(in srgb, var(--fs-fg) 42%, transparent);
+      --fs-line: color-mix(in srgb, var(--fs-fg) 10%, transparent);
+      --fs-line-soft: color-mix(in srgb, var(--fs-fg) 6%, transparent);
+      --fs-input: color-mix(in srgb, var(--fs-fg) 4%, var(--fs-bg));
+      --fs-accent: #4f8cff;
+      --fs-indigo: #7c5cff;
+      --fs-cyan: #22d3ee;
       --fs-ok: #10b981;
       --fs-warn: #f59e0b;
       --fs-bad: #ef4444;
-      --fs-r: 16px;
-      --fs-r-sm: 12px;
+      --fs-r: 14px;
+      --fs-r-sm: 10px;
       --fs-pill: 999px;
     }
     * { box-sizing: border-box; }
-    html, body {
-      margin: 0; padding: 0;
-      background: var(--fs-bg) !important;
+    html, body { margin: 0; padding: 0; min-height: 100%; }
+    body {
+      padding: 11px;
+      background:
+        radial-gradient(420px 240px at 105% -10%, rgba(79, 140, 255, .20), transparent 65%),
+        linear-gradient(160deg, #0d1b38 0%, #091122 34%, #060a12 100%) !important;
       color: var(--fs-fg) !important;
-      font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-      font-size: 12.5px; line-height: 1.45;
+      font-family: var(--font-family, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif);
+      font-size: 12px;
+      line-height: 1.45;
       -webkit-font-smoothing: antialiased;
     }
-    body { padding: 10px; }
     button, input, select, textarea { font: inherit; color: var(--fs-fg); }
+    button { -webkit-tap-highlight-color: transparent; }
 
     svg.ico {
-      width: 14px; height: 14px; flex-shrink: 0;
+      width: 13px; height: 13px; flex-shrink: 0;
       stroke: currentColor; fill: none; stroke-width: 2;
       stroke-linecap: round; stroke-linejoin: round;
     }
-    svg.ico-sm { width: 12px; height: 12px; }
+    svg.ico-sm { width: 11.5px; height: 11.5px; }
 
-    /* Top Pill Tabs */
+    /* Navigation Tabs */
     .tabs {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
-      background: var(--fs-card); border: 1px solid var(--fs-border);
-      border-radius: var(--fs-pill); padding: 4px; margin-bottom: 10px;
+      position: sticky; top: 0; z-index: 10;
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px;
+      background: color-mix(in srgb, var(--fs-card) 90%, #04070e);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--fs-line);
+      border-radius: 12px;
+      padding: 3px;
+      margin: 0 0 11px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
     }
     .tab-btn {
-      border: 0; background: transparent; color: var(--fs-fg-soft);
-      padding: 6px 10px; border-radius: var(--fs-pill); cursor: pointer;
-      font-size: 12px; font-weight: 600;
-      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      transition: background .15s, color .15s;
+      position: relative; border: 0; background: transparent; color: var(--fs-muted);
+      padding: 6px 4px; border-radius: 9px; cursor: pointer;
+      font-size: 11px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+      transition: background .15s, color .15s; white-space: nowrap; overflow: hidden;
     }
-    .tab-btn:hover { color: var(--fs-fg); }
-    .tab-btn.on { background: var(--fs-surface); color: var(--fs-fg); }
+    .tab-btn:hover { color: var(--fs-fg); background: color-mix(in srgb, var(--fs-fg) 4%, transparent); }
+    .tab-btn.on { background: color-mix(in srgb, var(--fs-accent) 18%, transparent); color: var(--fs-fg); }
+    .tab-btn.on .ico { color: var(--fs-accent); }
+    .tab-badge {
+      font-size: 9.5px; font-weight: 700; padding: 0 5px; line-height: 15px;
+      border-radius: var(--fs-pill); background: color-mix(in srgb, var(--fs-fg) 10%, transparent);
+      color: var(--fs-muted);
+    }
+    .tab-badge.err { background: var(--fs-bad); color: #fff; }
+    .tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fs-cyan); box-shadow: 0 0 8px var(--fs-cyan); flex-shrink: 0; }
     .view[hidden] { display: none; }
 
-    /* Warning banner */
+    /* Warning Box */
     .warnbox {
       background: color-mix(in srgb, var(--fs-warn) 10%, var(--fs-card));
-      border: 1px solid color-mix(in srgb, var(--fs-warn) 38%, transparent);
-      border-radius: var(--fs-r);
-      padding: 10px 12px; margin-bottom: 10px;
-      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      border: 1px solid color-mix(in srgb, var(--fs-warn) 36%, transparent);
+      border-radius: var(--fs-r); padding: 10px 11px; margin-bottom: 10px;
+      display: flex; justify-content: space-between; align-items: center; gap: 9px;
     }
     .warnbox[hidden] { display: none; }
-    .warn-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .warn-left { display: flex; align-items: center; gap: 9px; min-width: 0; }
     .warn-ico {
-      width: 30px; height: 30px; border-radius: 999px;
+      width: 28px; height: 28px; border-radius: 50%;
       background: color-mix(in srgb, var(--fs-warn) 18%, transparent); color: var(--fs-warn);
       display: grid; place-items: center; flex-shrink: 0;
     }
-    .warn-title { font-weight: 600; font-size: 12.5px; }
-    .warn-sub { font-size: 11px; color: var(--fs-fg-soft); }
+    .warn-title { font-weight: 650; font-size: 12px; }
+    .warn-sub { font-size: 10.5px; color: var(--fs-muted); }
 
-    /* Solid Light Hero Card */
+    /* Cards */
+    .card {
+      background: color-mix(in srgb, var(--fs-card) 86%, #050811);
+      border: 1px solid var(--fs-line);
+      border-radius: var(--fs-r);
+      padding: 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+    }
     .hero {
-      background: var(--fs-card);
-      border: 1px solid var(--fs-border);
-      border-radius: 14px;
-      padding: 10px 11px;
-      margin-bottom: 8px;
+      background:
+        linear-gradient(145deg, rgba(79, 140, 255, .16), rgba(15, 23, 42, .82) 48%, rgba(9, 13, 22, .94)),
+        var(--fs-card);
     }
-    .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
+    .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 11px; }
     .brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .brand-logo {
-      width: 22px; height: 22px; border-radius: 7px;
-      object-fit: contain; flex-shrink: 0;
-    }
-    .hero h1 { font-size: 14px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px; }
+    .brand-logo { width: 24px; height: 24px; border-radius: 7px; object-fit: contain; flex-shrink: 0; }
+    .hero h1 { font-size: 13px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px; letter-spacing: -.01em; }
     .badge {
-      font-size: 9.5px; font-weight: 800; border-radius: var(--fs-pill);
-      padding: 2px 7px; background: var(--fs-indigo); color: #fff; letter-spacing: .04em;
+      font-size: 8.5px; font-weight: 800; border-radius: var(--fs-pill);
+      padding: 2px 6px; background: linear-gradient(135deg, var(--fs-accent), var(--fs-indigo)); color: #fff; letter-spacing: .05em;
     }
     .status-pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      font-size: 11px; font-weight: 600;
-      padding: 3px 9px; border-radius: var(--fs-pill);
-      background: var(--fs-surface); color: var(--fs-fg-soft); flex-shrink: 0;
+      display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600;
+      padding: 3px 8px; border-radius: var(--fs-pill);
+      background: color-mix(in srgb, var(--fs-fg) 5%, transparent);
+      border: 1px solid var(--fs-line-soft); color: var(--fs-muted); flex-shrink: 0;
     }
-    .status-pill.on { color: #34d399; }
-    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fs-fg-faint); }
-    .status-pill.on .dot { background: #34d399; }
+    .status-pill.on {
+      color: #34d399;
+      background: color-mix(in srgb, var(--fs-ok) 11%, transparent);
+      border-color: color-mix(in srgb, var(--fs-ok) 26%, transparent);
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fs-faint); }
+    .status-pill.on .dot { background: #34d399; box-shadow: 0 0 8px #34d399; animation: pulseDot 2s infinite; }
+    @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 
-    .qrow { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; margin-bottom: 4px; color: var(--fs-fg-soft); }
-    .pct-val { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--fs-fg); }
+    .qrow { display: flex; justify-content: space-between; align-items: baseline; font-size: 10.5px; color: var(--fs-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+    .pct-val { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--fs-fg); letter-spacing: -.03em; }
     .gauge-wrap { position: relative; padding-bottom: 12px; cursor: pointer; }
-    .gauge { height: 6px; background: var(--fs-surface); border-radius: var(--fs-pill); overflow: hidden; }
-    .gauge > div { height: 100%; width: 0; background: var(--fs-blue); border-radius: var(--fs-pill); transition: width .45s ease, background .25s; }
+    .gauge { height: 6px; background: color-mix(in srgb, var(--fs-fg) 9%, transparent); border-radius: var(--fs-pill); overflow: hidden; }
+    .gauge > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--fs-accent), var(--fs-indigo)); border-radius: var(--fs-pill); transition: width .45s ease, background .25s; }
     .gauge.low > div { background: var(--fs-warn); }
     .gauge.crit > div { background: var(--fs-bad); }
-    .cutoff-tick {
-      position: absolute; top: -2px; transform: translateX(-50%);
-      display: flex; flex-direction: column; align-items: center; pointer-events: none;
-    }
-    .cutoff-line { width: 2px; height: 11px; background: var(--fs-warn); border-radius: 2px; }
-    .cutoff-lbl { font-size: 9.5px; font-weight: 700; color: var(--fs-warn); margin-top: 1px; }
-    .meta { font-size: 11px; color: var(--fs-fg-soft); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .efficiency {
-      margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--fs-border);
-    }
-    .efficiency > summary, .settings-fold > summary, .history-fold > summary {
-      display: flex; align-items: center; justify-content: space-between; gap: 8px;
-      color: var(--fs-fg-soft); cursor: pointer; list-style: none; user-select: none;
-      font-size: 10.5px; font-weight: 650;
-    }
-    .efficiency > summary::-webkit-details-marker,
-    .settings-fold > summary::-webkit-details-marker,
-    .history-fold > summary::-webkit-details-marker { display: none; }
-    .efficiency > summary::after, .settings-fold > summary::after, .history-fold > summary::after {
-      content: '⌄'; color: var(--fs-fg-faint); transition: transform .16s ease;
-    }
-    .efficiency[open] > summary::after, .settings-fold[open] > summary::after, .history-fold[open] > summary::after { transform: rotate(180deg); }
-    .efficiency-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 9px; }
-    .eff-item { min-width: 0; }
-    .eff-label { color: var(--fs-fg-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
-    .eff-value { font-weight: 700; font-size: 11.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .session-actions { display: flex; gap: 6px; margin-top: 8px; }
-    .session-actions .btn { padding: 4px 9px; font-size: 10.5px; }
+    .cutoff-tick { position: absolute; top: -2px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+    .cutoff-line { width: 1.5px; height: 10px; background: var(--fs-warn); border-radius: 2px; }
+    .cutoff-lbl { font-size: 8.5px; font-weight: 700; color: var(--fs-warn); margin-top: 1px; }
+    .meta { font-size: 10px; color: var(--fs-faint); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 
-    /* Mode Selector */
+    /* Hero Synthetic Pills + Auto/Manual Switch */
+    .hero-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+    .synth-pill {
+      padding: 6px 8px; border-radius: 9px;
+      background: color-mix(in srgb, var(--fs-fg) 4%, transparent);
+      border: 1px solid var(--fs-line-soft);
+      font-size: 10.5px; color: var(--fs-muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .synth-pill strong { color: var(--fs-fg); font-weight: 650; }
+    .ro-note { margin-top: 8px; font-size: 10px; color: var(--fs-faint); display: flex; align-items: center; gap: 5px; }
+
+    .auto-box {
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--fs-line-soft);
+    }
+    .auto-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .auto-head span { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fs-muted); }
     .seg {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
-      background: var(--fs-card); border: 1px solid var(--fs-border);
-      border-radius: var(--fs-pill); padding: 3px; margin-bottom: 8px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+      background: color-mix(in srgb, var(--fs-bg) 75%, #000);
+      border: 1px solid var(--fs-line); border-radius: 9px; padding: 3px;
     }
     .seg button {
-      border: 0; background: transparent; color: var(--fs-fg-soft);
-      padding: 5px 9px; border-radius: var(--fs-pill); cursor: pointer;
-      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      font-size: 12px; font-weight: 600; transition: background .15s, color .15s;
+      border: 0; background: transparent; color: var(--fs-muted);
+      padding: 6px 8px; border-radius: 7px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+      font-size: 11px; font-weight: 650; transition: background .15s, color .15s;
     }
-    .seg button span.sub-txt { font-size: 10.5px; font-weight: 400; color: var(--fs-fg-soft); }
-    .seg button.on { background: var(--fs-blue); color: #fff; }
-    .seg button.on span.sub-txt { color: rgba(255,255,255,.85); }
+    .seg button:hover { color: var(--fs-fg); }
+    .seg button.on { background: color-mix(in srgb, var(--fs-accent) 22%, transparent); color: var(--fs-fg); }
+    .seg button.on .ico { color: var(--fs-accent); }
+    .auto-desc { margin-top: 5px; font-size: 10.5px; color: var(--fs-muted); }
 
     /* Composer */
-    .composer, .settings-card {
-      background: var(--fs-card);
-      border: 1px solid var(--fs-border);
-      border-radius: 14px;
-      padding: 10px;
-      margin-bottom: 9px;
-    }
     textarea, select, input[type="text"], input[type="password"], input[type="number"] {
-      width: 100%;
-      background: var(--fs-input-bg);
-      color: var(--fs-fg);
-      border: 1px solid var(--fs-border);
-      border-radius: var(--fs-r-sm);
-      padding: 8px 11px;
-      font-size: 12px;
+      width: 100%; background: var(--fs-input); color: var(--fs-fg);
+      border: 1px solid var(--fs-line); border-radius: var(--fs-r-sm);
+      padding: 8px 10px; font-size: 11.5px;
     }
-    textarea { min-height: 64px; resize: vertical; margin-bottom: 8px; font-size: 12.5px; }
-    textarea::placeholder, input::placeholder { color: var(--fs-fg-faint); }
-    textarea:focus, input:focus, select:focus { outline: none; border-color: var(--fs-blue); }
+    textarea { min-height: 76px; resize: vertical; margin-bottom: 8px; line-height: 1.5; }
+    textarea::placeholder, input::placeholder { color: var(--fs-faint); }
+    textarea:focus, input:focus, select:focus { outline: none; border-color: var(--fs-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fs-accent) 16%, transparent); }
 
-    /* Tier Pills + Hover Popover */
-    .tier-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; position: relative; }
-    .tier-wrap { position: relative; }
+    .tier-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
     .chip {
-      font-size: 11px; padding: 4px 9px; border-radius: var(--fs-pill);
-      background: var(--fs-surface); border: 1px solid var(--fs-border);
-      color: var(--fs-fg-soft); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10.5px; padding: 4px 9px; border-radius: 8px;
+      background: transparent; border: 1px solid var(--fs-line);
+      color: var(--fs-muted); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
       transition: all .15s; user-select: none;
     }
-    .chip:hover { color: var(--fs-fg); border-color: color-mix(in srgb, var(--fs-fg) 28%, transparent); }
-    .chip.on {
-      background: color-mix(in srgb, var(--fs-blue) 22%, var(--fs-card));
-      border-color: var(--fs-blue); color: var(--fs-fg); font-weight: 600;
-    }
-    .chip-cnt {
-      font-size: 10px; opacity: .75; background: color-mix(in srgb, var(--fs-fg) 10%, transparent);
-      padding: 0 5px; border-radius: var(--fs-pill);
-    }
+    .chip:hover { color: var(--fs-fg); background: color-mix(in srgb, var(--fs-fg) 4%, transparent); }
+    .chip.on { background: color-mix(in srgb, var(--fs-accent) 18%, transparent); border-color: color-mix(in srgb, var(--fs-accent) 55%, transparent); color: var(--fs-fg); font-weight: 650; }
+    .chip-cnt { font-size: 9.5px; opacity: .8; background: color-mix(in srgb, var(--fs-fg) 10%, transparent); padding: 0 5px; border-radius: var(--fs-pill); }
 
     .popover {
-      position: fixed; z-index: 999;
-      width: 240px; max-width: calc(100vw - 24px);
-      background: var(--fs-card);
-      border: 1px solid color-mix(in srgb, var(--fs-fg) 20%, transparent);
-      border-radius: 14px;
-      padding: 8px;
-      box-shadow: 0 12px 28px rgba(0, 0, 0, .45);
+      position: fixed; z-index: 999; width: 245px; max-width: calc(100vw - 24px);
+      background: var(--fs-card); border: 1px solid var(--fs-line); border-radius: 12px;
+      padding: 7px; box-shadow: 0 16px 36px rgba(0, 0, 0, .45);
     }
     .popover[hidden] { display: none; }
     .pop-head {
-      font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
-      color: var(--fs-fg-soft); padding: 3px 6px 6px; border-bottom: 1px solid var(--fs-border); margin-bottom: 4px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--fs-muted); padding: 3px 6px 6px; border-bottom: 1px solid var(--fs-line-soft); margin-bottom: 4px;
       display: flex; justify-content: space-between;
     }
     .pop-item {
-      width: 100%; text-align: left; background: transparent; border: 0; border-radius: 9px;
+      width: 100%; text-align: left; background: transparent; border: 0; border-radius: 7px;
       padding: 6px 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
-      font-size: 12px; color: var(--fs-fg);
+      font-size: 11.5px; color: var(--fs-fg);
     }
-    .pop-item:hover { background: var(--fs-surface); }
+    .pop-item:hover { background: color-mix(in srgb, var(--fs-fg) 6%, transparent); }
     .pop-item.blocked { opacity: .45; text-decoration: line-through; cursor: not-allowed; }
-    .pop-prov {
-      font-size: 10px; color: var(--fs-fg-soft); background: var(--fs-surface);
-      padding: 1px 6px; border-radius: var(--fs-pill); text-transform: capitalize;
-    }
+    .pop-prov { font-size: 9.5px; color: var(--fs-muted); background: color-mix(in srgb, var(--fs-fg) 7%, transparent); padding: 1px 6px; border-radius: var(--fs-pill); text-transform: capitalize; }
 
     .actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .spacer { flex: 1; }
-    .kbd-hint { font-size: 10.5px; color: var(--fs-fg-soft); display: flex; align-items: center; gap: 3px; }
-    kbd { background: var(--fs-surface); border-radius: 6px; padding: 1px 6px; font-size: 10px; }
+    .kbd-hint { font-size: 9.5px; color: var(--fs-faint); display: flex; align-items: center; gap: 3px; }
+    kbd { background: color-mix(in srgb, var(--fs-fg) 8%, transparent); border: 1px solid var(--fs-line-soft); border-radius: 5px; padding: 1px 5px; font-size: 9.5px; }
 
-    /* Pill Buttons */
     .btn {
-      background: var(--fs-blue); color: #fff; border: 0; border-radius: var(--fs-pill);
-      padding: 6px 12px; cursor: pointer; font-weight: 600; font-size: 12px;
-      display: inline-flex; align-items: center; gap: 6px; transition: filter .15s;
+      background: linear-gradient(135deg, var(--fs-accent), var(--fs-indigo));
+      color: #fff; border: 0; border-radius: 9px; padding: 6px 12px; min-height: 30px;
+      cursor: pointer; font-weight: 600; font-size: 11px;
+      display: inline-flex; align-items: center; gap: 5px; transition: filter .15s;
     }
-    .btn:hover { filter: brightness(1.1); }
-    .btn.ghost { background: var(--fs-surface); border: 1px solid var(--fs-border); color: var(--fs-fg); font-weight: 500; }
-    .btn.danger { background: color-mix(in srgb, var(--fs-bad) 18%, var(--fs-card)); border: 1px solid color-mix(in srgb, var(--fs-bad) 42%, transparent); color: #fca5a5; }
-    .btn.sm { padding: 5px 12px; font-size: 11.5px; }
-
-    /* Section headers */
-    .sec-head { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 5px; }
-    .sec-title {
-      font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
-      color: var(--fs-fg-soft); text-transform: uppercase; display: flex; align-items: center; gap: 6px;
-    }
-    .cnt { background: var(--fs-surface); border-radius: var(--fs-pill); padding: 0 7px; font-size: 10.5px; color: var(--fs-fg); }
-    .link-btn { background: none; border: 0; color: var(--fs-blue); cursor: pointer; font-size: 11px; font-weight: 600; padding: 0; }
+    .btn:hover { filter: brightness(1.08); }
+    .btn:disabled { opacity: .46; cursor: not-allowed; filter: none; }
+    .btn.ghost { background: transparent; border: 1px solid var(--fs-line); color: var(--fs-muted); }
+    .btn.ghost:hover { color: var(--fs-fg); background: color-mix(in srgb, var(--fs-fg) 5%, transparent); }
+    .btn.danger { background: color-mix(in srgb, var(--fs-bad) 16%, var(--fs-card)); border: 1px solid color-mix(in srgb, var(--fs-bad) 40%, transparent); color: #ffb4b4; }
+    .btn.sm { min-height: 26px; padding: 4px 9px; font-size: 10.5px; }
+    .link-btn { background: none; border: 0; color: var(--fs-accent); cursor: pointer; font-size: 10.5px; font-weight: 600; padding: 0; }
     .link-btn:hover { text-decoration: underline; }
 
-    /* Light Empty state */
-    .empty-txt { font-size: 11.5px; color: var(--fs-fg-faint); padding: 6px 4px; }
+    /* Section Header */
+    .sec-head { display: flex; justify-content: space-between; align-items: center; margin: 12px 2px 6px; }
+    .sec-title { font-size: 10px; font-weight: 700; letter-spacing: .07em; color: var(--fs-muted); text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
+    .cnt { background: color-mix(in srgb, var(--fs-fg) 9%, transparent); border-radius: var(--fs-pill); padding: 0 6px; font-size: 10px; color: var(--fs-fg); }
+    .empty-txt { font-size: 11px; color: var(--fs-faint); padding: 10px 4px; }
 
-    /* Active job cards */
+    /* Active Jobs */
     .job-card {
-      background: var(--fs-card); border: 1px solid var(--fs-border);
-      border-radius: 12px; padding: 8px 10px; margin-bottom: 6px;
+      background: var(--fs-card); border: 1px solid var(--fs-line);
+      border-radius: var(--fs-r-sm); padding: 9px 10px; margin-bottom: 7px;
     }
-    .job-top { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
-    .tag { font-size: 9.5px; font-weight: 800; background: var(--fs-indigo); color: #fff; border-radius: var(--fs-pill); padding: 2px 6px; flex-shrink: 0; }
-    .job-title { font-size: 12.5px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .model-pill { font-size: 10.5px; background: var(--fs-surface); border-radius: var(--fs-pill); padding: 2px 8px; color: var(--fs-fg-soft); flex-shrink: 0; }
-    .x { background: none; border: 0; color: var(--fs-fg-soft); cursor: pointer; padding: 2px; display: grid; place-items: center; }
+    .job-top { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+    .tag { font-size: 8.5px; font-weight: 800; background: color-mix(in srgb, var(--fs-accent) 70%, #273266); color: #fff; border-radius: var(--fs-pill); padding: 2px 6px; flex-shrink: 0; }
+    .job-title { font-size: 11.5px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .model-pill { font-size: 9.5px; background: color-mix(in srgb, var(--fs-fg) 7%, transparent); border-radius: var(--fs-pill); padding: 2px 7px; color: var(--fs-muted); flex-shrink: 0; }
+    .x { background: none; border: 0; color: var(--fs-muted); cursor: pointer; padding: 2px; display: grid; place-items: center; }
     .x:hover { color: var(--fs-fg); }
-    .pbar { height: 4px; background: var(--fs-surface); border-radius: var(--fs-pill); overflow: hidden; margin-bottom: 6px; }
-    .pbar > div { height: 100%; width: 45%; background: var(--fs-blue); border-radius: var(--fs-pill); animation: indeterminate 1.3s ease-in-out infinite; }
+    .pbar { height: 3px; background: color-mix(in srgb, var(--fs-fg) 8%, transparent); border-radius: var(--fs-pill); overflow: hidden; margin-bottom: 6px; }
+    .pbar > div { height: 100%; width: 45%; background: linear-gradient(90deg, var(--fs-accent), var(--fs-cyan)); border-radius: var(--fs-pill); animation: indeterminate 1.3s ease-in-out infinite; }
     @keyframes indeterminate { 0% { transform: translateX(-100%); width: 35%; } 50% { width: 65%; } 100% { transform: translateX(270%); width: 35%; } }
-    .job-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--fs-fg-soft); margin-bottom: 6px; }
+    .job-meta { display: flex; justify-content: space-between; font-size: 10px; color: var(--fs-muted); margin-bottom: 6px; }
     .term {
-      background: var(--fs-input-bg); border-radius: 10px; padding: 6px 9px;
+      background: color-mix(in srgb, var(--fs-fg) 4%, transparent); border-radius: 7px; padding: 6px 8px;
       font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-      font-size: 11px; color: var(--fs-fg-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-size: 10px; color: var(--fs-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
-    /* History list */
-    .history-fold { margin-top: 10px; border: 1px solid var(--fs-border); border-radius: 12px; background: var(--fs-card); }
-    .history-fold > summary { padding: 9px 10px; }
-    .history-body { padding: 0 8px 8px; }
-    .history-actions { display: flex; justify-content: flex-end; padding: 0 2px 6px; }
-    .hist-list { background: transparent; border: 0; border-top: 1px solid var(--fs-border); border-radius: 0; overflow: hidden; }
-    .hist-item { padding: 9px 12px; border-bottom: 1px solid var(--fs-border); cursor: pointer; }
+    /* Recent History */
+    .hist-list { background: color-mix(in srgb, var(--fs-card) 84%, #050811); border: 1px solid var(--fs-line); border-radius: var(--fs-r); overflow: hidden; }
+    .hist-item { padding: 9px 10px; border-bottom: 1px solid var(--fs-line-soft); cursor: pointer; }
     .hist-item:last-child { border-bottom: 0; }
-    .hist-item:hover { background: color-mix(in srgb, var(--fs-fg) 4%, transparent); }
-    .hist-row { display: flex; align-items: center; gap: 9px; }
-    .st-ico { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; flex-shrink: 0; }
+    .hist-item:hover { background: color-mix(in srgb, var(--fs-fg) 3%, transparent); }
+    .hist-row { display: flex; align-items: center; gap: 8px; }
+    .st-ico { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; }
     .st-ico.done { background: color-mix(in srgb, var(--fs-ok) 18%, transparent); color: #34d399; }
-    .st-ico.warn { background: color-mix(in srgb, var(--fs-warn) 18%, transparent); color: #fbbf24; }
     .st-ico.error { background: color-mix(in srgb, var(--fs-bad) 18%, transparent); color: #f87171; }
     .st-ico.cancelled { background: color-mix(in srgb, var(--fs-warn) 18%, transparent); color: #fbbf24; }
     .hist-main { flex: 1; min-width: 0; }
-    .hist-top { display: flex; align-items: center; gap: 6px; }
-    .hist-title { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .hist-sub { font-size: 11px; color: var(--fs-fg-soft); margin-top: 1px; }
-    .hist-right { text-align: right; flex-shrink: 0; font-size: 11px; }
-    .hist-tok { font-weight: 600; font-variant-numeric: tabular-nums; }
-    .hist-time { color: var(--fs-fg-soft); font-size: 10.5px; }
+    .hist-title { font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .hist-sub { font-size: 10px; color: var(--fs-faint); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hist-time { font-size: 10px; color: var(--fs-faint); flex-shrink: 0; }
     .hist-detail {
-      margin-top: 8px; background: var(--fs-input-bg); border-radius: 10px; padding: 8px 10px;
-      font-size: 11px; white-space: pre-wrap; max-height: 160px; overflow: auto;
-      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      margin-top: 8px; background: color-mix(in srgb, var(--fs-bg) 70%, #000);
+      border: 1px solid var(--fs-line-soft); border-radius: 9px; padding: 8px 9px;
+      cursor: default;
     }
+    .hist-pre {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10.5px; white-space: pre-wrap; word-break: break-word;
+      max-height: 220px; overflow: auto; margin: 0; color: var(--fs-fg);
+    }
+    .hist-actions { display: flex; gap: 6px; margin-top: 8px; }
 
-    /* Rounded Settings & Pill Switches */
-    .settings-card { border-radius: 14px; padding: 11px; }
-    .settings-title { font-size: 13px; font-weight: 700; margin: 0 0 12px; display: flex; align-items: center; gap: 7px; }
-    .field { margin-bottom: 11px; }
-    .field label { display: block; font-size: 11.5px; font-weight: 600; margin-bottom: 4px; }
-    .field .f-help { font-size: 10.5px; color: var(--fs-fg-soft); margin-top: 3px; }
+    /* Models Tab */
+    .toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 9px; }
+    .toolbar input { flex: 1; }
+    .model-list { display: flex; flex-direction: column; gap: 7px; }
+    .model-card {
+      background: color-mix(in srgb, var(--fs-card) 88%, #050811);
+      border: 1px solid var(--fs-line); border-radius: var(--fs-r-sm); padding: 9px 10px;
+    }
+    .model-card.is-new { border-color: color-mix(in srgb, var(--fs-cyan) 42%, transparent); }
+    .model-card.blocked { opacity: .55; }
+    .mc-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .mc-name { font-weight: 650; font-size: 12px; color: var(--fs-fg); }
+    .tier-badge { font-size: 9px; font-weight: 750; padding: 1px 6px; border-radius: var(--fs-pill); text-transform: uppercase; letter-spacing: .04em; }
+    .tier-badge.heavy { background: color-mix(in srgb, var(--fs-indigo) 28%, transparent); color: #c4b5fd; }
+    .tier-badge.medium { background: color-mix(in srgb, var(--fs-accent) 20%, transparent); color: #93c5fd; }
+    .tier-badge.light { background: color-mix(in srgb, var(--fs-fg) 10%, transparent); color: var(--fs-muted); }
+    .new-badge { font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: var(--fs-pill); background: linear-gradient(135deg, #06b6d4, #10b981); color: #031517; letter-spacing: .04em; }
+    .mc-id-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 5px; }
+    .mc-id { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10.5px; color: var(--fs-cyan); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mc-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 5px; font-size: 10px; color: var(--fs-faint); }
+
+    /* Logs Tab */
+    .seg-sm { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 2px; background: color-mix(in srgb, var(--fs-bg) 75%, #000); border: 1px solid var(--fs-line); border-radius: 8px; padding: 2px; }
+    .seg-sm button { border: 0; background: transparent; color: var(--fs-muted); padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 10.5px; font-weight: 600; }
+    .seg-sm button.on { background: color-mix(in srgb, var(--fs-accent) 22%, transparent); color: var(--fs-fg); }
+    .log-list { display: flex; flex-direction: column; gap: 6px; }
+    .log-item {
+      background: color-mix(in srgb, var(--fs-card) 88%, #050811);
+      border: 1px solid var(--fs-line); border-radius: 10px; padding: 8px 9px;
+    }
+    .log-head { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--fs-faint); margin-bottom: 4px; }
+    .lvl { font-size: 8.5px; font-weight: 800; padding: 1px 5px; border-radius: 5px; text-transform: uppercase; }
+    .lvl.info { background: color-mix(in srgb, var(--fs-accent) 18%, transparent); color: #93c5fd; }
+    .lvl.warn { background: color-mix(in srgb, var(--fs-warn) 20%, transparent); color: #fcd34d; }
+    .lvl.error { background: color-mix(in srgb, var(--fs-bad) 22%, transparent); color: #fca5a5; }
+    .log-msg { font-size: 11px; color: var(--fs-fg); word-break: break-word; }
+    .log-det { margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9.5px; color: var(--fs-muted); white-space: pre-wrap; word-break: break-all; }
+
+    /* Settings */
+    .settings-title { font-size: 12px; font-weight: 700; margin: 0 0 10px; display: flex; align-items: center; gap: 7px; }
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 10.5px; font-weight: 600; color: var(--fs-muted); margin-bottom: 4px; }
+    .field .f-help { font-size: 10px; color: var(--fs-faint); margin-top: 3px; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .toggle-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 8px 12px; background: var(--fs-input-bg); border: 1px solid var(--fs-border); border-radius: 12px;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      padding: 8px 10px; background: var(--fs-input); border: 1px solid var(--fs-line); border-radius: 10px;
     }
-    .toggle-row span { font-size: 12px; }
+    .toggle-row span { font-size: 11px; color: var(--fs-muted); }
     .switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
     .switch input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute; cursor: pointer; inset: 0;
-      background: var(--fs-surface); border: 1px solid var(--fs-border);
-      border-radius: 999px; transition: .2s;
-    }
-    .slider:before {
-      content: ""; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px;
-      background: var(--fs-fg); border-radius: 50%; transition: .2s;
-    }
-    .switch input:checked + .slider { background: var(--fs-blue); border-color: var(--fs-blue); }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: color-mix(in srgb, var(--fs-fg) 10%, transparent); border: 1px solid var(--fs-line); border-radius: var(--fs-pill); transition: .2s; }
+    .slider:before { content: ""; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: var(--fs-fg); border-radius: 50%; transition: .2s; }
+    .switch input:checked + .slider { background: var(--fs-accent); border-color: var(--fs-accent); }
     .switch input:checked + .slider:before { transform: translateX(14px); background: #fff; }
-
-    .settings-fold { padding: 0; overflow: hidden; }
-    .settings-fold > summary { padding: 11px; color: var(--fs-fg); font-size: 12px; }
-    .settings-fold .settings-inner { padding: 0 11px 11px; border-top: 1px solid var(--fs-border); }
-    .settings-fold .settings-title { display: none; }
-
-    .foot-note {
-      font-size: 10.5px; color: var(--fs-fg-faint); text-align: center; margin-top: 10px;
-    }
-    .toast { font-size: 11.5px; font-weight: 600; color: #34d399; }
-    .toast.err { color: #f87171; }
-
-    /* ── Interface v2 : panneau de travail compact, sans tableau de bord chargé. ── */
-    :root {
-      --v2-canvas: color-mix(in srgb, var(--fs-bg) 94%, #020617);
-      --v2-card: color-mix(in srgb, var(--fs-card) 94%, var(--fs-bg));
-      --v2-input: color-mix(in srgb, var(--fs-fg) 5%, var(--fs-bg));
-      --v2-line: color-mix(in srgb, var(--fs-fg) 12%, transparent);
-      --v2-line-soft: color-mix(in srgb, var(--fs-fg) 7%, transparent);
-      --v2-muted: color-mix(in srgb, var(--fs-fg) 61%, transparent);
-      --v2-faint: color-mix(in srgb, var(--fs-fg) 42%, transparent);
-      --v2-accent: #4f8cff;
-      --v2-accent-soft: color-mix(in srgb, var(--v2-accent) 16%, transparent);
-      --v2-radius: 14px;
-      --v2-radius-sm: 10px;
-    }
-    html, body { min-height: 100%; }
-    body {
-      padding: 12px;
-      background:
-        radial-gradient(440px 260px at 110% -12%, rgba(35, 126, 255, .26), transparent 66%),
-        linear-gradient(156deg, #102755 0%, #08142e 29%, #040914 67%, #02040a 100%) !important;
-      font-size: 12px;
-      letter-spacing: 0;
-      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-    }
-    button, input, select, textarea { font-family: inherit; }
-    button { -webkit-tap-highlight-color: transparent; }
-    .tabs {
-      position: sticky; top: 0; z-index: 4;
-      grid-template-columns: minmax(0, 1fr) minmax(90px, .72fr);
-      gap: 2px; padding: 3px; margin: 0 0 14px;
-      background: color-mix(in srgb, var(--v2-card) 88%, var(--v2-canvas));
-      border: 1px solid var(--v2-line); border-radius: 11px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, .12);
-    }
-    .tab-btn {
-      min-height: 32px; padding: 6px 9px; border-radius: 8px;
-      color: var(--v2-muted); font-size: 11.5px; font-weight: 650;
-    }
-    .tab-btn:hover { background: color-mix(in srgb, var(--fs-fg) 5%, transparent); color: var(--fs-fg); }
-    .tab-btn.on { background: var(--v2-accent-soft); color: var(--fs-fg); box-shadow: none; }
-    .tab-btn.on .ico { color: var(--v2-accent); }
-    .view { min-width: 0; }
-
-    .warnbox {
-      margin: 0 0 12px; padding: 11px; border-radius: var(--v2-radius);
-      background: color-mix(in srgb, var(--fs-warn) 9%, var(--v2-card));
-      border-color: color-mix(in srgb, var(--fs-warn) 34%, transparent);
-    }
-    .warn-ico { width: 28px; height: 28px; }
-    .warn-title { font-size: 12px; }
-    .warn-sub { font-size: 10.5px; }
-
-    .hero {
-      padding: 14px; margin: 0 0 10px; border-radius: var(--v2-radius);
-      background:
-        linear-gradient(145deg, rgba(42, 126, 255, .20), rgba(10, 25, 57, .72) 42%, rgba(4, 8, 18, .92)),
-        var(--v2-card);
-      border-color: var(--v2-line);
-      box-shadow: 0 8px 26px rgba(0, 0, 0, .09);
-    }
-    .hero-top { margin-bottom: 14px; }
-    .brand { gap: 9px; }
-    .brand-logo { width: 26px; height: 26px; border-radius: 8px; }
-    .hero h1 { font-size: 13px; letter-spacing: -.01em; }
-    .badge { padding: 2px 5px; font-size: 8.5px; background: color-mix(in srgb, var(--v2-accent) 78%, #242f5e); }
-    .status-pill { padding: 4px 8px; border: 1px solid var(--v2-line-soft); background: color-mix(in srgb, var(--fs-fg) 4%, transparent); font-size: 10px; }
-    .status-pill.on { background: color-mix(in srgb, var(--fs-ok) 10%, transparent); border-color: color-mix(in srgb, var(--fs-ok) 24%, transparent); }
-    .qrow { margin-bottom: 7px; font-size: 10.5px; color: var(--v2-muted); text-transform: uppercase; letter-spacing: .055em; }
-    .pct-val { font-size: 17px; color: var(--fs-fg); letter-spacing: -.035em; }
-    .gauge-wrap { padding-bottom: 13px; }
-    .gauge { height: 5px; background: color-mix(in srgb, var(--fs-fg) 9%, transparent); }
-    .gauge > div { background: var(--v2-accent); }
-    .cutoff-line { width: 1px; height: 10px; }
-    .cutoff-lbl { font-size: 8px; letter-spacing: .02em; }
-    .meta { font-size: 10px; color: var(--v2-faint); }
-    .efficiency { margin-top: 12px; padding-top: 10px; border-top-color: var(--v2-line-soft); }
-    .efficiency > summary, .settings-fold > summary, .history-fold > summary {
-      font-size: 10px; font-weight: 700; letter-spacing: .055em; text-transform: uppercase; color: var(--v2-muted);
-    }
-    .efficiency > summary::after, .settings-fold > summary::after, .history-fold > summary::after { color: var(--v2-faint); }
-    .efficiency-grid { gap: 9px; margin-top: 10px; }
-    .eff-label { font-size: 8.5px; letter-spacing: .07em; }
-    .eff-value { font-size: 11px; font-weight: 650; }
-    .session-actions { gap: 7px; margin-top: 10px; }
-    .session-actions .btn { min-height: 28px; padding: 4px 8px; }
-
-    .seg {
-      margin: 0 0 10px; padding: 3px; border-radius: 10px;
-      background: color-mix(in srgb, var(--v2-card) 90%, var(--v2-canvas)); border-color: var(--v2-line);
-    }
-    .seg button { min-height: 32px; padding: 5px 8px; font-size: 11px; border-radius: 7px; }
-    .seg button.on { background: var(--v2-accent-soft); color: var(--fs-fg); }
-    .seg button.on .ico { color: var(--v2-accent); }
-    .seg button span.sub-txt { color: var(--v2-faint); font-size: 9.5px; }
-    .seg button.on span.sub-txt { color: var(--v2-muted); }
-
-    .composer, .settings-card {
-      padding: 12px; margin: 0 0 12px; border-radius: var(--v2-radius);
-      background: var(--v2-card); border-color: var(--v2-line);
-      box-shadow: 0 7px 22px rgba(0, 0, 0, .06);
-    }
-    textarea, select, input[type="text"], input[type="password"], input[type="number"] {
-      padding: 9px 10px; border-radius: var(--v2-radius-sm); border-color: var(--v2-line);
-      background: var(--v2-input); font-size: 11.5px;
-    }
-    textarea {
-      min-height: 92px; margin: 0 0 9px; line-height: 1.52; resize: vertical;
-      background: color-mix(in srgb, var(--v2-input) 82%, var(--v2-card));
-    }
-    textarea:focus, input:focus, select:focus { border-color: var(--v2-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--v2-accent) 15%, transparent); }
-    .tier-row { gap: 5px; margin-bottom: 9px; }
-    .chip { min-height: 27px; padding: 4px 8px; border-radius: 8px; background: transparent; border-color: var(--v2-line); color: var(--v2-muted); font-size: 10.5px; }
-    .chip:hover { background: color-mix(in srgb, var(--fs-fg) 4%, transparent); border-color: color-mix(in srgb, var(--fs-fg) 22%, transparent); }
-    .chip.on { background: var(--v2-accent-soft); border-color: color-mix(in srgb, var(--v2-accent) 54%, transparent); color: var(--fs-fg); }
-    .chip-cnt { background: color-mix(in srgb, var(--fs-fg) 9%, transparent); }
-    .actions { min-height: 31px; gap: 7px; }
-    .btn { min-height: 31px; padding: 6px 11px; border-radius: 9px; background: var(--v2-accent); font-size: 11px; box-shadow: none; }
-    .btn:hover { filter: brightness(1.08); }
-    .btn:disabled, .chip:disabled { opacity: .46; cursor: not-allowed; filter: none; }
-    .btn.ghost { background: transparent; border-color: var(--v2-line); color: var(--v2-muted); }
-    .btn.ghost:hover { color: var(--fs-fg); background: color-mix(in srgb, var(--fs-fg) 5%, transparent); }
-    .btn.danger { color: #ffb4b4; }
-    .kbd-hint { color: var(--v2-faint); font-size: 9.5px; }
-    kbd { background: color-mix(in srgb, var(--fs-fg) 8%, transparent); border: 1px solid var(--v2-line-soft); }
-
-    .popover { padding: 7px; border-radius: 12px; border-color: var(--v2-line); background: var(--v2-card); box-shadow: 0 16px 36px rgba(0, 0, 0, .32); }
-    .pop-head { color: var(--v2-muted); }
-    .pop-item { border-radius: 7px; color: var(--fs-fg); }
-    .pop-item:hover { background: color-mix(in srgb, var(--fs-fg) 5%, transparent); }
-    .pop-prov { background: color-mix(in srgb, var(--fs-fg) 7%, transparent); color: var(--v2-muted); }
-
-    .sec-head { margin: 18px 2px 7px; }
-    .sec-title { color: var(--v2-muted); font-size: 9.5px; letter-spacing: .08em; }
-    .cnt { min-width: 19px; padding: 1px 6px; text-align: center; background: color-mix(in srgb, var(--fs-fg) 8%, transparent); color: var(--v2-muted); }
-    .empty-txt { padding: 14px 2px; color: var(--v2-faint); font-size: 11px; }
-    .job-card { padding: 10px; margin-bottom: 7px; border-radius: var(--v2-radius-sm); border-color: var(--v2-line); background: var(--v2-card); }
-    .job-top { margin-bottom: 8px; }
-    .tag { padding: 2px 5px; background: color-mix(in srgb, var(--v2-accent) 70%, #273266); font-size: 8px; }
-    .job-title { font-size: 11.5px; }
-    .model-pill { background: color-mix(in srgb, var(--fs-fg) 7%, transparent); color: var(--v2-muted); font-size: 9.5px; }
-    .pbar { height: 3px; margin-bottom: 7px; background: color-mix(in srgb, var(--fs-fg) 8%, transparent); }
-    .pbar > div { background: var(--v2-accent); }
-    .job-meta { font-size: 10px; color: var(--v2-muted); }
-    .term { padding: 6px 8px; border-radius: 7px; background: color-mix(in srgb, var(--fs-fg) 4%, transparent); color: var(--v2-muted); font-size: 10px; }
-    .refusal-note {
-      margin-top: 7px; padding: 5px 7px; border-radius: 7px;
-      background: color-mix(in srgb, var(--fs-warn) 10%, transparent);
-      border: 1px solid color-mix(in srgb, var(--fs-warn) 23%, transparent);
-      color: color-mix(in srgb, var(--fs-warn) 78%, var(--fs-fg));
-      font-size: 9.5px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .review-note {
-      margin-top: 7px; padding: 7px 8px; border-radius: 8px;
-      background: color-mix(in srgb, var(--v2-accent) 9%, transparent);
-      border: 1px solid color-mix(in srgb, var(--v2-accent) 24%, transparent);
-      color: var(--v2-muted); font-size: 10px; line-height: 1.4;
-    }
-    .review-actions { display: flex; gap: 6px; margin-top: 7px; }
-    .review-actions .btn { min-height: 26px; padding: 4px 8px; font-size: 10px; }
-    .diagnostic-body { margin-top: 8px; color: var(--v2-muted); font-size: 10.5px; white-space: pre-wrap; }
-
-    .history-fold { margin-top: 14px; border-radius: var(--v2-radius); border-color: var(--v2-line); background: var(--v2-card); }
-    .history-fold > summary { padding: 11px 12px; }
-    .history-body { padding: 0 9px 9px; }
-    .hist-list { border-top-color: var(--v2-line-soft); }
-    .hist-item { padding: 9px 4px; border-bottom-color: var(--v2-line-soft); }
-    .hist-item:hover { background: color-mix(in srgb, var(--fs-fg) 3%, transparent); }
-    .hist-title { font-size: 11px; }
-    .hist-sub, .hist-time { color: var(--v2-faint); font-size: 9.5px; }
-    .hist-tok { color: var(--v2-muted); font-size: 10px; }
-    .hist-detail { border-radius: 8px; background: color-mix(in srgb, var(--fs-fg) 4%, transparent); font-size: 10px; }
-    .foot-note { margin: 15px 0 3px; color: var(--v2-faint); font-size: 9.5px; }
-
-    #tab-settings { padding-bottom: 12px; }
-    .settings-card { box-shadow: none; }
-    .settings-title { margin-bottom: 11px; font-size: 12px; }
-    .field { margin-bottom: 10px; }
-    .field label { color: var(--v2-muted); font-size: 10.5px; }
-    .field .f-help { color: var(--v2-faint); }
-    .toggle-row { min-height: 43px; padding: 8px 9px; background: var(--v2-input); border-color: var(--v2-line); border-radius: 9px; }
-    .toggle-row span { color: var(--v2-muted); font-size: 10.5px; }
-    .settings-fold > summary { padding: 11px 12px; color: var(--v2-muted); }
-    .settings-fold .settings-inner { border-top-color: var(--v2-line-soft); }
-    .toast { color: #5ee7ad; font-size: 10.5px; }
-    .toast.err { color: #ff9b9b; }
     .secret-control { position: relative; }
-    .secret-control input { padding-right: 40px; }
+    .secret-control input { padding-right: 38px; }
     .eye-btn {
       position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
-      width: 30px; height: 30px; display: grid; place-items: center;
-      border: 0; border-radius: 8px; background: transparent; color: var(--v2-muted); cursor: pointer;
+      width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 7px;
+      background: transparent; color: var(--fs-muted); cursor: pointer;
     }
     .eye-btn:hover { color: var(--fs-fg); background: color-mix(in srgb, var(--fs-fg) 6%, transparent); }
-    .mcp-note { margin: 10px 0 0; color: var(--v2-faint); font-size: 10px; line-height: 1.45; }
-    .mcp-compact { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-    .mcp-cell { padding: 8px 9px; border: 1px solid var(--v2-line-soft); border-radius: 9px; background: color-mix(in srgb, var(--fs-fg) 3%, transparent); }
-    .mcp-cell strong { display: block; color: var(--fs-fg); font-size: 10.5px; font-weight: 650; }
-    .mcp-cell span { display: block; margin-top: 2px; color: var(--v2-faint); font-size: 9.5px; }
-
-    @media (max-width: 310px) {
-      body { padding: 9px; }
-      .tab-btn { font-size: 10.5px; }
-      .seg button span.sub-txt { display: none; }
-      .actions .kbd-hint { display: none; }
+    .settings-fold { padding: 0; overflow: hidden; }
+    .settings-fold > summary {
+      padding: 11px 12px; color: var(--fs-muted); cursor: pointer; list-style: none; user-select: none;
+      font-size: 11px; font-weight: 700; display: flex; justify-content: space-between; align-items: center;
     }
+    .settings-fold > summary::-webkit-details-marker { display: none; }
+    .settings-fold > summary::after { content: '⌄'; color: var(--fs-faint); transition: transform .16s; }
+    .settings-fold[open] > summary::after { transform: rotate(180deg); }
+    .settings-inner { padding: 0 12px 12px; border-top: 1px solid var(--fs-line-soft); padding-top: 10px; }
+    .diagnostic-body { margin-top: 8px; color: var(--fs-muted); font-size: 10.5px; white-space: pre-wrap; }
+    .toast { font-size: 10.5px; font-weight: 600; color: #5ee7ad; }
+    .toast.err { color: #ff9b9b; }
+    .foot-note { font-size: 10px; color: var(--fs-faint); text-align: center; margin: 10px 0 2px; }
   </style>
 </head>
 <body>
@@ -555,15 +377,26 @@
   <div class="tabs">
     <button class="tab-btn on" data-tab="dash">
       <svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>
-      Tableau de bord
+      <span>Accueil</span>
+    </button>
+    <button class="tab-btn" data-tab="models">
+      <svg class="ico" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      <span>Modèles</span>
+      <span class="tab-badge" id="tabModelsCnt">—</span>
+      <span class="tab-dot" id="tabModelsNew" hidden title="Nouveau modèle récent"></span>
+    </button>
+    <button class="tab-btn" data-tab="logs">
+      <svg class="ico" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span>Journal</span>
+      <span class="tab-badge err" id="tabErrBadge" hidden>0</span>
     </button>
     <button class="tab-btn" data-tab="settings">
       <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.79 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      Paramètres
+      <span>Réglages</span>
     </button>
   </div>
 
-  <!-- TAB 1: DASHBOARD -->
+  <!-- TAB 1: ACCUEIL -->
   <div id="tab-dash" class="view">
     <div id="nokey" class="warnbox" hidden>
       <div class="warn-left">
@@ -572,13 +405,13 @@
         </div>
         <div>
           <div class="warn-title">Aucun identifiant API configuré</div>
-          <div class="warn-sub">Configure ton jeton France Student.</div>
+          <div class="warn-sub">Configure ton jeton France Student dans Réglages.</div>
         </div>
       </div>
       <button class="btn sm" id="openCfg">Configurer</button>
     </div>
 
-    <div class="hero">
+    <div class="card hero">
       <div class="hero-top">
         <div class="brand">
           <img class="brand-logo" alt="France Student" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASzSURBVGhD7VhbjF1jFP6m1dZdoo2G0NaYurTSqHPO3mudkRiioWlKCEGlLuGJEiIRlxeJNwkRqTQVjBAVE52aObP/9Z/21GSIoYJU6INbiw6pUGXKVMt0ZK2953bOmenLXM7D/pL1cvbeZ3/f/r/1r7V+IEWKFClSpEhRBcuKJyGI1iDouAncfUL55VpFnZFldzlI3gfLf2B/BCwlUDFEU+fxdk9NQskF0fmg6HWQ/AWWgZi8CRgAu16E7kVkO+qx0s0pf3z6sKRlNoLiuWB5DOT2xWTlX7DrActrYNkElp/j1bBre0HRQ8i0L0Bm46zyv5tCDMxAxp8J9reD5bOYtBwFy+9gvwWhv8LygP3p4ML1IBGQ/DG0MiQ7EMotCNvmA0/OKP/3yUQdQncqAr8K7Apg+dOIkxwGy3sgdxsyhXnAgN53Nsg9AXIbQO2XIpC7Qe4jsKitjoLdAZBsRhitQGPbKeUvmnjokoeyDOReActPZgty/SD3NUL/IEgW2crYvYV5YFkPloNg+Qfk3kTQOhfc1oBQHgXJbrD028qR/AjyG0DbLkJT53Hlr50YZD6ZhdDfB3J7jBB7/eq/gqIXwIUL0eDmgPzjCISNfChPJ6ujvtck7gNFz5qtNOFzfinYvRxbzmx1CCzfguSOyRHBLbo9qmWUkL5su3k451bbFqlJyfJ5ksiaE38Pkx+KPrDvQl5ythpqG9tyXWf8USyHNqGpWbfbCYYK0ESMiXSD/FUJURXTl2ydgzuNEiknPxj9thr6tdlfg6A0F2FhMVg+teskbyX1YoIxSoDvQrZUH3tcyfjxCI8XmgMlBFEWLDumVkBYmm8FKV+8ESzfH+OrjxW9yMu9aDT7TYOAQZBcm1ipnOAxwv2ArFuO3DvnTK+AzLbTwO6LSoJjhe1gWtQ2WqGbdgEKcivNEhVkq4ZW4qdMuKImBOhL456nnGxlkOsFddyAJV/OtmdrQkC4dTHIWoRKwpWhK7DTeilFbQjwa6sQHS9+Q7Z4sT1bEwLYvVqF5FihSbzLqrFi2gUsalb/f1OF6Hjxi80RiqkXIN1o3LZgqI8P/XXDU1jV0CKnVXfEb9rcyTPxFtzWMDWtBEcdCYFDIO9AUWjdpSYjyUvW38eDzUjy2krvAkkrSHrATps8/W0f2K9D4K4Eu+1DHa41c5MhQNtpcveDZQ/IHR5up+V5ZOUCE6K1gNzbcaNmheoIyG81q2iLvHzzwuQ/1iNw65K5Yv+QUHbfIfR3TU47rVARuegSkCVsPOfGA81XIHkA+WihtcIZdx4ougfsnrP+XlfP0DITl5XqQe4RULQblAw0OidrVc61L5088sOoM9+SWw0WtVQ8UsZfsAuB3Gotsh2faI5oDNQh33oGSO4EuQ+HR0p/AOy2IJCrp2akHIWWmWhsOysmJTtHDPX7ze86qGQKJ5q1wuIKkA5DSljtYkctH4OjNfFuNrVD/WgMHqvo8M5eE1NF6Jy7FyTNIPdGYrfB5O5B6B42u03vsUoZ1OeazEqYhsbJEQdbchChzsBtDZMzMk4M6sw2eiZE8kEyYupqvItcRz5J5ho9WixHU+fJCKO1IHeziUqRIkWKFClSVOJ/3Vji70GskJcAAAAASUVORK5CYII=" />
@@ -586,65 +419,71 @@
         </div>
         <span class="status-pill" id="connPill"><span class="dot"></span><span id="connTxt">Chargement…</span></span>
       </div>
+
       <div class="qrow"><span>Budget chat restant</span><span class="pct-val" id="pct">—</span></div>
-      <div class="gauge-wrap" id="gauge" title="Actualisé automatiquement (clic pour forcer)">
+      <div class="gauge-wrap" id="gauge" title="Actualiser le quota (clic)">
         <div class="gauge" id="gaugeBar"><div id="bar"></div></div>
-        <div class="cutoff-tick" id="cutoffTick" style="left: 0%">
+        <div class="cutoff-tick" id="cutoffTick" style="left: 15%">
           <div class="cutoff-line"></div>
-          <div class="cutoff-lbl" id="cutoffNum">—</div>
+          <div class="cutoff-lbl" id="cutoffNum">15</div>
         </div>
       </div>
       <div class="meta">
         <span id="qtxt">Chargement…</span>
-        <span id="metaRight">Coupe-circuit : <b id="cutoff">—</b></span>
+        <span>Coupe-circuit : <b id="cutoff">—</b></span>
       </div>
-      <details class="efficiency" aria-label="Efficacité du contexte">
-        <summary><span>Contexte &amp; session</span><span id="contextModeLabel">Chargement…</span></summary>
-        <div class="efficiency-grid">
-          <div class="eff-item"><div class="eff-label">Flux partagés</div><div class="eff-value" id="slotsLabel">—</div></div>
-          <div class="eff-item"><div class="eff-label">Compaction</div><div class="eff-value" id="contextUsageLabel">—</div></div>
-          <div class="eff-item" style="grid-column: 1 / -1"><div class="eff-label">Session directe</div><div class="eff-value" id="sessionLabel">Chargement…</div></div>
+
+      <div class="hero-pills">
+        <div class="synth-pill" id="profilePill">Profil : <strong>Qualité (fort)</strong></div>
+        <div class="synth-pill" id="savingsPill">Éco. ATG : <strong>0 tok</strong></div>
+      </div>
+
+      <div class="auto-box">
+        <div class="auto-head">
+          <span>Utilisation Antigravity</span>
         </div>
-        <div class="session-actions">
-          <button class="btn ghost" id="compactSessionBtn" title="Résume le contexte côté France Student">Compacter</button>
-          <button class="btn ghost" id="newSessionBtn" title="La prochaine demande repartira dans un chat neuf">Nouvelle session</button>
+        <div class="seg" id="autoDelegateSeg">
+          <button type="button" data-auto="true" class="on">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Automatique
+          </button>
+          <button type="button" data-auto="false">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            Manuel
+          </button>
         </div>
-      </details>
+        <div class="auto-desc" id="autoDelegateDesc">Prioritaire par défaut : délègue les tâches de code pour économiser Antigravity.</div>
+      </div>
+
+      <div class="ro-note">
+        <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Lecture seule · aucune écriture directe sur le PC
+      </div>
     </div>
 
-    <div class="seg" id="mode">
-      <button data-mode="eco">
-        <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
-        Éco <span class="sub-txt">· séquentiel</span>
-      </button>
-      <button data-mode="fast">
-        <svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        Rapide <span class="sub-txt">· multi</span>
-      </button>
-    </div>
-
-    <div class="composer">
-      <textarea id="task" placeholder="Décris la tâche à déléguer…"></textarea>
+    <div class="card">
+      <textarea id="task" placeholder="Écris une demande simple (ex : écris une fonction JS qui trie ce tableau)…"></textarea>
       <div class="tier-row" id="tierRow">
         <button class="chip on" data-choice="">
           <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-          Auto
-        </button>
-        <button class="chip" data-choice="tier:light" data-tier="light">
-          Modèle faible <span class="chip-cnt" id="cnt-light">—</span>
-        </button>
-        <button class="chip" data-choice="tier:medium" data-tier="medium">
-          Modèle équilibré <span class="chip-cnt" id="cnt-medium">—</span>
+          Auto (Fort ★)
         </button>
         <button class="chip" data-choice="tier:heavy" data-tier="heavy">
-          Modèle fort <span class="chip-cnt" id="cnt-heavy">—</span>
+          Fort <span class="chip-cnt" id="cnt-heavy">—</span>
+        </button>
+        <button class="chip" data-choice="tier:medium" data-tier="medium">
+          Équilibré <span class="chip-cnt" id="cnt-medium">—</span>
+        </button>
+        <button class="chip" data-choice="tier:light" data-tier="light">
+          Léger <span class="chip-cnt" id="cnt-light">—</span>
         </button>
       </div>
       <div class="actions">
         <button class="btn" id="go">
-          Déléguer
+          Envoyer
           <svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
+        <button class="btn ghost sm" id="newSessionQuickBtn" title="Repartir sur une nouvelle session propre">Nouvelle session</button>
         <span class="toast" id="toast"></span>
         <span class="spacer"></span>
         <span class="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Entrée</kbd></span>
@@ -652,29 +491,57 @@
     </div>
 
     <div id="tierPopover" class="popover" hidden>
-      <div class="pop-head"><span id="popTitle">Modèles</span><span id="popSub">Clic pour forcer</span></div>
+      <div class="pop-head"><span id="popTitle">Modèles</span><span id="popSub">Clic pour choisir</span></div>
       <div id="popList"></div>
     </div>
 
-    <div class="sec-head">
-      <div class="sec-title">Agents actifs <span class="cnt" id="activeCount">—</span></div>
-    </div>
-    <div id="active"></div>
-
-    <details class="history-fold">
-      <summary><span>Historique <span class="cnt" id="historyCount">—</span></span><span>Voir</span></summary>
-      <div class="history-body">
-        <div class="history-actions"><button class="link-btn" id="clearHistory" hidden>Tout effacer</button></div>
-        <div id="history"></div>
+    <div id="activeSection" hidden>
+      <div class="sec-head">
+        <div class="sec-title">En cours <span class="cnt" id="activeCount">0</span></div>
       </div>
-    </details>
+      <div id="active"></div>
+    </div>
 
-    <div class="foot-note">Les commandes France Student sont disponibles dans le chat Antigravity.</div>
+    <div class="sec-head">
+      <div class="sec-title">Historique récent <span class="cnt" id="historyCount">0</span></div>
+      <button class="link-btn" id="clearHistory" hidden>Tout effacer</button>
+    </div>
+    <div id="history"></div>
+
+    <div class="foot-note">Maintiens un niveau pour choisir un modèle · /logs en cas d’erreur</div>
   </div>
 
-  <!-- TAB 2: SETTINGS (ARRONDIES) -->
+  <!-- TAB 2: MODÈLES -->
+  <div id="tab-models" class="view" hidden>
+    <div class="toolbar">
+      <input type="text" id="modelSearch" placeholder="Filtrer par nom, ID ou fournisseur…" />
+      <button class="btn ghost sm" id="refreshModelsBtn" title="Actualiser le catalogue">Actualiser</button>
+    </div>
+    <div class="sec-head" style="margin-top:4px">
+      <div class="sec-title">Modèles disponibles <span class="cnt" id="modelsTotalCnt">0</span></div>
+      <span style="font-size:10px;color:var(--fs-faint)" id="modelsNewCnt"></span>
+    </div>
+    <div id="modelList" class="model-list"></div>
+  </div>
+
+  <!-- TAB 3: JOURNAL -->
+  <div id="tab-logs" class="view" hidden>
+    <div class="toolbar">
+      <div class="seg-sm" id="logFilterSeg">
+        <button type="button" data-level="all" class="on">Tout</button>
+        <button type="button" data-level="error">Erreurs</button>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" id="refreshLogsBtn">Actualiser</button>
+      <button class="btn ghost sm" id="copyLogsBtn">Copier</button>
+      <button class="btn danger sm" id="clearLogsBtn">Vider</button>
+    </div>
+    <div id="logList" class="log-list"></div>
+  </div>
+
+  <!-- TAB 4: RÉGLAGES -->
   <div id="tab-settings" class="view" hidden>
-    <div class="settings-card">
+    <div class="card">
       <div class="settings-title">
         <svg class="ico" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
         Connexion France Student
@@ -696,33 +563,48 @@
       </div>
     </div>
 
-    <details class="settings-card settings-fold">
-      <summary>Connecteur &amp; mesure</summary>
-      <div class="settings-inner">
-        <div class="mcp-compact">
-          <div class="mcp-cell"><strong id="mcpTransport">MCP local</strong><span id="mcpTools">Chargement…</span></div>
-          <div class="mcp-cell"><strong>Quota Antigravity</strong><span>Mesure manuelle</span></div>
-        </div>
-        <p class="mcp-note">Le connecteur ne lit jamais le quota Antigravity. Utilise <code>/usage</code> avant et après une même tâche ; les tokens France Student ne sont pas un proxy.</p>
-      </div>
-    </details>
-
-    <div class="settings-card">
+    <div class="card">
       <div class="settings-title">
         <svg class="ico" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-        Limites &amp; Outils
+        Comportement essentiel
+      </div>
+      <div class="field">
+        <label>Activation dans Antigravity</label>
+        <div class="seg" id="settingsAutoSeg">
+          <button type="button" data-auto="true" class="on">Automatique</button>
+          <button type="button" data-auto="false">Manuel</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Profil de routage par défaut</label>
+        <select id="routingProfileInput" disabled>
+          <option value="quality">Qualité — Modèles forts (recommandé)</option>
+          <option value="eco">Éco — Modèles légers</option>
+          <option value="fast">Rapide — Latence minimale</option>
+          <option value="security">Sécurité — Modèles forts</option>
+          <option value="refactor">Refonte — Modèles forts</option>
+        </select>
       </div>
       <div class="grid-2">
         <div class="field">
-          <label>Coupe-circuit (%)</label>
-          <div style="display:flex;gap:6px;align-items:center">
-            <input type="number" id="cutoffInput" min="0" max="90" value="" placeholder="—" disabled />
-            <button type="button" class="btn ghost sm" id="useAllBtn" title="Désactiver la réserve (0 %)" disabled>Tout utiliser</button>
+          <label>Exécution locale</label>
+          <div class="seg" id="mode">
+            <button type="button" data-mode="eco">Éco</button>
+            <button type="button" data-mode="fast">Rapide</button>
           </div>
         </div>
         <div class="field">
-          <label>Agents parallèles</label>
-          <input type="number" id="maxParallelInput" min="1" max="6" value="" placeholder="—" disabled />
+          <label>Coupe-circuit (%)</label>
+          <div style="display:flex;gap:5px;align-items:center">
+            <input type="number" id="cutoffInput" min="0" max="90" value="" placeholder="—" disabled />
+            <button type="button" class="btn ghost sm" id="useAllBtn" title="Désactiver la réserve (0 %)" disabled>0 %</button>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <div class="toggle-row">
+          <span>Conserver la session de chat (compaction auto)</span>
+          <label class="switch"><input type="checkbox" id="reuseChatInput" disabled /><span class="slider"></span></label>
         </div>
       </div>
       <div class="field">
@@ -731,88 +613,59 @@
           <label class="switch"><input type="checkbox" id="showReasoningInput" disabled /><span class="slider"></span></label>
         </div>
       </div>
-      <div class="field">
-        <div class="toggle-row">
-          <span>Outils client natifs (<code>clientTools</code>)</span>
-          <label class="switch"><input type="checkbox" id="useClientToolsInput" disabled /><span class="slider"></span></label>
-        </div>
-      </div>
-      <div class="field">
-        <div class="toggle-row">
-          <span>Chat direct persistant (contexte compacté automatiquement)</span>
-          <label class="switch"><input type="checkbox" id="reuseChatInput" disabled /><span class="slider"></span></label>
-        </div>
-      </div>
-      <div class="field">
-        <label>Compacter le contexte à partir de (%)</label>
-        <input type="number" id="contextCompactInput" min="50" max="95" value="" placeholder="—" disabled />
-      </div>
-      <div class="field">
-        <label>Contexte envoyé par défaut</label>
-        <select id="contextModeInput" disabled>
-          <option value="" selected>Chargement…</option>
-          <option value="minimal">Minimal — seulement la demande</option>
-          <option value="targeted">Ciblé — chemins choisis</option>
-          <option value="smart">Intelligent — petit plan de fichiers</option>
-        </select>
-        <div class="f-help">Minimal économise le plus de tokens. Le modèle lit ensuite seulement les lignes nécessaires.</div>
-      </div>
-      <div class="field">
-        <label>Profil de routage par défaut</label>
-        <select id="routingProfileInput" disabled>
-          <option value="eco">Éco — privilégie les modèles légers</option>
-          <option value="fast">Rapide — latence minimale</option>
-          <option value="quality">Qualité — modèles plus capables</option>
-          <option value="security">Sécurité — analyse approfondie</option>
-          <option value="refactor">Refonte — analyse approfondie</option>
-        </select>
-        <div class="f-help">Une commande ponctuelle comme <code>/security</code> ne modifie pas ce choix.</div>
+      <div class="actions">
+        <button type="button" class="btn ghost sm" id="compactSessionBtn">Compacter la session</button>
+        <button type="button" class="btn sm" id="saveEssentialBtn" disabled>Enregistrer</button>
+        <span class="toast" id="essentialToast"></span>
       </div>
     </div>
 
-    <details class="settings-card settings-fold">
-      <summary>Modèles &amp; restrictions</summary>
+    <details class="card settings-fold">
+      <summary>Avancé &amp; Diagnostic</summary>
       <div class="settings-inner">
-        <div class="settings-title">
-        <svg class="ico" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-        Catégories de modèles (Claude &amp; ChatGPT)
-      </div>
-      <div class="field">
-        <label>Modèle faible (légers)</label>
-        <input type="text" id="tierLightInput" placeholder="Chargement…" disabled />
-      </div>
-      <div class="field">
-        <label>Modèle équilibré (intermédiaires)</label>
-        <input type="text" id="tierMediumInput" placeholder="Chargement…" disabled />
-      </div>
-      <div class="field">
-        <label>Modèle fort (puissants)</label>
-        <input type="text" id="tierHeavyInput" placeholder="Chargement…" disabled />
-      </div>
-      <div class="grid-2">
-        <div class="field">
-          <label>Autorisés</label>
-          <input type="text" id="allowedInput" placeholder="Chargement…" disabled />
+        <div class="grid-2">
+          <div class="field">
+            <label>Agents parallèles</label>
+            <input type="number" id="maxParallelInput" min="1" max="6" value="" placeholder="—" disabled />
+          </div>
+          <div class="field">
+            <label>Seuil compaction (%)</label>
+            <input type="number" id="contextCompactInput" min="50" max="95" value="" placeholder="—" disabled />
+          </div>
         </div>
         <div class="field">
-          <label>Interdits</label>
-          <input type="text" id="blockedInput" placeholder="Chargement…" disabled />
+          <label>Mots-clés classe faible</label>
+          <input type="text" id="tierLightInput" placeholder="Chargement…" disabled />
         </div>
-      </div>
-      <div class="actions">
-        <button class="btn sm" id="saveSettingsBtn" disabled>Appliquer</button>
-        <span class="toast" id="orchToast"></span>
-      </div>
-      </div>
-    </details>
-    <details class="settings-card settings-fold" id="diagnosticsFold">
-      <summary>Diagnostic vérifié</summary>
-      <div class="settings-inner">
-        <div class="f-help">Teste le trousseau, l’API, les modèles, le quota, la session et les créneaux. Aucune clé n’est affichée.</div>
-        <div class="actions" style="margin-top:9px">
-          <button class="btn ghost sm" id="diagnosticsBtn">Lancer le diagnostic</button>
+        <div class="field">
+          <label>Mots-clés classe équilibrée</label>
+          <input type="text" id="tierMediumInput" placeholder="Chargement…" disabled />
         </div>
-        <div class="diagnostic-body" id="diagnosticsBody">Lance le diagnostic pour obtenir des données vérifiées.</div>
+        <div class="field">
+          <label>Mots-clés classe forte</label>
+          <input type="text" id="tierHeavyInput" placeholder="Chargement…" disabled />
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Autorisés</label>
+            <input type="text" id="allowedInput" placeholder="Vide = tous" disabled />
+          </div>
+          <div class="field">
+            <label>Interdits</label>
+            <input type="text" id="blockedInput" placeholder="Ex: fable" disabled />
+          </div>
+        </div>
+        <div class="actions" style="margin-bottom:12px">
+          <button class="btn sm" id="saveSettingsBtn" disabled>Appliquer</button>
+          <span class="toast" id="orchToast"></span>
+        </div>
+
+        <div style="border-top:1px solid var(--fs-line-soft);padding-top:10px">
+          <div class="actions">
+            <button class="btn ghost sm" id="diagnosticsBtn">Lancer le diagnostic</button>
+          </div>
+          <div class="diagnostic-body" id="diagnosticsBody">Vérifie le trousseau, l’API, les modèles et le quota. Utilise <code>/usage</code> dans Antigravity pour mesurer le quota Antigravity réel.</div>
+        </div>
       </div>
     </details>
   </div>
@@ -820,30 +673,35 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-    // Nothing below is presented as account data before /api/state answers.
-    // The empty shape only keeps rendering code defensive during initial load.
+
     let S = {
       active: null,
       history: null,
       models: [],
+      modelCatalog: [],
       tierModels: { light: [], medium: [], heavy: [] },
       tiers: { light: [], medium: [], heavy: [] },
       allowedModels: [],
       blockedModels: [],
+      autoDelegate: true,
+      recentErrors: 0,
     };
-    let stateLoad = 'loading'; // loading | ready | unavailable
-    let selectedChoice = ''; // '', 'tier:light', 'tier:medium', 'tier:heavy', or exact model id
+    let stateLoad = 'loading';
+    let selectedChoice = '';
     let settingsLoaded = false;
     let pollTimer = null;
     let hoverTimer = null;
     let popHideTimer = null;
+    let activeTab = 'dash';
+    let logFilter = 'all';
+    let logEntries = [];
+    let modelQuery = '';
     const KEY_MASK = '••••••••••••';
     let keyIsMask = false;
     let keyIsVisible = false;
     const expandedHistory = new Set();
 
     const ICO_CHECK = '<svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
-    const ICO_WARN = '<svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
     const ICO_X = '<svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     const ICO_PAUSE = '<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
 
@@ -872,62 +730,10 @@
 
     function flash(msg, target = 'toast', isErr = false) {
       const el = $(target);
+      if (!el) return;
       el.textContent = msg;
       el.classList.toggle('err', isErr);
-      setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 3500);
-    }
-
-    function switchTab(tab) {
-      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-      $('tab-dash').hidden = tab !== 'dash';
-      $('tab-settings').hidden = tab !== 'settings';
-      if (tab === 'settings') syncSettingsForm();
-    }
-
-    function syncSettingsForm() {
-      const configIds = ['cutoffInput', 'maxParallelInput', 'showReasoningInput', 'useClientToolsInput', 'reuseChatInput', 'contextCompactInput', 'contextModeInput', 'routingProfileInput', 'tierLightInput', 'tierMediumInput', 'tierHeavyInput', 'allowedInput', 'blockedInput', 'useAllBtn', 'saveSettingsBtn'];
-      const ready = stateLoad === 'ready';
-      configIds.forEach((id) => { $(id).disabled = !ready; });
-      if (!ready) {
-        const label = stateLoad === 'unavailable' ? 'Indisponible' : 'Chargement…';
-        ['cutoffInput', 'maxParallelInput', 'contextCompactInput', 'tierLightInput', 'tierMediumInput', 'tierHeavyInput', 'allowedInput', 'blockedInput'].forEach((id) => { $(id).placeholder = label; });
-        $('keyStateHelp').textContent = label;
-        $('mcpTransport').textContent = label;
-        $('mcpTools').textContent = '—';
-        return;
-      }
-      $('cutoffInput').value = S.cutoff ?? '';
-      $('maxParallelInput').value = S.maxParallel ?? '';
-      $('showReasoningInput').checked = S.showReasoning === true;
-      $('useClientToolsInput').checked = S.useClientTools === true;
-      $('reuseChatInput').checked = S.reuseChat === true;
-      $('contextCompactInput').value = S.contextCompactPercent ?? '';
-      $('contextModeInput').value = S.contextMode || '';
-      $('routingProfileInput').value = S.routingProfile || 'eco';
-      $('tierLightInput').value = (S.tiers?.light || []).join(', ');
-      $('tierMediumInput').value = (S.tiers?.medium || []).join(', ');
-      $('tierHeavyInput').value = (S.tiers?.heavy || []).join(', ');
-      $('allowedInput').value = (S.allowedModels || []).join(', ');
-      $('blockedInput').value = (S.blockedModels || []).join(', ');
-      const storage = S.credential?.storage;
-      const keyInput = $('apiKeyInput');
-      if (S.hasKey && !keyIsVisible) {
-        keyInput.type = 'password';
-        keyInput.value = KEY_MASK;
-        keyIsMask = true;
-      } else if (!S.hasKey) {
-        keyInput.type = 'password';
-        keyInput.value = '';
-        keyIsMask = false;
-        keyIsVisible = false;
-      }
-      $('toggleKeyVisibility').disabled = !S.hasKey;
-      $('keyStateHelp').textContent = S.hasKey
-        ? `Identifiant configuré${storage ? ` (${storage})` : ''}, mémorisé localement et masqué. Utilise l’œil pour l’afficher.`
-        : 'Aucun identifiant configuré.';
-      const mcp = S.mcp;
-      $('mcpTransport').textContent = mcp?.transport === 'stdio' ? 'MCP local · stdio' : 'MCP non vérifié';
-      $('mcpTools').textContent = typeof mcp?.toolCount === 'number' ? `${mcp.toolCount} outils déclarés` : 'État indisponible';
+      setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 3200);
     }
 
     function fmtSec(sec) { return sec >= 60 ? Math.floor(sec / 60) + ' min ' + (sec % 60) + ' s' : sec + ' s'; }
@@ -935,8 +741,12 @@
       if (!ts) return '';
       const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
       if (mins < 1) return "à l'instant";
-      if (mins < 60) return 'il y a ' + mins + ' min';
-      return 'il y a ' + Math.round(mins / 60) + ' h';
+      if (mins < 60) return mins + ' min';
+      return Math.round(mins / 60) + ' h';
+    }
+    function fmtDate(ts) {
+      if (!ts) return '';
+      return new Date(ts).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
     function fmtNum(n) {
       if (n == null) return '';
@@ -946,35 +756,26 @@
     }
     function shortModel(id) { return String(id || '').replace(/^cb\//, ''); }
 
-    // Estimates and provider usage deliberately stay separate. An absent usage
-    // field means the provider did not report it; it is never reconstructed.
-    function tokenInfo(job) {
-      const estimate = job?.tokenUsage?.inputEstimateTokens ?? job?.inputEstimateTokens ?? null;
-      const provider = job?.tokenUsage?.provider;
-      const providerParts = [];
-      if (Number.isFinite(provider?.inputTokens)) providerParts.push(fmtNum(provider.inputTokens) + ' entrée');
-      if (Number.isFinite(provider?.outputTokens)) providerParts.push(fmtNum(provider.outputTokens) + ' sortie');
-      if (Number.isFinite(provider?.totalTokens)) providerParts.push(fmtNum(provider.totalTokens) + ' total');
-      const estimateText = estimate == null ? 'estimation locale indisponible' : `estimation locale (demande) : ~${fmtNum(estimate)} tok`;
-      if (providerParts.length) {
-        return {
-          short: `usage fournisseur : ${providerParts.join(' · ')} tok`,
-          detail: `${estimateText}\nUsage fournisseur rapporté : ${providerParts.join(' · ')} tok`,
-        };
-      }
-      return { short: estimateText, detail: `${estimateText}\nUsage fournisseur : non retourné.` };
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+      $('tab-dash').hidden = tab !== 'dash';
+      $('tab-models').hidden = tab !== 'models';
+      $('tab-logs').hidden = tab !== 'logs';
+      $('tab-settings').hidden = tab !== 'settings';
+      if (tab === 'settings') syncSettingsForm();
+      if (tab === 'models') renderModelsTab();
+      if (tab === 'logs') loadLogs();
     }
 
-    function reviewInfo(job) {
-      const review = job?.review;
-      if (!review) return null;
-      const files = Array.isArray(review.files) ? review.files : [];
-      const lines = [
-        `Revue : ${review.status || 'inconnue'}${files.length ? ` · ${files.length} fichier(s)` : ''}`,
-        ...(review.recoveryError ? [`Récupération manuelle requise : ${review.recoveryError}`] : []),
-        ...files.map((file) => `${file.action === 'create' ? 'Créer' : 'Modifier'} ${file.path}\n${file.diff || ''}`),
-      ];
-      return { review, detail: lines.join('\n\n') };
+    function renderAutoDelegate() {
+      const auto = S.autoDelegate !== false;
+      document.querySelectorAll('#autoDelegateSeg button, #settingsAutoSeg button').forEach((b) => {
+        b.classList.toggle('on', (b.dataset.auto === 'true') === auto);
+      });
+      $('autoDelegateDesc').textContent = auto
+        ? 'Automatique : Antigravity délègue par défaut pour économiser 70–90 % de tokens.'
+        : 'Manuel : Antigravity n’utilise France Student que sur demande ou commande explicite.';
     }
 
     function renderTiers() {
@@ -984,13 +785,13 @@
         $('cnt-light').textContent = label;
         $('cnt-medium').textContent = label;
         $('cnt-heavy').textContent = label;
-        return;
+      } else {
+        const tm = S.tierModels || { light: [], medium: [], heavy: [] };
+        $('cnt-light').textContent = tm.light?.length ?? 0;
+        $('cnt-medium').textContent = tm.medium?.length ?? 0;
+        $('cnt-heavy').textContent = tm.heavy?.length ?? 0;
       }
       const tm = S.tierModels || { light: [], medium: [], heavy: [] };
-      $('cnt-light').textContent = tm.light?.length ?? 0;
-      $('cnt-medium').textContent = tm.medium?.length ?? 0;
-      $('cnt-heavy').textContent = tm.heavy?.length ?? 0;
-
       document.querySelectorAll('#tierRow .chip').forEach((btn) => {
         const ch = btn.dataset.choice;
         const tier = btn.dataset.tier;
@@ -1002,7 +803,7 @@
     function showTierPopover(tier, anchorEl) {
       const tm = S.tierModels || { light: [], medium: [], heavy: [] };
       const list = tm[tier] || [];
-      const titles = { light: 'Modèles faibles (légers)', medium: 'Modèles équilibrés', heavy: 'Modèles forts (puissants)' };
+      const titles = { light: 'Modèles légers', medium: 'Modèles équilibrés', heavy: 'Modèles forts ★' };
       $('popTitle').textContent = titles[tier] || 'Modèles';
       const modelsAvailable = S.modelAvailability?.available === true;
       $('popList').innerHTML = list.length
@@ -1026,60 +827,32 @@
       $('tierPopover').hidden = true;
     }
 
-    // A refusal is shown only when the backend actually reports one.  The
-    // shape is deliberately tolerant while plugin and extension evolve.
-    function refusalInfo(job) {
-      const list = Array.isArray(job?.refusals) ? job.refusals : [];
-      if (!list.length) return null;
-      const last = list[list.length - 1];
-      const item = typeof last === 'string' ? { reason: last } : (last || {});
-      const reason = String(item.reason ?? item.motif ?? item.message ?? 'Motif non fourni par le fournisseur').trim();
-      const from = String(item.model ?? item.fromModel ?? item.from ?? '').trim();
-      const next = String(item.nextModel ?? item.retryModel ?? item.fallbackModel ?? item.to ?? '').trim();
-      const route = next ? ` → essai avec ${next}` : '';
-      const source = from ? `${from} : ` : '';
-      return {
-        short: `${list.length} refus${route}`,
-        detail: `Refus${from ? ` (${from})` : ''} : ${reason}${route}`,
-        label: `${source}${reason}${route}`,
-      };
-    }
-
     function renderActive() {
-      if (!Array.isArray(S.active)) {
-        const label = stateLoad === 'unavailable' ? 'Indisponible' : 'Chargement…';
-        $('activeCount').textContent = '—';
-        $('active').innerHTML = `<div class="empty-txt">${label}</div>`;
+      const list = Array.isArray(S.active) ? S.active : [];
+      $('activeCount').textContent = list.length;
+      $('activeSection').hidden = list.length === 0;
+      if (!list.length) {
+        $('active').innerHTML = '';
         return;
       }
-      $('activeCount').textContent = S.active.length;
-      if (!S.active.length) {
-        $('active').innerHTML = '<div class="empty-txt">Aucune tâche active</div>';
-        return;
-      }
-      $('active').innerHTML = S.active.map((j) => {
-        const title = esc(j.title.replace(/^\[ATG\]\s*/, ''));
+      $('active').innerHTML = list.map((j) => {
+        const title = esc(String(j.title || '').replace(/^\[ATG\]\s*/, ''));
         const thought = (j.lastThoughts && j.lastThoughts.length)
           ? j.lastThoughts[j.lastThoughts.length - 1]
           : (j.summary || j.route || 'Génération en cours…');
-        const refusal = refusalInfo(j);
-        const tokens = tokenInfo(j);
-        const mode = j.executionMode === 'plan' ? 'Plan sans écriture' : j.executionMode === 'dry-run' ? 'Revue sans écriture' : '';
         return `<div class="job-card">
           <div class="job-top">
             <span class="tag">ATG</span>
             <span class="job-title" title="${title}">${title}</span>
             <span class="model-pill">${esc(shortModel(j.model) || 'routage…')}</span>
-            <button class="x" data-cancel="${j.jobId}" title="Annuler">${ICO_X}</button>
+            <button class="x" data-cancel="${esc(j.jobId)}" title="Annuler">${ICO_X}</button>
           </div>
           <div class="pbar"><div></div></div>
           <div class="job-meta">
-            <span>${j.status === 'waiting' ? 'Créneau partagé…' : esc(tokens.short)}</span>
-            <span data-start="${j.status === 'running' ? j.startedAt : ''}">${fmtSec(j.elapsedSec)}</span>
+            <span>${j.status === 'waiting' ? 'En attente de créneau…' : (j.receivedChars ? j.receivedChars + ' car.' : 'Connexion…')}</span>
+            <span data-start="${j.status === 'running' ? j.startedAt : ''}">${fmtSec(j.elapsedSec || 0)}</span>
           </div>
           <div class="term">&gt; ${esc(thought)}</div>
-          ${mode ? `<div class="review-note">${esc(mode)}</div>` : ''}
-          ${refusal ? `<div class="refusal-note" title="${esc(refusal.detail)}">Refus pris en compte · ${esc(refusal.label)}</div>` : ''}
         </div>`;
       }).join('');
     }
@@ -1095,126 +868,211 @@
       $('historyCount').textContent = S.history.length;
       $('clearHistory').hidden = S.history.length === 0;
       if (!S.history.length) {
-        $('history').innerHTML = '<div class="empty-txt">Aucune activité enregistrée</div>';
+        $('history').innerHTML = '<div class="empty-txt">Aucune génération récente</div>';
         return;
       }
-      $('history').innerHTML = '<div class="hist-list">' + S.history.slice(0, 20).map((j) => {
-        const title = esc(j.title.replace(/^\[ATG\]\s*/, ''));
-        const review = reviewInfo(j);
-        const noWrite = j.status === 'done' && (!j.filesWritten || !j.filesWritten.length) && !review;
-        const refusal = refusalInfo(j);
-        const tokens = tokenInfo(j);
-        const icoClass = review?.review?.status === 'pending' ? 'warn' : (noWrite ? 'warn' : j.status);
-        const ico = review?.review?.status === 'pending' ? ICO_WARN : (j.status === 'done' ? (noWrite ? ICO_WARN : ICO_CHECK) : j.status === 'error' ? ICO_X : ICO_PAUSE);
+      $('history').innerHTML = '<div class="hist-list">' + S.history.slice(0, 10).map((j) => {
+        const jId = j.jobId || j.id || '';
+        const title = esc(String(j.title || '').replace(/^\[ATG\]\s*/, ''));
+        const ico = j.status === 'done' ? ICO_CHECK : j.status === 'error' ? ICO_X : ICO_PAUSE;
+        const respText = j.response || j.summary || j.error || '';
         const sub = [
-          shortModel(j.model) || '—',
-          review?.review?.status === 'pending' ? 'diff à valider' : (j.filesWritten?.length ? j.filesWritten.length + ' fichier(s)' : (noWrite ? 'aucun fichier écrit' : '')),
-          j.executionMode === 'plan' ? 'plan sans écriture' : '',
-          refusal ? `${refusal.short}` : '',
-          j.error ? j.error : (j.receivedChars ? j.receivedChars + ' car.' : 'terminé'),
+          shortModel(j.model) || 'Auto',
+          j.error ? j.error : (respText ? respText.length + ' car.' : 'terminé'),
         ].filter(Boolean).join(' · ');
-        const tok = tokens.short;
-        const open = expandedHistory.has(j.jobId);
-        const detail = [
-          j.filesWritten?.length ? 'Fichiers : ' + j.filesWritten.join(', ') : '',
-          review?.detail || '',
-          j.reviewUnavailable || '',
-          tokens.detail,
-          refusal?.detail || '',
-          j.summary || j.error || '',
-        ].filter(Boolean).join('\n\n');
-        const reviewActions = review?.review?.canApply
-          ? `<div class="review-actions"><button class="btn sm" data-review-action="apply" data-review-job="${esc(j.jobId)}">Appliquer la revue</button></div>`
-          : (review?.review?.canUndo
-            ? `<div class="review-actions"><button class="btn ghost sm" data-review-action="undo" data-review-job="${esc(j.jobId)}">Restaurer</button></div>`
-            : '');
-        return `<div class="hist-item" data-hist="${j.jobId}">
+        const open = expandedHistory.has(jId);
+        return `<div class="hist-item" data-hist="${esc(jId)}">
           <div class="hist-row">
-            <div class="st-ico ${icoClass}" title="${noWrite ? 'Terminé sans écriture de fichier' : ''}">${ico}</div>
+            <div class="st-ico ${esc(j.status)}">${ico}</div>
             <div class="hist-main">
-              <div class="hist-top"><span class="tag">ATG</span><span class="hist-title">${title}</span></div>
+              <span class="hist-title">${title}</span>
               <div class="hist-sub">${esc(sub)}</div>
             </div>
-            <div class="hist-right">
-              <div class="hist-tok">${esc(tok)}</div>
-              <div class="hist-time">${fmtAgo(j.endedAt || j.startedAt)}</div>
-            </div>
+            <span class="hist-time">${fmtAgo(j.endedAt || j.startedAt)}</span>
           </div>
-          ${open && detail ? `<div class="hist-detail">${esc(detail)}</div>${reviewActions}` : ''}
+          ${open ? `<div class="hist-detail">
+            <pre class="hist-pre">${esc(respText || 'Aucun contenu.')}</pre>
+            <div class="hist-actions">
+              ${respText && j.status === 'done' ? `<button type="button" class="btn sm" data-copy-resp="${esc(jId)}">Copier</button>` : ''}
+              ${j.task ? `<button type="button" class="btn ghost sm" data-rerun-id="${esc(jId)}">Relancer</button>` : ''}
+            </div>
+          </div>` : ''}
         </div>`;
       }).join('') + '</div>';
     }
 
-    function renderPlaceholder() {
-      const unavailable = stateLoad === 'unavailable';
-      const label = unavailable ? 'Indisponible' : 'Chargement…';
-      $('nokey').hidden = true;
-      $('connPill').className = 'status-pill';
-      $('connTxt').textContent = label;
-      $('pct').textContent = '—';
-      $('bar').style.width = '0%';
-      $('gaugeBar').className = 'gauge';
-      $('cutoffTick').style.display = 'none';
-      $('qtxt').textContent = label;
-      $('metaRight').innerHTML = 'Coupe-circuit : <b id="cutoff">—</b>';
-      $('contextModeLabel').textContent = label;
-      $('sessionLabel').textContent = label;
-      $('contextUsageLabel').textContent = '—';
-      $('slotsLabel').textContent = '—';
-      $('mcpTransport').textContent = label;
-      $('mcpTools').textContent = '—';
-      renderTiers();
-      renderActive();
-      renderHistory();
-      syncSettingsForm();
+    function renderModelsTab() {
+      const catalog = Array.isArray(S.modelCatalog) ? S.modelCatalog : [];
+      const newCount = catalog.filter((m) => m.isNew).length;
+      $('tabModelsCnt').textContent = catalog.length ? String(catalog.length) : '—';
+      $('tabModelsNew').hidden = newCount === 0;
+      $('modelsTotalCnt').textContent = catalog.length;
+      $('modelsNewCnt').textContent = newCount ? `${newCount} nouveau(x) (< 14 j)` : '';
+
+      const q = modelQuery.trim().toLowerCase();
+      const filtered = q
+        ? catalog.filter((m) => `${m.name} ${m.id} ${m.provider}`.toLowerCase().includes(q))
+        : catalog;
+
+      if (!filtered.length) {
+        $('modelList').innerHTML = `<div class="empty-txt">${S.hasKey ? 'Aucun modèle trouvé.' : 'Configure ta clé API pour charger la liste des modèles.'}</div>`;
+        return;
+      }
+      const tierLabels = { heavy: 'Fort ★', medium: 'Équilibré', light: 'Léger' };
+      $('modelList').innerHTML = filtered.map((m) => {
+        let dateTxt = 'Déjà présent (date non fournie par l’API)';
+        if (m.addedSource === 'api' && m.addedAt) dateTxt = `Ajouté le ${fmtDate(m.addedAt)}`;
+        else if (m.addedSource === 'detected' && m.addedAt) dateTxt = `${m.isNew ? 'Nouveau · d' : 'D'}étecté le ${fmtDate(m.addedAt)}`;
+        const ctx = m.contextWindow ? `${Math.round(m.contextWindow / 1000)}k ctx` : '';
+        return `<div class="model-card ${m.isNew ? 'is-new' : ''} ${m.blocked ? 'blocked' : ''}">
+          <div class="mc-top">
+            <span class="mc-name">${esc(m.name)}</span>
+            <span class="tier-badge ${esc(m.tier)}">${tierLabels[m.tier] || m.tier}</span>
+            ${m.isNew ? '<span class="new-badge">Nouveau</span>' : ''}
+            <span class="spacer"></span>
+            <span style="font-size:10px;color:var(--fs-faint);text-transform:capitalize">${esc(m.provider)}${ctx ? ' · ' + ctx : ''}</span>
+          </div>
+          <div class="mc-id-row">
+            <span class="mc-id" title="${esc(m.id)}">${esc(m.id)}</span>
+            <div style="display:flex;gap:4px">
+              <button type="button" class="btn ghost sm" data-copy-id="${esc(m.id)}">Copier ID</button>
+              ${m.blocked ? '' : `<button type="button" class="btn sm" data-use-model="${esc(m.id)}">Utiliser</button>`}
+            </div>
+          </div>
+          <div class="mc-meta"><span>${esc(dateTxt)}</span>${m.blocked ? '<span>Bloqué dans Réglages</span>' : ''}</div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderLogs() {
+      const list = Array.isArray(logEntries) ? logEntries : [];
+      if (!list.length) {
+        $('logList').innerHTML = `<div class="empty-txt">${logFilter === 'error' ? 'Aucune erreur enregistrée.' : 'Journal vide.'}</div>`;
+        return;
+      }
+      $('logList').innerHTML = list.map((e) => {
+        const t = e.ts ? new Date(e.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+        const det = e.details ? JSON.stringify(e.details) : '';
+        return `<div class="log-item">
+          <div class="log-head">
+            <span class="lvl ${esc(e.level)}">${esc(e.level)}</span>
+            <span>${esc(e.source || 'core')}</span>
+            <span>· ${esc(e.event || '')}</span>
+            <span class="spacer"></span>
+            <span>${esc(t)}</span>
+          </div>
+          <div class="log-msg">${esc(e.message)}</div>
+          ${det ? `<div class="log-det">${esc(det)}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    async function loadLogs() {
+      try {
+        const res = await api('/api/logs', { limit: 80, level: logFilter });
+        logEntries = res.entries || [];
+        S.recentErrors = res.recentErrors ?? S.recentErrors;
+        updateErrBadge();
+        renderLogs();
+      } catch (e) {
+        $('logList').innerHTML = `<div class="empty-txt">Impossible de charger les logs : ${esc(e.message)}</div>`;
+      }
+    }
+
+    function updateErrBadge() {
+      const n = Number(S.recentErrors ?? 0);
+      $('tabErrBadge').textContent = n > 99 ? '99+' : String(n);
+      $('tabErrBadge').hidden = n <= 0;
+    }
+
+    function syncSettingsForm() {
+      const configIds = [
+        'cutoffInput', 'maxParallelInput', 'showReasoningInput', 'reuseChatInput',
+        'contextCompactInput', 'routingProfileInput', 'tierLightInput', 'tierMediumInput',
+        'tierHeavyInput', 'allowedInput', 'blockedInput', 'useAllBtn', 'saveEssentialBtn', 'saveSettingsBtn'
+      ];
+      const ready = stateLoad === 'ready';
+      configIds.forEach((id) => { $(id).disabled = !ready; });
+      if (!ready) {
+        const label = stateLoad === 'unavailable' ? 'Indisponible' : 'Chargement…';
+        ['cutoffInput', 'maxParallelInput', 'contextCompactInput', 'tierLightInput', 'tierMediumInput', 'tierHeavyInput', 'allowedInput', 'blockedInput'].forEach((id) => { $(id).placeholder = label; });
+        $('keyStateHelp').textContent = label;
+        return;
+      }
+      $('cutoffInput').value = S.cutoff ?? 15;
+      $('maxParallelInput').value = S.maxParallel ?? 3;
+      $('showReasoningInput').checked = S.showReasoning === true;
+      $('reuseChatInput').checked = S.reuseChat === true;
+      $('contextCompactInput').value = S.contextCompactPercent ?? 80;
+      $('routingProfileInput').value = S.routingProfile || 'quality';
+      $('tierLightInput').value = (S.tiers?.light || []).join(', ');
+      $('tierMediumInput').value = (S.tiers?.medium || []).join(', ');
+      $('tierHeavyInput').value = (S.tiers?.heavy || []).join(', ');
+      $('allowedInput').value = (S.allowedModels || []).join(', ');
+      $('blockedInput').value = (S.blockedModels || []).join(', ');
+      const storage = S.credential?.storage;
+      const keyInput = $('apiKeyInput');
+      if (S.hasKey && !keyIsVisible) {
+        keyInput.type = 'password';
+        keyInput.value = KEY_MASK;
+        keyIsMask = true;
+      } else if (!S.hasKey) {
+        keyInput.type = 'password';
+        keyInput.value = '';
+        keyIsMask = false;
+        keyIsVisible = false;
+      }
+      $('toggleKeyVisibility').disabled = !S.hasKey;
+      $('keyStateHelp').textContent = S.hasKey
+        ? `Identifiant configuré${storage ? ` (${storage})` : ''}, mémorisé localement.`
+        : 'Aucun identifiant configuré.';
     }
 
     function render() {
       $('nokey').hidden = !!S.hasKey;
       const qObj = S.quota;
       const q = typeof qObj?.remainingPct === 'number' ? qObj.remainingPct : null;
-      const cutoff = typeof S.cutoff === 'number' ? S.cutoff : null;
+      const cutoff = typeof S.cutoff === 'number' ? S.cutoff : 15;
       const connected = !!S.hasKey && q !== null;
       $('connPill').className = 'status-pill' + (connected ? ' on' : '');
-       $('connTxt').textContent = connected ? 'Connecté' : (S.hasKey ? 'Identifiant configuré' : 'Hors ligne');
+      $('connTxt').textContent = connected ? 'Connecté' : (S.hasKey ? 'Configuré' : 'Hors ligne');
 
       $('pct').textContent = q == null ? '—' : Math.round(q) + ' %';
       $('bar').style.width = (q == null ? 0 : q) + '%';
-      $('gaugeBar').className = 'gauge' + (q == null || cutoff == null ? '' : q < cutoff ? ' crit' : q < cutoff * 2 ? ' low' : '');
-      $('cutoffTick').style.display = cutoff == null ? 'none' : '';
-      if (cutoff != null) {
-        $('cutoffTick').style.left = cutoff + '%';
-        $('cutoffNum').textContent = cutoff;
-      }
+      $('gaugeBar').className = 'gauge' + (q == null ? '' : q < cutoff ? ' crit' : q < cutoff * 2 ? ' low' : '');
+      $('cutoffTick').style.left = cutoff + '%';
+      $('cutoffNum').textContent = cutoff;
 
       const metaParts = [];
-      if (qObj?.at) metaParts.push('Mis à jour ' + fmtAgo(qObj.at));
+      if (qObj?.at) metaParts.push('MàJ ' + fmtAgo(qObj.at));
       if (qObj?.resetAt) metaParts.push('Reset ' + new Date(qObj.resetAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
-      $('qtxt').textContent = metaParts.join(' · ') || (qObj ? 'Données quota indisponibles' : 'Quota indisponible');
-      $('metaRight').innerHTML = `Coupe-circuit : <b id="cutoff">${cutoff == null ? '—' : cutoff + ' %'}</b>`;
-      const modes = { minimal: 'Minimal · demande seule', targeted: 'Ciblé · chemins choisis', smart: 'Intelligent · plan léger' };
-      $('contextModeLabel').textContent = modes[S.contextMode] || '—';
-      const hasSession = Object.prototype.hasOwnProperty.call(S, 'session');
-      const session = S.session;
-      $('sessionLabel').textContent = !hasSession ? 'Indisponible' : (session?.chatId ? 'Chat persistant actif' : 'Aucune session active');
-      $('contextUsageLabel').textContent = typeof session?.usagePercent === 'number' ? Math.round(session.usagePercent) + ' % utilisé' : '—';
-      const slots = S.slots;
-      $('slotsLabel').textContent = typeof slots?.active === 'number' && typeof slots?.limit === 'number' ? `${slots.active} / ${slots.limit}` : '—';
-      const mcp = S.mcp;
-      $('mcpTransport').textContent = mcp?.transport === 'stdio' ? 'MCP local · stdio' : 'MCP non vérifié';
-      $('mcpTools').textContent = typeof mcp?.toolCount === 'number' ? `${mcp.toolCount} outils déclarés` : 'État indisponible';
+      $('qtxt').textContent = metaParts.join(' · ') || 'Quota France Student';
+      $('cutoff').textContent = cutoff + ' %';
+
+      const profileNames = { quality: 'Qualité (fort ★)', eco: 'Éco (léger)', fast: 'Rapide', security: 'Sécurité ★', refactor: 'Refonte ★' };
+      const profLabel = profileNames[S.routingProfile] || 'Qualité (fort ★)';
+      $('profilePill').innerHTML = `Profil : <strong>${esc(profLabel)}</strong>`;
+      const sav = S.antigravitySavings;
+      $('savingsPill').innerHTML = sav?.jobsOffloaded
+        ? `Éco. ATG : <strong>~${fmtNum(sav.totalTokensSavedEst)} tok</strong>`
+        : 'Éco. ATG : <strong>0 tok</strong>';
 
       document.querySelectorAll('#mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === S.mode));
+      renderAutoDelegate();
       renderTiers();
       renderActive();
       renderHistory();
+      updateErrBadge();
+      const catalog = Array.isArray(S.modelCatalog) ? S.modelCatalog : [];
+      $('tabModelsCnt').textContent = catalog.length ? String(catalog.length) : '—';
+      $('tabModelsNew').hidden = !catalog.some((m) => m.isNew);
+      if (activeTab === 'models') renderModelsTab();
       if (!settingsLoaded) { syncSettingsForm(); settingsLoaded = true; }
     }
 
     function schedulePoll() {
       clearTimeout(pollTimer);
-      const delay = S.active?.length ? 800 : 4000;
-      pollTimer = setTimeout(poll, delay);
+      pollTimer = setTimeout(poll, S.active?.length ? 800 : 4000);
     }
 
     async function poll() {
@@ -1224,7 +1082,6 @@
         render();
       } catch {
         stateLoad = 'unavailable';
-        renderPlaceholder();
       }
       schedulePoll();
     }
@@ -1236,154 +1093,112 @@
       hidePopover();
       try {
         await api('/api/delegate', { task, model: selectedChoice || undefined });
-        flash('Délégué');
+        flash('Envoyé');
         await poll();
       } catch (e) { flash(e.message, 'toast', true); }
     }
 
-    function diagnosticText(data) {
-      const credential = data?.credential?.configured
-        ? `Identifiant : configuré${data.credential.storage ? ` (${data.credential.storage})` : ''}`
-        : 'Identifiant : non configuré';
-      const api = data?.api?.verified ? 'API : vérifiée par une requête réussie'
-        : `API : non vérifiée${data?.api?.error ? ` — ${data.api.error}` : ''}`;
-      const models = data?.models?.available
-        ? `Modèles : ${data.models.count} disponibles (${data.models.source})`
-        : `Modèles : non vérifiés${data?.models?.error ? ` — ${data.models.error}` : ''}`;
-      const quota = typeof data?.quota?.remainingPct === 'number'
-        ? `Quota : ${Math.round(data.quota.remainingPct)} % restant`
-        : 'Quota : non retourné';
-      const slots = data?.mcp?.slots;
-      const mcp = typeof slots?.active === 'number' && typeof slots?.limit === 'number'
-        ? `MCP : ${data.mcp.transport}, v${data.mcp.version}, ${data.mcp.toolCount} outils ; ${data.mcp.activeJobs} actif(s), ${data.mcp.queuedJobs} en attente, ${slots.active}/${slots.limit} créneau(x)`
-        : 'MCP : état de créneaux indisponible';
-      const agQuota = data?.antigravityQuota?.available === false
-        ? 'Quota Antigravity : non exposé au connecteur ; mesure avec /usage.'
-        : 'Quota Antigravity : état indisponible';
-      const session = data?.session?.savedChatReference
-        ? `Session : référence locale présente${typeof data.session.usagePercent === 'number' ? ` (${Math.round(data.session.usagePercent)} %)` : ''}`
-        : 'Session : aucune référence locale';
-      return [credential, api, models, quota, mcp, agQuota, session].join('\n');
+    async function setAutoDelegate(val) {
+      try {
+        const res = await api('/api/settings', { autoDelegate: val });
+        S.autoDelegate = res.autoDelegate;
+        renderAutoDelegate();
+        flash(val ? 'Mode Automatique activé' : 'Mode Manuel activé');
+      } catch (e) { flash(e.message, 'toast', true); }
     }
 
-    async function runDiagnostics() {
-      $('diagnosticsBody').textContent = 'Diagnostic en cours…';
-      try {
-        const data = await api('/api/diagnostics');
-        $('diagnosticsBody').textContent = diagnosticText(data);
-      } catch (e) {
-        $('diagnosticsBody').textContent = `Diagnostic indisponible : ${e.message}`;
-      }
+    function diagnosticText(data) {
+      const cred = data?.credential?.configured ? `Identifiant : configuré (${data.credential.storage || 'local'})` : 'Identifiant : non configuré';
+      const apiSt = data?.api?.verified ? 'API : OK' : `API : erreur (${data?.api?.error || '?'})`;
+      const mods = data?.models?.available ? `Modèles : ${data.models.count} (${data.models.source})` : 'Modèles : indisponibles';
+      const q = typeof data?.quota?.remainingPct === 'number' ? `Quota FS : ${Math.round(data.quota.remainingPct)} %` : 'Quota FS : —';
+      const auto = `Activation Antigravity : ${data?.autoDelegate !== false ? 'Automatique' : 'Manuel'}`;
+      const errs = `Erreurs 24h (logs) : ${data?.recentErrors24h ?? 0}`;
+      return [cred, apiSt, mods, q, auto, errs, 'Quota Antigravity : mesure via /usage'].join('\n');
     }
 
     document.querySelectorAll('.tab-btn').forEach((b) => { b.onclick = () => switchTab(b.dataset.tab); });
     $('openCfg').onclick = () => switchTab('settings');
     $('go').onclick = send;
-    $('task').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { send(); return; }
-    });
-    $('useAllBtn').onclick = async () => {
-      $('cutoffInput').value = 0;
-      try {
-        await api('/api/settings', { cutoffPercent: 0 });
-        flash('Tout utiliser activé (0 %)', 'orchToast');
-        await poll();
-      } catch (e) { flash(e.message, 'orchToast', true); }
+    $('task').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); });
+
+    $('newSessionQuickBtn').onclick = async () => {
+      try { await api('/api/session', { action: 'new' }); flash('Nouvelle session prête'); await poll(); }
+      catch (e) { flash(e.message, 'toast', true); }
     };
     $('gauge').onclick = async () => {
       try { await api('/api/refresh', {}); flash('Quota actualisé'); await poll(); }
       catch (e) { flash(e.message, 'toast', true); }
     };
-    $('compactSessionBtn').onclick = async () => {
-      try { await api('/api/session', { action: 'compact' }); flash('Contexte compacté'); await poll(); }
-      catch (e) { flash(e.message, 'toast', true); }
-    };
-    $('newSessionBtn').onclick = async () => {
-      try { await api('/api/session', { action: 'new' }); flash('Nouvelle session au prochain envoi'); await poll(); }
-      catch (e) { flash(e.message, 'toast', true); }
-    };
-    $('diagnosticsBtn').onclick = runDiagnostics;
-    $('apiKeyInput').addEventListener('input', () => { keyIsMask = false; });
-    $('toggleKeyVisibility').onclick = async () => {
-      const input = $('apiKeyInput');
-      if (!S.hasKey) return;
-      if (keyIsVisible) {
-        input.type = 'password';
-        input.value = KEY_MASK;
-        keyIsMask = true;
-        keyIsVisible = false;
-        $('toggleKeyVisibility').setAttribute('aria-label', 'Afficher la clé enregistrée');
-        return;
-      }
+    $('refreshModelsBtn').onclick = async () => {
       try {
-        const data = await api('/api/key', { action: 'reveal' });
-        if (!data.hasKey || !data.apiKey) throw new Error('Clé introuvable.');
-        input.type = 'text';
-        input.value = data.apiKey;
-        keyIsMask = false;
-        keyIsVisible = true;
-        $('toggleKeyVisibility').setAttribute('aria-label', 'Masquer la clé enregistrée');
-      } catch (e) { flash(e.message, 'settingsToast', true); }
+        const res = await api('/api/refresh', {});
+        if (res.modelCatalog) S.modelCatalog = res.modelCatalog;
+        if (res.models) S.models = res.models;
+        renderModelsTab();
+        flash('Catalogue actualisé');
+      } catch (e) { flash(e.message, 'toast', true); }
     };
-
-    // Hover & long-press popover on tier chips
-    document.querySelectorAll('#tierRow .chip[data-tier]').forEach((btn) => {
-      const tier = btn.dataset.tier;
-      btn.addEventListener('mouseenter', () => {
-        clearTimeout(popHideTimer);
-        clearTimeout(hoverTimer);
-        hoverTimer = setTimeout(() => showTierPopover(tier, btn), 320);
-      });
-      btn.addEventListener('pointerdown', () => {
-        clearTimeout(hoverTimer);
-        hoverTimer = setTimeout(() => showTierPopover(tier, btn), 320);
-      });
-      btn.addEventListener('mouseleave', () => {
-        clearTimeout(hoverTimer);
-        popHideTimer = setTimeout(hidePopover, 220);
-      });
+    $('modelSearch').addEventListener('input', (e) => {
+      modelQuery = e.target.value;
+      renderModelsTab();
     });
-    $('tierPopover').addEventListener('mouseenter', () => clearTimeout(popHideTimer));
-    $('tierPopover').addEventListener('mouseleave', () => { popHideTimer = setTimeout(hidePopover, 160); });
 
-    $('saveKeyBtn').onclick = async () => {
-      try {
-        const key = $('apiKeyInput').value.trim();
-        const preservesStoredKey = keyIsMask && key === KEY_MASK;
-        if (key && !preservesStoredKey) {
-          await api('/api/key', { apiKey: key });
-          $('apiKeyInput').value = '';
-          flash('Identifiant enregistré et connexion testée', 'settingsToast');
-        } else {
-          await api('/api/refresh', {});
-          flash('Connexion testée', 'settingsToast');
-        }
-        keyIsVisible = false;
-        keyIsMask = false;
-        await poll();
-        syncSettingsForm();
-      } catch (e) { flash(e.message, 'settingsToast', true); }
+    document.querySelectorAll('#autoDelegateSeg button, #settingsAutoSeg button').forEach((b) => {
+      b.onclick = () => setAutoDelegate(b.dataset.auto === 'true');
+    });
+    document.querySelectorAll('#mode button').forEach((b) => {
+      b.onclick = async () => {
+        try { await api('/api/settings', { mode: b.dataset.mode }); await poll(); flash(`Exécution : ${b.dataset.mode === 'eco' ? 'Éco' : 'Rapide'}`, 'essentialToast'); }
+        catch (e) { flash(e.message, 'essentialToast', true); }
+      };
+    });
+    document.querySelectorAll('#logFilterSeg button').forEach((b) => {
+      b.onclick = () => {
+        logFilter = b.dataset.level;
+        document.querySelectorAll('#logFilterSeg button').forEach((x) => x.classList.toggle('on', x === b));
+        loadLogs();
+      };
+    });
+
+    $('refreshLogsBtn').onclick = loadLogs;
+    $('copyLogsBtn').onclick = async () => {
+      const txt = JSON.stringify(logEntries || [], null, 2);
+      await navigator.clipboard.writeText(txt).catch(() => {});
+      flash('Logs copiés');
     };
-    $('clearKeyBtn').onclick = async () => {
+    $('clearLogsBtn').onclick = async () => {
+      await api('/api/logs/clear', {});
+      await loadLogs();
+    };
+
+    $('useAllBtn').onclick = async () => {
+      $('cutoffInput').value = 0;
+      try { await api('/api/settings', { cutoffPercent: 0 }); flash('Coupe-circuit à 0 %', 'essentialToast'); await poll(); }
+      catch (e) { flash(e.message, 'essentialToast', true); }
+    };
+    $('compactSessionBtn').onclick = async () => {
+      try { await api('/api/session', { action: 'compact' }); flash('Session compactée', 'essentialToast'); await poll(); }
+      catch (e) { flash(e.message, 'essentialToast', true); }
+    };
+    $('saveEssentialBtn').onclick = async () => {
       try {
-        const result = await api('/api/key', { action: 'clear' });
-        flash(result.hasKey ? 'Identifiant local retiré ; une variable d’environnement reste active' : 'Identifiant retiré', 'settingsToast');
+        await api('/api/settings', {
+          routingProfile: $('routingProfileInput').value,
+          cutoffPercent: Number($('cutoffInput').value),
+          reuseChat: $('reuseChatInput').checked,
+          showReasoning: $('showReasoningInput').checked,
+        });
+        flash('Réglages enregistrés', 'essentialToast');
         await poll();
-        syncSettingsForm();
-      } catch (e) { flash(e.message, 'settingsToast', true); }
+      } catch (e) { flash(e.message, 'essentialToast', true); }
     };
     $('saveSettingsBtn').onclick = async () => {
       try {
         const split = (v) => v.split(',').map((s) => s.trim()).filter(Boolean);
         await api('/api/settings', {
-          cutoffPercent: Number($('cutoffInput').value),
           maxParallel: Number($('maxParallelInput').value),
-          showReasoning: $('showReasoningInput').checked,
-          useClientTools: $('useClientToolsInput').checked,
-          reuseChat: $('reuseChatInput').checked,
           contextCompactPercent: Number($('contextCompactInput').value),
-          contextMode: $('contextModeInput').value,
-          routingProfile: $('routingProfileInput').value,
           tiers: {
             light: split($('tierLightInput').value),
             medium: split($('tierMediumInput').value),
@@ -1392,46 +1207,115 @@
           allowedModels: split($('allowedInput').value),
           blockedModels: split($('blockedInput').value),
         });
-        flash('Paramètres appliqués', 'orchToast');
+        flash('Paramètres avancés appliqués', 'orchToast');
         await poll();
       } catch (e) { flash(e.message, 'orchToast', true); }
     };
+    $('diagnosticsBtn').onclick = async () => {
+      $('diagnosticsBody').textContent = 'Diagnostic en cours…';
+      try { $('diagnosticsBody').textContent = diagnosticText(await api('/api/diagnostics')); }
+      catch (e) { $('diagnosticsBody').textContent = `Diagnostic indisponible : ${e.message}`; }
+    };
     $('clearHistory').onclick = async () => { await api('/api/clear-history', {}); await poll(); };
-    document.querySelectorAll('#mode button').forEach((b) => {
-      b.onclick = async () => {
-        try { await api('/api/settings', { mode: b.dataset.mode }); await poll(); }
-        catch (e) { flash(e.message, 'toast', true); }
-      };
+
+    $('apiKeyInput').addEventListener('input', () => { keyIsMask = false; });
+    $('toggleKeyVisibility').onclick = async () => {
+      const input = $('apiKeyInput');
+      if (!S.hasKey) return;
+      if (keyIsVisible) {
+        input.type = 'password'; input.value = KEY_MASK; keyIsMask = true; keyIsVisible = false;
+        return;
+      }
+      try {
+        const data = await api('/api/key', { action: 'reveal' });
+        if (!data.hasKey || !data.apiKey) throw new Error('Clé introuvable.');
+        input.type = 'text'; input.value = data.apiKey; keyIsMask = false; keyIsVisible = true;
+      } catch (e) { flash(e.message, 'settingsToast', true); }
+    };
+    $('saveKeyBtn').onclick = async () => {
+      try {
+        const key = $('apiKeyInput').value.trim();
+        const preserves = keyIsMask && key === KEY_MASK;
+        if (key && !preserves) {
+          await api('/api/key', { apiKey: key });
+          $('apiKeyInput').value = '';
+          flash('Identifiant enregistré et testé', 'settingsToast');
+        } else {
+          await api('/api/refresh', {});
+          flash('Connexion testée', 'settingsToast');
+        }
+        keyIsVisible = false; keyIsMask = false;
+        await poll(); syncSettingsForm();
+      } catch (e) { flash(e.message, 'settingsToast', true); }
+    };
+    $('clearKeyBtn').onclick = async () => {
+      try {
+        const res = await api('/api/key', { action: 'clear' });
+        flash(res.hasKey ? 'Clé locale retirée (env. active)' : 'Clé retirée', 'settingsToast');
+        await poll(); syncSettingsForm();
+      } catch (e) { flash(e.message, 'settingsToast', true); }
+    };
+
+    document.querySelectorAll('#tierRow .chip[data-tier]').forEach((btn) => {
+      const tier = btn.dataset.tier;
+      btn.addEventListener('mouseenter', () => { clearTimeout(popHideTimer); clearTimeout(hoverTimer); hoverTimer = setTimeout(() => showTierPopover(tier, btn), 320); });
+      btn.addEventListener('pointerdown', () => { clearTimeout(hoverTimer); hoverTimer = setTimeout(() => showTierPopover(tier, btn), 320); });
+      btn.addEventListener('mouseleave', () => { clearTimeout(hoverTimer); popHideTimer = setTimeout(hidePopover, 220); });
     });
+    $('tierPopover').addEventListener('mouseenter', () => clearTimeout(popHideTimer));
+    $('tierPopover').addEventListener('mouseleave', () => { popHideTimer = setTimeout(hidePopover, 160); });
+
     document.addEventListener('click', async (e) => {
       const pick = e.target.closest('[data-pick]');
       if (pick && !pick.disabled) {
         selectedChoice = pick.dataset.pick;
         hidePopover();
         renderTiers();
-        flash('Modèle : ' + pick.textContent.trim().split('\n')[0]);
+        flash('Modèle : ' + shortModel(selectedChoice));
         return;
       }
       const chip = e.target.closest('[data-choice]');
-      if (chip) {
-        selectedChoice = chip.dataset.choice;
-        renderTiers();
+      if (chip) { selectedChoice = chip.dataset.choice; renderTiers(); return; }
+      if (!e.target.closest('#tierPopover') && !e.target.closest('#tierRow')) hidePopover();
+
+      const copyIdBtn = e.target.closest('[data-copy-id]');
+      if (copyIdBtn) {
+        await navigator.clipboard.writeText(copyIdBtn.dataset.copyId).catch(() => {});
+        flash('ID copié : ' + copyIdBtn.dataset.copyId);
         return;
       }
-      if (!e.target.closest('#tierPopover') && !e.target.closest('#tierRow')) hidePopover();
-      const reviewAction = e.target.closest('[data-review-action]');
-      if (reviewAction) {
-        try {
-          await api('/api/review', { action: reviewAction.dataset.reviewAction, jobId: reviewAction.dataset.reviewJob });
-          flash(reviewAction.dataset.reviewAction === 'undo' ? 'Revue restaurée' : 'Revue appliquée');
-          await poll();
-        } catch (error) { flash(error.message, 'toast', true); }
+      const useModelBtn = e.target.closest('[data-use-model]');
+      if (useModelBtn) {
+        selectedChoice = useModelBtn.dataset.useModel;
+        switchTab('dash');
+        renderTiers();
+        flash('Modèle sélectionné : ' + shortModel(selectedChoice));
+        return;
+      }
+      const copyRespBtn = e.target.closest('[data-copy-resp]');
+      if (copyRespBtn) {
+        const job = (S.history || []).find((h) => (h.jobId || h.id) === copyRespBtn.dataset.copyResp);
+        const text = job?.response || job?.summary || '';
+        await navigator.clipboard.writeText(text).catch(() => {});
+        flash('Copié !');
+        return;
+      }
+      const rerunBtn = e.target.closest('[data-rerun-id]');
+      if (rerunBtn) {
+        const job = (S.history || []).find((h) => (h.jobId || h.id) === rerunBtn.dataset.rerunId);
+        if (job?.task) {
+          $('task').value = job.task;
+          $('task').focus();
+          flash('Demande rechargée');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
         return;
       }
       const cancel = e.target.closest('[data-cancel]');
       if (cancel) { await api('/api/cancel', { id: cancel.dataset.cancel }); await poll(); return; }
+
       const hist = e.target.closest('[data-hist]');
-      if (hist) {
+      if (hist && !e.target.closest('button, a')) {
         const id = hist.dataset.hist;
         if (expandedHistory.has(id)) expandedHistory.delete(id); else expandedHistory.add(id);
         renderHistory();
@@ -1442,7 +1326,7 @@
       const t = Number(el.dataset.start);
       if (t) el.textContent = fmtSec(Math.round((Date.now() - t) / 1000));
     }), 1000);
-    renderPlaceholder();
+    renderTiers();
     poll();
   </script>
 </body>

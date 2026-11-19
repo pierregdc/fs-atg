@@ -11,70 +11,48 @@ import {
   MCP_TOOL_CATALOG,
   acquireGlobalSlot,
   apiCredentialStatus,
-  clientToolsForExecutionMode,
   compactChatContext,
   compactCatalog,
+  enrichModelsCatalog,
+  estimateAntigravityJobSavings,
   estimateTokens,
+  fetchAgentsAndModels,
   fetchChatContext,
   fetchChatStreamMetrics,
   fetchModelCatalog,
+  fetchQuotaSnapshot,
   fetchRemoteCatalog,
   formatWorkspaceSymbolIndex,
-  fetchAgentsAndModels,
-  fetchQuotaSnapshot,
   fsJson,
   globalSlotStatus,
   loadState,
   normalizeProviderTokenUsage,
   parseTaskDirectives,
-  parseFileBlocks,
   pickModel,
+  recordAntigravitySavings,
   resolveSafe,
   saveState,
   streamGenerationWithRefusalFallback,
-  stripFileBlocks,
-  workspaceSymbolIndex,
   workspaceSketch,
-  writeFileBlocks,
+  workspaceSymbolIndex,
   writeLiveJobs,
 } from './fs_core.mjs';
-import { applyReview, stageReview, undoReview } from './review_store.mjs';
+import { LOG_PATH, countRecentErrors, logEvent, readLogs } from './logger.mjs';
 
-const TOOL_INSTRUCTIONS = `Exécute la demande dans le workspace.
-- Lis seulement les fichiers et lignes indispensables ; ignore le reste du projet.
-- Utilise les outils de fichier pour modifier le code, sans recopier de source dans la réponse.
-- Vérifie les fichiers touchés puis réponds en trois lignes : résultat, fichiers, tests.`;
+const NATURAL_INSTRUCTIONS = `Réponds clairement et directement en français (ou dans la langue de la demande).
+Si du code est demandé, fournis un code complet, propre et directement utilisable dans des blocs Markdown standards, sans blabla inutile.`;
 
-const FALLBACK_INSTRUCTIONS = `Exécute cette demande de développement pour un projet local.
-- Commence par un résumé court (3 lignes maximum).
-- Pour chaque fichier créé ou modifié, donne son contenu COMPLET dans ce format exact :
-<<<FILE chemin/relatif/au/workspace
-contenu
->>>END
-- Si un bloc <<<PATCH chemin>>>END est fourni, il met à jour la version déjà envoyée dans ce chat ; ne le traite pas comme un fichier complet.
-- Aucun autre bloc de code ni chemin hors du workspace.`;
+const PLAN_INSTRUCTIONS = `Propose un plan clair, concret et concis : étapes, fichiers concernés et points d'attention, sans rédiger le code complet.`;
 
-const PLAN_INSTRUCTIONS = `Réponds comme à une demande de développement normale, mais ne modifie aucun fichier.
-- Analyse uniquement les fichiers et lignes nécessaires.
-- Donne un plan concret, les fichiers concernés, les risques et les vérifications à effectuer.
-- Ne produis aucun bloc <<<FILE ...>>>END et n’exécute aucune écriture.`;
+const PLAN_B_PART_INSTRUCTIONS = `Fournis uniquement le bloc de code ou la réponse demandée pour cette partie précise, de façon complète, autonome et prête à être copiée, sans commentaire superflu.`;
 
-const REVIEW_INSTRUCTIONS = `Prépare une modification de code sans écrire dans le workspace.
-- Consulte uniquement les fichiers et lignes nécessaires.
-- Pour chaque fichier à créer ou modifier, retourne son contenu complet dans ce format exact :
-<<<FILE chemin/relatif/au/workspace
-contenu
->>>END
-- Commence par un résumé bref et les vérifications prévues. Aucun chemin hors du workspace.`;
-
-const FINAL = new Set(['done', 'review', 'undone', 'error', 'cancelled']);
-const EXECUTION_MODES = new Set(['apply', 'plan', 'dry-run']);
+const FINAL = new Set(['done', 'error', 'cancelled']);
+const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'dry-run']);
 const ROUTING_PROFILES = new Set(['eco', 'fast', 'quality', 'security', 'refactor']);
 const jobs = new Map();
 const running = new Map();
 const queue = [];
 const listeners = new Set();
-const contextFileCache = new Map();
 const diagnosticState = { lastApiError: null, lastApiAt: null, lastModelsError: null, lastModelsAt: null };
 
 function notify() {
@@ -83,8 +61,6 @@ function notify() {
   for (const fn of listeners) fn();
 }
 
-// A job can spend time in a provider stream without emitting a delta. Keep
-// the cross-process view fresh, but do not keep an idle stdio MCP alive.
 const liveHeartbeat = setInterval(() => {
   if (jobs.size) notify();
 }, 8_000);
@@ -111,7 +87,6 @@ async function prepareDirectChat(st, key) {
       saveState(st);
       return undefined;
     }
-    // Le contrôle de contexte est un confort : ne bloque pas un chat valide s'il est indisponible.
     return chatId;
   }
 }
@@ -135,6 +110,8 @@ function connectorSnapshot(st) {
     version: CONNECTOR_VERSION,
     transport: 'stdio',
     registration: 'declared',
+    readOnlyWorkspace: true,
+    autoDelegate: st.autoDelegate !== false,
     toolCount: MCP_TOOL_CATALOG.length,
     tools: MCP_TOOL_CATALOG,
     slots: globalSlotStatus(st),
@@ -151,96 +128,43 @@ function normalizedDelegation(task, requestedMode, requestedProfile) {
 }
 
 function profileState(st, profile) {
-  const routingProfile = ROUTING_PROFILES.has(profile) ? profile : (ROUTING_PROFILES.has(st.routingProfile) ? st.routingProfile : 'eco');
+  const routingProfile = ROUTING_PROFILES.has(profile) ? profile : (ROUTING_PROFILES.has(st.routingProfile) ? st.routingProfile : 'quality');
   return { ...st, routingProfile };
 }
 
-function compactPatch(previous, next) {
-  if (previous === next) return '';
-  const before = previous.split('\n');
-  const after = next.split('\n');
-  let start = 0;
-  while (start < before.length && start < after.length && before[start] === after[start]) start++;
-  let beforeEnd = before.length - 1;
-  let afterEnd = after.length - 1;
-  while (beforeEnd >= start && afterEnd >= start && before[beforeEnd] === after[afterEnd]) { beforeEnd--; afterEnd--; }
-  const removed = before.slice(start, Math.min(beforeEnd + 1, start + 45));
-  const added = after.slice(start, Math.min(afterEnd + 1, start + 45));
-  const lines = [`@@ ligne ${start + 1} @@`, ...removed.map((line) => `- ${line}`), ...added.map((line) => `+ ${line}`)];
-  if (beforeEnd - start + 1 > removed.length || afterEnd - start + 1 > added.length) lines.push('…');
-  return lines.join('\n');
-}
-
-/**
- * Old accounts without clientTools may need selected file content. For a
- * persistent chat, reuse an in-memory baseline and send a compact patch only
- * when it is demonstrably smaller. No source content is persisted for this
- * optimisation, so a fresh process/chat always receives a complete baseline.
- */
-function addLegacyFileContext(prompt, job, hasPersistentChat) {
-  if (!job.files?.length || !job.workspaceRoot) return prompt;
-  let remaining = 48_000;
-  const chunks = [];
-  for (const rel of job.files.slice(0, 12)) {
-    const { abs } = resolveSafe(job.workspaceRoot, rel);
-    const content = readFileSync(abs, 'utf-8');
-    const key = `${resolve(job.workspaceRoot).toLowerCase()}::${rel}`;
-    const previous = contextFileCache.get(key);
-    const patch = hasPersistentChat && typeof previous === 'string' ? compactPatch(previous, content) : '';
-    const usePatch = Boolean(patch) && patch.length < content.length * 0.7;
-    const payload = usePatch
-      ? `<<<PATCH ${rel}\n${patch}\n>>>END`
-      : `<<<FILE ${rel}\n${content.slice(0, Math.max(0, remaining))}${content.length > remaining ? '\n[tronqué]' : ''}\n>>>END`;
-    remaining -= usePatch ? patch.length : Math.min(content.length, Math.max(0, remaining));
-    contextFileCache.set(key, content);
-    chunks.push(payload);
-    if (remaining <= 0) break;
-  }
-  return chunks.length ? `${prompt}\n\nContexte de fichiers sélectionnés :\n${chunks.join('\n\n')}` : prompt;
-}
-
-function instructionFor(job, useClientTools) {
-  if (job.executionMode === 'plan') return PLAN_INSTRUCTIONS;
-  if (job.executionMode === 'dry-run') return REVIEW_INSTRUCTIONS;
-  return job.workspaceRoot && useClientTools ? TOOL_INSTRUCTIONS : FALLBACK_INSTRUCTIONS;
-}
-
-function toolsFor(job, useClientTools) {
-  if (!job.workspaceRoot || !useClientTools) return undefined;
-  return clientToolsForExecutionMode(
-    ['list_directory', 'read_file', 'search_files', 'edit_file', 'write_file'],
-    job.executionMode,
-  );
-}
-
-/**
- * Only paths are sent in targeted mode.  Smart adds a very small local tree;
- * it never reads a whole source file before the model explicitly asks for it.
- */
-function addLocalContext(prompt, job, st, hasPersistentChat = false) {
+function buildNaturalPrompt(basePrompt, job, st, hasPersistentChat) {
   const mode = contextModeOf(job, st);
-  let next = prompt;
-  // A persistent France Student chat already has the prior turn. Re-sending
-  // its summary wastes input tokens and can make stale information look new.
+  let next = basePrompt;
   if (job.parentId && !hasPersistentChat) {
-    const parent = st.history?.find((h) => h.id === job.parentId);
+    const parent = st.history?.find((h) => (h.id || h.jobId) === job.parentId);
     if (parent) {
-      next = `Contexte bref de la tâche précédente :\n${String(parent.summary || '').slice(0, 1200)}\n` +
-        `Fichiers touchés : ${(parent.written || []).slice(0, 20).join(', ') || 'aucun'}\n\nNouvelle demande : ${next}`;
+      const snippet = String(parent.response || parent.summary || '').slice(0, 1200);
+      if (snippet) next = `Contexte précédent :\n${snippet}\n\nNouvelle demande : ${next}`;
     }
   }
-  if (!job.workspaceRoot) return { prompt: next, mode };
-  if (mode !== 'minimal' && job.files?.length) {
-    next += `\n\nFichiers ciblés : ${job.files.slice(0, 30).join(', ')}. Lis uniquement les plages utiles avec read_file.`;
+  if (job.workspaceRoot && job.files?.length) {
+    let remaining = 24_000;
+    const chunks = [];
+    for (const rel of job.files.slice(0, 6)) {
+      try {
+        const safe = resolveSafe(job.workspaceRoot, rel);
+        const raw = readFileSync(safe.abs, 'utf-8');
+        const slice = raw.slice(0, Math.max(0, remaining));
+        remaining -= slice.length;
+        chunks.push(`Fichier \`${safe.rel}\` :\n\`\`\`\n${slice}${raw.length > slice.length ? '\n[tronqué]' : ''}\n\`\`\``);
+        if (remaining <= 0) break;
+      } catch (e) {
+        logEvent('warn', 'mcp', 'context.file_skipped', `Impossible de lire ${rel} : ${e?.message ?? e}`, { jobId: job.id, rel });
+      }
+    }
+    if (chunks.length) next += `\n\n${chunks.join('\n\n')}`;
   }
-  if (mode === 'smart') {
-    const index = formatWorkspaceSymbolIndex(workspaceSymbolIndex(job.workspaceRoot, 40), 4_000);
-    if (index) next += `\n\nIndex local de symboles et imports (sans code source, non exhaustif) :\n${index}`;
-    // Some projects do not expose parseable symbols. Paths remain a bounded,
-    // source-free fallback rather than attaching the whole project.
+  if (job.workspaceRoot && mode === 'smart') {
+    const index = formatWorkspaceSymbolIndex(workspaceSymbolIndex(job.workspaceRoot, 30), 3_000);
+    if (index) next += `\n\nAperçu de structure :\n${index}`;
     else {
-      const sketch = workspaceSketch(job.workspaceRoot, 40);
-      if (sketch.length) next += `\n\nPlan local (chemins seulement, non exhaustif) :\n${sketch.join('\n')}`;
+      const sketch = workspaceSketch(job.workspaceRoot, 30);
+      if (sketch.length) next += `\n\nArborescence :\n${sketch.join('\n')}`;
     }
   }
   return { prompt: next, mode };
@@ -255,15 +179,18 @@ async function sessionAction(action, workspaceRoot) {
       delete st.directChats[key];
       saveState(st);
     }
+    logEvent('info', 'mcp', 'session.new', 'Session réinitialisée pour la prochaine requête.', { key });
     return { ok: true, action, chatId: null, message: 'La prochaine demande ouvrira une nouvelle session.' };
   }
   if (!chatId) return { ok: true, action, chatId: null, usagePercent: null, message: 'Aucune session active.' };
-  if (action === 'compact') await compactChatContext(st, chatId);
+  if (action === 'compact') {
+    await compactChatContext(st, chatId);
+    logEvent('info', 'mcp', 'session.compact', `Contexte compacté pour la session ${chatId}.`, { chatId });
+  }
   const context = await fetchChatContext(st, chatId).catch(() => ({}));
   return { ok: true, action, chatId, usagePercent: context?.usagePercent ?? null };
 }
 
-/** Read-only health snapshot. It deliberately returns statuses, never credentials. */
 async function diagnosticsSnapshot() {
   const st = loadState();
   const credential = await apiCredentialStatus(st);
@@ -280,6 +207,7 @@ async function diagnosticsSnapshot() {
     } catch (error) {
       diagnosticState.lastApiAt = Date.now();
       diagnosticState.lastApiError = String(error?.message ?? error).slice(0, 220);
+      logEvent('error', 'mcp', 'diagnostics.api_error', diagnosticState.lastApiError);
     }
     try {
       const bundle = await fetchAgentsAndModels(st);
@@ -289,6 +217,7 @@ async function diagnosticsSnapshot() {
     } catch (error) {
       diagnosticState.lastModelsAt = Date.now();
       diagnosticState.lastModelsError = String(error?.message ?? error).slice(0, 220);
+      logEvent('error', 'mcp', 'diagnostics.models_error', diagnosticState.lastModelsError);
     }
   }
   const session = await sessionAction('status').catch(() => ({ chatId: null, usagePercent: null }));
@@ -300,16 +229,9 @@ async function diagnosticsSnapshot() {
     mcp: { ...connectorSnapshot(st), activeJobs: jobs.size, queuedJobs: queue.length },
     antigravityQuota: ANTIGRAVITY_QUOTA_VISIBILITY,
     session: { savedChatReference: Boolean(session.chatId), usagePercent: session.usagePercent ?? null },
-  };
-}
-
-function reviewView(review) {
-  if (!review) return null;
-  const valid = Date.now() <= Number(review.expiresAt ?? 0);
-  return {
-    ...review,
-    canApply: review.status === 'pending' && valid,
-    canUndo: review.status === 'applied' && valid,
+    autoDelegate: st.autoDelegate !== false,
+    recentErrors24h: countRecentErrors(),
+    logPath: LOG_PATH,
   };
 }
 
@@ -326,30 +248,47 @@ function publicView(j) {
     status: j.status,
     model: j.model,
     route: j.routeReason,
+    planB: Boolean(j.planB),
     elapsedSec: j.startedAt ? Math.round((end - j.startedAt) / 1000) : 0,
     receivedChars: j.receivedChars,
+    response: j.response ?? j.summary ?? '',
     summary: j.summary,
-    filesWritten: j.written ?? [],
+    filesWritten: [],
     lastThoughts: (j.thoughts || []).slice(-3),
     error: j.error,
+    planBRecommended: Boolean(j.planBRecommended),
+    planBHint: j.planBHint ?? null,
     startedAt: j.startedAt,
     endedAt: j.endedAt,
     usage,
     tokenUsage: {
-      // This is a local character-based estimate before the request, never a bill.
       inputEstimateTokens: tokenMeasurement.localPromptEstimateTokens ?? j.inputEstimateTokens ?? null,
-      // These fields are populated only when the provider returns usage.
       provider: tokenMeasurement.providerUsage ?? null,
     },
     inputEstimateTokens: j.inputEstimateTokens,
     contextMode: j.contextMode,
-    executionMode: j.executionMode ?? 'apply',
+    executionMode: j.executionMode ?? 'generate',
     routingProfile: j.routingProfile ?? null,
-    review: reviewView(j.review),
-    reviewUnavailable: j.reviewUnavailable ?? null,
     slot: j.slot,
     refusals: j.refusals ?? [],
     attemptedModels: j.attemptedModels ?? (j.model ? [j.model] : []),
+    antigravitySavings: j.antigravitySavings ?? null,
+  };
+}
+
+function mcpCompactView(j, verbose = false) {
+  if (verbose) return publicView(j);
+  const responseText = String(j.response ?? '').trim() || String(j.summary ?? '').trim();
+  return {
+    jobId: j.id ?? j.jobId,
+    status: j.status,
+    model: j.model,
+    ...(j.planB ? { planB: true } : {}),
+    ...(j.partsResponses?.length ? { partsResponses: j.partsResponses } : (responseText ? { response: responseText } : {})),
+    ...(j.error ? { error: j.error } : {}),
+    ...(j.planBRecommended ? { planBRecommended: true, planBHint: j.planBHint } : {}),
+    ...(j.refusals?.length ? { refusals: j.refusals } : {}),
+    ...(j.antigravitySavings?.totalTokensSavedEst ? { savedAgTokensEst: j.antigravitySavings.totalTokensSavedEst } : {}),
   };
 }
 
@@ -359,44 +298,40 @@ function finishJob(job, status) {
   running.delete(job.id);
   jobs.delete(job.id);
   const st = loadState();
-  st.history = [{ ...job, thoughts: job.thoughts.slice(-5) }, ...(st.history || [])].slice(0, 30);
+  if (status === 'done') {
+    job.antigravitySavings = estimateAntigravityJobSavings(job, {
+      waitedInline: Boolean(job.waitedInline),
+      partsCount: Array.isArray(job.partsResponses) && job.partsResponses.length ? job.partsResponses.length : 1,
+    });
+    recordAntigravitySavings(st, job.antigravitySavings);
+    logEvent('info', 'mcp', 'job.done', `Job ${job.id} terminé (${job.model}, ${job.response?.length ?? 0} car.).`, {
+      jobId: job.id,
+      model: job.model,
+      chars: job.response?.length ?? 0,
+      durationSec: job.startedAt ? Math.round((job.endedAt - job.startedAt) / 1000) : 0,
+      planB: Boolean(job.planB),
+    });
+  } else if (status === 'error') {
+    logEvent('error', 'mcp', 'job.error', `Job ${job.id} en échec : ${job.error || 'inconnu'}`, {
+      jobId: job.id,
+      model: job.model,
+      attemptedModels: job.attemptedModels ?? [],
+      refusals: job.refusals ?? [],
+      planB: Boolean(job.planB),
+    });
+  } else if (status === 'cancelled') {
+    logEvent('warn', 'mcp', 'job.cancelled', `Job ${job.id} annulé.`, { jobId: job.id, model: job.model });
+  }
+  const stored = {
+    ...job,
+    response: String(job.response ?? '').slice(0, 30_000),
+    summary: String(job.summary ?? '').slice(0, 400),
+    thoughts: (job.thoughts || []).slice(-5),
+  };
+  st.history = [stored, ...(st.history || [])].slice(0, 20);
   saveState(st);
   notify();
   pump();
-}
-
-function storedJob(jobId) {
-  const st = loadState();
-  const job = st.history?.find((entry) => entry.id === jobId || entry.jobId === jobId);
-  if (!job) throw new Error('Job introuvable dans l’historique.');
-  return { st, job };
-}
-
-function saveStoredJob(st, job) {
-  saveState(st);
-  notify();
-  return publicView(job);
-}
-
-function applyStoredReview(jobId) {
-  const { st, job } = storedJob(jobId);
-  if (!job.review?.id) throw new Error('Ce job ne contient aucune revue à appliquer.');
-  job.review = applyReview(job.review.id);
-  job.status = 'done';
-  job.written = job.review.files.map((file) => file.path);
-  job.reviewUnavailable = null;
-  job.summary = `${String(job.summary || '').trim()}\n\nRevue appliquée après validation.`.trim();
-  return saveStoredJob(st, job);
-}
-
-function undoStoredReview(jobId) {
-  const { st, job } = storedJob(jobId);
-  if (!job.review?.id) throw new Error('Ce job ne contient aucune revue à restaurer.');
-  job.review = undoReview(job.review.id);
-  job.status = 'undone';
-  job.written = [];
-  job.summary = `${String(job.summary || '').trim()}\n\nRevue restaurée sans écraser de modification ultérieure.`.trim();
-  return saveStoredJob(st, job);
 }
 
 async function runJob(job) {
@@ -416,7 +351,9 @@ async function runJob(job) {
     const st = profileState(loadState(), job.routingProfile);
     const q = await fetchQuotaSnapshot(st);
     if (q?.remainingPct !== null && q.remainingPct < (st.cutoffPercent ?? 15)) {
-      throw new Error(`Coupe-circuit : il reste ${q.remainingPct.toFixed(0)} % (seuil ${st.cutoffPercent} %).`);
+      const quotaErr = new Error(`Coupe-circuit : il reste ${q.remainingPct.toFixed(0)} % (seuil ${st.cutoffPercent} %).`);
+      quotaErr.noPlanB = true;
+      throw quotaErr;
     }
 
     const { ids, agentMap } = await fetchAgentsAndModels(st);
@@ -424,22 +361,18 @@ async function runJob(job) {
     job.model = route.model;
     job.routeReason = route.reason;
     job.routingProfile = route.profile === 'auto' ? null : route.profile;
-    job.executionMode = job.executionMode ?? route.executionMode ?? 'apply';
+    job.executionMode = job.executionMode ?? route.executionMode ?? 'generate';
+    job.contextMode = contextModeOf(job, st);
     notify();
 
-    const key = directSessionKey(job);
-    // Drafts and plans deliberately do not alter the persistent coding chat.
-    const chatId = job.executionMode === 'apply' ? await prepareDirectChat(st, key) : undefined;
-    if (chatId) job.chatId = chatId;
+    logEvent('info', 'mcp', 'job.start', `Démarrage job ${job.id} (${route.model}, ${route.reason}).`, {
+      jobId: job.id,
+      model: route.model,
+      profile: job.routingProfile || 'quality',
+      planB: Boolean(job.planB),
+      parts: job.parts?.length || 0,
+    });
 
-    const local = addLocalContext(route.prompt, job, st, Boolean(chatId));
-    let prompt = local.prompt;
-    job.contextMode = local.mode;
-    const useClientTools = Boolean(job.workspaceRoot && st.useClientTools !== false);
-    if (!useClientTools) prompt = addLegacyFileContext(prompt, job, Boolean(chatId));
-    job.inputEstimateTokens = estimateTokens(prompt);
-
-    job.status = 'waiting';
     job.thoughts.push('En attente d’un créneau France Student partagé.');
     notify();
     const lease = await acquireGlobalSlot(st, `mcp-${job.id}`, ac.signal);
@@ -448,87 +381,178 @@ async function runJob(job) {
     job.startedAt = Date.now();
     notify();
 
-    let liveText = '';
-    let lastPush = 0;
-    let result;
+    const makeStreamCallbacks = (labelPrefix = '') => {
+      let lastPush = 0;
+      let liveText = '';
+      return {
+        onChatId: (cid) => { job.chatId = cid; },
+        onText: (d) => {
+          job.receivedChars += d.length;
+          liveText += d;
+          job.summary = `${labelPrefix}${liveText.slice(-300)}`;
+          if (Date.now() - lastPush > 600) { lastPush = Date.now(); notify(); }
+        },
+        onReasoning: (d) => {
+          thoughtBuf += d;
+          if (thoughtBuf.includes('\n') || thoughtBuf.length > 240) { flushThought(); notify(); }
+        },
+        onRetry: ({ from, to, reason, attempt }) => {
+          job.refusals = [...(job.refusals ?? []), { model: from, reason, retryModel: to }];
+          job.model = to;
+          job.routeReason = `${route.reason} · repli ${from} → ${to}`;
+          job.thoughts.push(`Repli (${attempt}/3) : ${from} → ${to}.`);
+          job.thoughts = job.thoughts.slice(-20);
+          notify();
+        },
+      };
+    };
+
     try {
-      result = await streamGenerationWithRefusalFallback({
-      state: st,
-      model: route.model,
-      availableModels: ids,
-      agentMap,
-      instructions: instructionFor(job, useClientTools),
-      prompt,
-      chatId,
-      workspaceRoot: job.workspaceRoot,
-      clientTools: toolsFor(job, useClientTools),
-      signal: ac.signal,
-      onChatId: (cid) => { job.chatId = cid; },
-      onText: (d) => {
-        job.receivedChars += d.length;
-        liveText += d;
-        job.summary = liveText.slice(-300);
-        if (Date.now() - lastPush > 600) { lastPush = Date.now(); notify(); }
-      },
-      onToolCall: (call) => {
-        job.thoughts.push(`Outil : ${call.name}(${JSON.stringify(call.arguments ?? {}).slice(0, 100)})`);
-        job.thoughts = job.thoughts.slice(-20);
+      // Plan B par morceaux : chaque petit bloc est généré indépendamment sur un chat neuf.
+      if (Array.isArray(job.parts) && job.parts.length) {
+        job.planB = true;
+        const partsResponses = [];
+        const allAttempted = new Set();
+        const combinedUsage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+        let hasUsage = false;
+        let lastError = null;
+
+        for (let i = 0; i < job.parts.length; i++) {
+          if (ac.signal.aborted) break;
+          const partText = String(job.parts[i] ?? '').trim();
+          if (!partText) continue;
+          const { prompt: partPrompt } = buildNaturalPrompt(partText, job, st, false);
+          job.inputEstimateTokens = (job.inputEstimateTokens ?? 0) + estimateTokens(partPrompt);
+          job.thoughts.push(`Plan B · bloc ${i + 1}/${job.parts.length}…`);
+          notify();
+          try {
+            const cbs = makeStreamCallbacks(`[Bloc ${i + 1}/${job.parts.length}] `);
+            const partRes = await streamGenerationWithRefusalFallback({
+              state: st,
+              model: route.model,
+              availableModels: ids,
+              agentMap,
+              instructions: PLAN_B_PART_INSTRUCTIONS,
+              prompt: partPrompt,
+              chatId: undefined,
+              signal: ac.signal,
+              ...cbs,
+            });
+            for (const m of partRes.attemptedModels || []) allAttempted.add(m);
+            job.model = partRes.model ?? job.model;
+            const cleanText = String(partRes.text ?? '').trim();
+            partsResponses.push({ index: i + 1, task: partText, model: partRes.model, response: cleanText });
+            if (partRes.usage) {
+              hasUsage = true;
+              const u = normalizeProviderTokenUsage(partRes.usage);
+              if (u?.inputTokens) combinedUsage.input_tokens += u.inputTokens;
+              if (u?.outputTokens) combinedUsage.output_tokens += u.outputTokens;
+              if (u?.totalTokens) combinedUsage.total_tokens += u.totalTokens;
+            }
+            logEvent('info', 'mcp', 'planB.part.done', `Bloc ${i + 1}/${job.parts.length} généré (${partRes.model}).`, { jobId: job.id, part: i + 1, model: partRes.model });
+          } catch (partErr) {
+            lastError = partErr;
+            partsResponses.push({ index: i + 1, task: partText, model: job.model, error: partErr?.message || 'Échec du bloc' });
+            logEvent('warn', 'mcp', 'planB.part.error', `Bloc ${i + 1}/${job.parts.length} échoué : ${partErr?.message}`, { jobId: job.id, part: i + 1 });
+          }
+        }
+        flushThought();
+
+        const succeeded = partsResponses.filter((p) => p.response);
+        if (!succeeded.length) {
+          const err = new Error(`Plan B en échec sur tous les blocs : ${lastError?.message || 'aucune réponse'}`);
+          err.attemptedModels = [...allAttempted];
+          throw err;
+        }
+        job.partsResponses = partsResponses;
+        job.attemptedModels = [...allAttempted];
+        job.response = partsResponses
+          .map((p) => (p.response ? `### Partie ${p.index} — ${p.task}\n${p.response}` : `### Partie ${p.index} (échec : ${p.error})`))
+          .join('\n\n')
+          .slice(0, 60_000);
+        job.summary = `${succeeded.length}/${partsResponses.length} bloc(s) généré(s) en Plan B.`;
+        job.usage = hasUsage ? combinedUsage : null;
+        job.tokenMeasurement = { localPromptEstimateTokens: job.inputEstimateTokens, providerUsage: hasUsage ? normalizeProviderTokenUsage(combinedUsage) : null };
+        finishJob(job, 'done');
+        return;
+      }
+
+      // Plan A (session persistante) ou Plan B isolé (chat neuf sans historique)
+      const key = directSessionKey(job);
+      const usePersistentChat = !job.planB && job.executionMode !== 'plan' && job.executionMode !== 'dry-run';
+      const chatId = usePersistentChat ? await prepareDirectChat(st, key) : undefined;
+      if (chatId) job.chatId = chatId;
+
+      const local = buildNaturalPrompt(route.prompt, job, st, Boolean(chatId));
+      job.contextMode = local.mode;
+      job.inputEstimateTokens = estimateTokens(local.prompt);
+      const instructions = job.executionMode === 'plan'
+        ? PLAN_INSTRUCTIONS
+        : (job.planB ? PLAN_B_PART_INSTRUCTIONS : NATURAL_INSTRUCTIONS);
+
+      let result;
+      try {
+        result = await streamGenerationWithRefusalFallback({
+          state: st,
+          model: route.model,
+          availableModels: ids,
+          agentMap,
+          instructions,
+          prompt: local.prompt,
+          chatId,
+          signal: ac.signal,
+          ...makeStreamCallbacks(),
+        });
+      } catch (err) {
+        const status = Number(err?.status ?? 0);
+        const canIsolatePlanB = !ac.signal.aborted && status !== 401 && status !== 403 && Boolean(chatId) && !job.planB;
+        if (!canIsolatePlanB) throw err;
+        // Repli Plan B automatique immédiat sur chat neuf isolé (sans historique potentiellement lourd/bloqué)
+        job.planB = true;
+        job.thoughts.push('Plan B automatique : nouvel essai sur session neuve isolée…');
         notify();
-      },
-      onReasoning: (d) => {
-        thoughtBuf += d;
-        if (thoughtBuf.includes('\n') || thoughtBuf.length > 240) { flushThought(); notify(); }
-      },
-      onRetry: ({ from, to, reason }) => {
-        job.refusals = [...(job.refusals ?? []), { model: from, reason, retryModel: to }];
-        job.model = to;
-        job.routeReason = `${route.reason} · repli ${from} → ${to}`;
-        job.thoughts.push(`Reprise avec ${to} après refus de ${from}.`);
-        job.thoughts = job.thoughts.slice(-20);
-        notify();
-      },
-      });
+        logEvent('warn', 'mcp', 'planB.auto_isolated', `Plan A échoué avec chat persistant ; bascule Plan B sur chat neuf (${err?.message}).`, { jobId: job.id });
+        const freshPrompt = buildNaturalPrompt(route.prompt, job, st, false).prompt;
+        result = await streamGenerationWithRefusalFallback({
+          state: st,
+          model: route.model,
+          availableModels: ids,
+          agentMap,
+          instructions: PLAN_B_PART_INSTRUCTIONS,
+          prompt: freshPrompt,
+          chatId: undefined,
+          signal: ac.signal,
+          ...makeStreamCallbacks('[Plan B] '),
+        });
+      }
+
+      flushThought();
+      job.chatId = result.chatId ?? job.chatId;
+      if (usePersistentChat && result.chatId) rememberDirectChat(key, result.chatId);
+      job.model = result.model ?? job.model;
+      job.refusals = result.refusals ?? job.refusals ?? [];
+      job.attemptedModels = result.attemptedModels ?? job.attemptedModels;
+      job.tokenMeasurement = result.tokenMeasurement ?? {
+        localPromptEstimateTokens: job.inputEstimateTokens,
+        providerUsage: normalizeProviderTokenUsage(result.usage),
+      };
+      job.response = String(result.text ?? '').trim().slice(0, 60_000);
+      job.summary = job.response.slice(0, 400);
+      job.usage = result.usage;
+      finishJob(job, 'done');
     } finally {
       lease.release();
     }
-    flushThought();
-
-    job.chatId = result.chatId ?? job.chatId;
-    if (job.executionMode === 'apply') rememberDirectChat(key, result.chatId);
-    job.model = result.model ?? job.model;
-    job.refusals = result.refusals ?? job.refusals ?? [];
-    job.attemptedModels = result.attemptedModels ?? job.attemptedModels;
-    job.tokenMeasurement = result.tokenMeasurement ?? {
-      localPromptEstimateTokens: job.inputEstimateTokens,
-      providerUsage: normalizeProviderTokenUsage(result.usage),
-    };
-
-    const blocks = parseFileBlocks(result.text);
-    if (job.executionMode === 'dry-run') {
-      job.written = [];
-      if (blocks.length && job.workspaceRoot) {
-        job.review = stageReview(job.workspaceRoot, blocks);
-        job.summary = stripFileBlocks(result.text).slice(0, 2000);
-        job.usage = result.usage;
-        finishJob(job, 'review');
-        return;
-      }
-      job.reviewUnavailable = blocks.length
-        ? 'Une revue avec diff exige un workspace local.'
-        : 'Aucun fichier proposé : aucune revue à appliquer.';
-    } else if (job.executionMode === 'apply') {
-      const blockWritten = job.workspaceRoot ? writeFileBlocks(job.workspaceRoot, blocks) : [];
-      job.written = [...new Set([...(result.written ?? []), ...blockWritten])];
-    } else {
-      job.written = [];
-    }
-    job.summary = stripFileBlocks(result.text).slice(0, 2000);
-    job.usage = result.usage;
-    finishJob(job, 'done');
   } catch (e) {
     flushThought();
-    if (ac.signal.aborted) finishJob(job, 'cancelled');
-    else {
+    if (ac.signal.aborted) {
+      finishJob(job, 'cancelled');
+    } else {
+      const status = Number(e?.status ?? 0);
+      if (!e?.noPlanB && status !== 401 && status !== 403) {
+        job.planBRecommended = true;
+        job.planBHint = 'Relance en Plan B par petits blocs avec fs_delegate({ task, planB: true, parts: [...] }) ou complète directement les morceaux.';
+      }
       job.refusals = e.refusals ?? job.refusals ?? [];
       job.attemptedModels = e.attemptedModels ?? job.attemptedModels;
       job.error = e.message;
@@ -564,31 +588,36 @@ function waitFor(id, ms) {
   });
 }
 
-const asText = (o) => ({ content: [{ type: 'text', text: JSON.stringify(o, null, 2) }] });
+const asCompactText = (o) => ({ content: [{ type: 'text', text: JSON.stringify(o) }] });
 const server = new McpServer({ name: 'fs-atg', version: CONNECTOR_VERSION });
 
 server.registerTool('fs_delegate', {
   title: 'Déléguer à France Student [ATG]',
-  description: 'Confie une tâche de code à France Student. Par défaut, apply peut écrire dans workspaceRoot. /plan est strictement sans écriture ; /dry-run prépare un diff à valider avec fs_apply_review. Asynchrone : renvoie un jobId, puis appelle fs_job_status.',
+  description: 'Demande à France Student de générer une réponse ou un bloc de code sans jamais écrire sur le PC. Renvoie directement le texte/code dans response pour qu’Antigravity puisse le copier ou l’assembler. Privilégie les modèles forts et le mode 1 appel (waitSeconds=45).',
   inputSchema: {
-    task: z.string().min(3).describe('Consigne précise. Commandes locales : /send, /plan, /dry-run, /eco, /fast, /low, /medium, /high.'),
-    workspaceRoot: z.string().optional().describe('Chemin absolu du workspace où écrire les fichiers générés.'),
-    files: z.array(z.string()).optional().describe('Chemins relatifs au workspace à joindre.'),
+    task: z.string().min(3).describe('Consigne claire en phrases normales (commandes possibles : /send, /plan, /eco, /fast, /low, /medium, /high).'),
+    workspaceRoot: z.string().optional().describe('Chemin du workspace (lecture seule uniquement pour files/session). Jamais écrit.'),
+    files: z.array(z.string()).optional().describe('Chemins relatifs à joindre en lecture seule si indispensable.'),
     model: z.string().optional(),
     priority: z.number().int().min(0).max(9).optional(),
-    contextMode: z.enum(['minimal', 'targeted', 'smart']).optional().describe('minimal = demande seule ; targeted = chemins choisis ; smart = petit plan de fichiers.'),
-    parentJobId: z.string().optional().describe("Suite d'un job : seul son résumé est réutilisé."),
-    executionMode: z.enum(['apply', 'plan', 'dry-run']).optional().describe('apply écrit si nécessaire ; plan et dry-run interdisent toute écriture.'),
-    routingProfile: z.enum(['eco', 'fast', 'quality', 'security', 'refactor']).optional().describe('Profil de routage local, retiré de la demande envoyée.'),
+    contextMode: z.enum(['minimal', 'targeted', 'smart']).optional().describe('minimal recommandé = phrase seule sans surcharger.'),
+    parentJobId: z.string().optional().describe('Suite d’un job précédent.'),
+    executionMode: z.enum(['generate', 'apply', 'plan', 'dry-run']).optional().describe('Tous strictement sans écriture PC ; plan retourne uniquement un plan.'),
+    routingProfile: z.enum(['eco', 'fast', 'quality', 'security', 'refactor']).optional(),
+    planB: z.boolean().optional().describe('Active le Plan B (chat neuf isolé ou découpage via parts) en cas d’échec du Plan A.'),
+    parts: z.array(z.string().min(3)).max(6).optional().describe('Plan B : 2 à 6 petites sous-demandes simples générées séparément pour assemblage.'),
+    waitSeconds: z.number().min(0).max(45).optional().describe('Attente intégrée (défaut 45s) pour répondre en 1 appel.'),
+    verbose: z.boolean().optional(),
   },
 }, async (a) => {
   const delegation = normalizedDelegation(a.task, a.executionMode, a.routingProfile);
-  if (!delegation.task) throw new Error('Consigne vide après les commandes locales.');
-  const firstLine = delegation.task.split('\n')[0];
+  if (!delegation.task && !a.parts?.length) throw new Error('Consigne vide après les commandes locales.');
+  const waitSec = typeof a.waitSeconds === 'number' ? Math.max(0, Math.min(45, a.waitSeconds)) : 45;
+  const firstLine = (delegation.task || a.parts?.[0] || '').split('\n')[0];
   const job = {
     id: randomUUID().slice(0, 8),
     title: `${ATG} ${firstLine.slice(0, 70)}${firstLine.length > 70 ? '…' : ''}`,
-    task: delegation.task,
+    task: delegation.task || a.parts?.join(' ; '),
     rawTask: delegation.rawTask,
     workspaceRoot: a.workspaceRoot,
     files: a.files ?? [],
@@ -598,19 +627,62 @@ server.registerTool('fs_delegate', {
     contextMode: a.contextMode,
     executionMode: delegation.executionMode,
     routingProfile: delegation.routingProfile,
+    planB: Boolean(a.planB || a.parts?.length),
+    parts: Array.isArray(a.parts) && a.parts.length ? a.parts.slice(0, 6) : undefined,
+    waitedInline: waitSec > 0,
     status: 'queued',
     createdAt: Date.now(),
     receivedChars: 0,
     thoughts: [],
+    response: '',
     summary: '',
     written: [],
   };
   jobs.set(job.id, job);
   queue.push(job);
   queue.sort((x, y) => y.priority - x.priority || x.createdAt - y.createdAt);
+  logEvent('info', 'mcp', 'job.queued', `Job ${job.id} mis en file (${job.planB ? 'Plan B' : 'Plan A'}).`, { jobId: job.id });
   notify();
   pump();
-  return asText({ jobId: job.id, status: job.status, next: 'Appelle fs_job_status avec waitSeconds=45.' });
+  if (waitSec > 0) {
+    const doneJob = await waitFor(job.id, waitSec * 1000);
+    if (doneJob && FINAL.has(doneJob.status)) {
+      return asCompactText(mcpCompactView(doneJob, Boolean(a.verbose)));
+    }
+    return asCompactText({
+      jobId: job.id,
+      status: doneJob?.status ?? job.status,
+      next: 'Job encore en cours après 45s : appelle fs_job_status(waitSeconds=45).',
+    });
+  }
+  return asCompactText({ jobId: job.id, status: job.status, next: 'Appelle fs_job_status avec waitSeconds=45.' });
+});
+
+server.registerTool('fs_job_status', {
+  title: "État d'un job [ATG]",
+  description: "Attend jusqu'à waitSeconds que le job finisse, puis renvoie le texte/code généré dans response.",
+  inputSchema: { jobId: z.string(), waitSeconds: z.number().min(0).max(45).optional(), verbose: z.boolean().optional() },
+}, async ({ jobId, waitSeconds, verbose }) => {
+  const job = await waitFor(jobId, (waitSeconds ?? 45) * 1000);
+  return asCompactText(job ? mcpCompactView(job, Boolean(verbose)) : { error: 'jobId inconnu' });
+});
+
+server.registerTool('fs_logs', {
+  title: 'Journal de bord [ATG]',
+  description: 'Consulte le journal de bord persistant de France Student [ATG] pour diagnostiquer les erreurs, refus de modèles, timeouts ou problèmes API.',
+  inputSchema: {
+    limit: z.number().int().min(1).max(100).optional().describe('Nombre maximal d’entrées récentes (défaut 40).'),
+    level: z.enum(['all', 'warn', 'error']).optional().describe('Filtre de gravité (défaut all).'),
+    jobId: z.string().optional().describe('Filtrer sur un jobId précis.'),
+  },
+}, async ({ limit, level, jobId }) => {
+  const entries = readLogs({ limit: limit ?? 40, level: level ?? 'all', jobId: jobId ?? '' });
+  return asCompactText({
+    logPath: LOG_PATH,
+    count: entries.length,
+    recentErrors24h: countRecentErrors(),
+    entries,
+  });
 });
 
 server.registerTool('fs_session', {
@@ -620,46 +692,26 @@ server.registerTool('fs_session', {
     action: z.enum(['status', 'compact', 'new']).default('status'),
     workspaceRoot: z.string().optional(),
   },
-}, async ({ action, workspaceRoot }) => asText(await sessionAction(action, workspaceRoot)));
-
-server.registerTool('fs_job_status', {
-  title: "État d'un job [ATG]",
-  description: "Attend jusqu'à waitSeconds que le job finisse, puis renvoie son état, son résumé et les fichiers écrits.",
-  inputSchema: { jobId: z.string(), waitSeconds: z.number().min(0).max(45).optional() },
-}, async ({ jobId, waitSeconds }) => {
-  const job = await waitFor(jobId, (waitSeconds ?? 30) * 1000);
-  return asText(job ? publicView(job) : { error: 'jobId inconnu' });
-});
-
-server.registerTool('fs_apply_review', {
-  title: 'Appliquer une revue [ATG]',
-  description: 'Applique les fichiers d’un dry-run déjà validé. Refuse toute écriture si un fichier a changé depuis le diff.',
-  inputSchema: { jobId: z.string().describe('jobId retourné par fs_delegate en mode /dry-run.') },
-}, async ({ jobId }) => asText({ ok: true, job: applyStoredReview(jobId) }));
-
-server.registerTool('fs_undo_review', {
-  title: 'Restaurer une revue [ATG]',
-  description: 'Restaure le snapshot borné d’une revue appliquée. Refuse d’écraser un fichier modifié après application.',
-  inputSchema: { jobId: z.string().describe('jobId du dry-run appliqué.') },
-}, async ({ jobId }) => asText({ ok: true, job: undoStoredReview(jobId) }));
+}, async ({ action, workspaceRoot }) => asCompactText(await sessionAction(action, workspaceRoot)));
 
 server.registerTool('fs_status', {
   title: 'État du connecteur France Student [ATG]',
-  description: 'Retourne sans appel fournisseur le transport MCP, la version, les outils publiés et la limite de lecture du quota Antigravity.',
+  description: 'Retourne sans appel fournisseur le transport MCP, la version, le mode Auto/Manuel et les outils publiés.',
   inputSchema: {},
 }, async () => {
   const st = loadState();
-  return asText({
+  return asCompactText({
     mcp: { ...connectorSnapshot(st), activeJobs: jobs.size, queuedJobs: queue.length },
+    recentErrors24h: countRecentErrors(),
     antigravityQuota: ANTIGRAVITY_QUOTA_VISIBILITY,
   });
 });
 
 server.registerTool('fs_diagnostics', {
   title: 'Diagnostic France Student [ATG]',
-  description: 'Vérifie de façon non destructive le trousseau, l’API, les modèles, le quota France Student, la session et les créneaux MCP. Indique explicitement que le quota Antigravity reste mesurable via /usage. Ne révèle jamais la clé.',
+  description: 'Vérifie de façon non destructive le trousseau, l’API, les modèles, le quota, les erreurs récentes et la session. Ne révèle jamais la clé.',
   inputSchema: {},
-}, async () => asText(await diagnosticsSnapshot()));
+}, async () => asCompactText(await diagnosticsSnapshot()));
 
 server.registerTool('fs_quota', {
   title: 'Quota France Student',
@@ -669,35 +721,40 @@ server.registerTool('fs_quota', {
   const st = loadState();
   const credential = await apiCredentialStatus(st);
   if (!credential.configured) {
-    return asText({ remainingPct: null, cutoff: st.cutoffPercent, resetAt: null, credential, error: 'Aucun identifiant France Student configuré.' });
+    return asCompactText({ remainingPct: null, cutoff: st.cutoffPercent, resetAt: null, credential, error: 'Aucun identifiant France Student configuré.' });
   }
   try {
     const q = await fetchQuotaSnapshot(st);
-    return asText({ remainingPct: q.remainingPct, cutoff: st.cutoffPercent, resetAt: q.resetAt, credential });
+    return asCompactText({ remainingPct: q.remainingPct, cutoff: st.cutoffPercent, resetAt: q.resetAt, credential });
   } catch (error) {
-    return asText({ remainingPct: null, cutoff: st.cutoffPercent, resetAt: null, credential, error: String(error?.message ?? error).slice(0, 220) });
+    logEvent('error', 'mcp', 'quota.error', error?.message || 'Erreur quota');
+    return asCompactText({ remainingPct: null, cutoff: st.cutoffPercent, resetAt: null, credential, error: String(error?.message ?? error).slice(0, 220) });
   }
 });
 
 server.registerTool('fs_catalog', {
   title: 'Catalogue France Student',
-  description: 'Découvre seulement par GET /models, /metrics/chat-streams, /skills, /projects, /mcp/servers ou /filesv2. Ne crée, n’active, ne téléverse et ne supprime rien.',
+  description: 'Découvre seulement par GET /models, /metrics/chat-streams, /skills, /projects, /mcp/servers ou /filesv2.',
   inputSchema: {
     resource: z.enum(['all', 'models', 'streams', 'capacity', 'skills', 'projects', 'mcpServers', 'files']).default('all'),
   },
 }, async ({ resource }) => {
   const st = loadState();
-  if (resource === 'models') return asText(compactCatalog(await fetchModelCatalog(st)));
-  if (resource === 'streams' || resource === 'capacity') return asText(compactCatalog(await fetchChatStreamMetrics(st)));
+  if (resource === 'models') {
+    const [models, agents] = await Promise.all([fetchModelCatalog(st), fetchAgentsAndModels(st).catch(() => null)]);
+    const enriched = agents?.ids?.length ? enrichModelsCatalog(agents.ids, agents.metaMap, st, models?.models) : [];
+    return asCompactText(compactCatalog({ ...models, enriched }));
+  }
+  if (resource === 'streams' || resource === 'capacity') return asCompactText(compactCatalog(await fetchChatStreamMetrics(st)));
   if (resource === 'all') {
     const [models, streams, remote] = await Promise.all([
       fetchModelCatalog(st),
       fetchChatStreamMetrics(st),
       fetchRemoteCatalog(st, 'all'),
     ]);
-    return asText(compactCatalog({ models, streams, ...remote }));
+    return asCompactText(compactCatalog({ models, streams, ...remote }));
   }
-  return asText(compactCatalog(await fetchRemoteCatalog(st, resource)));
+  return asCompactText(compactCatalog(await fetchRemoteCatalog(st, resource)));
 });
 
 server.registerTool('fs_cancel', {
@@ -719,7 +776,7 @@ server.registerTool('fs_cancel', {
       running.get(jobId)?.abort();
     }
   }
-  return asText({ ok: true });
+  return asCompactText({ ok: true });
 });
 
 const transport = new StdioServerTransport();

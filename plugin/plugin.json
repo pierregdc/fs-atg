@@ -1,12 +1,12 @@
 {
   "name": "fs-atg",
   "displayName": "France Student [ATG]",
-  "description": "Intégration France Student pour Antigravity : commandes slash natives, délégation asynchrone et contexte minimal. Le panneau suit le quota France Student ; le quota Antigravity se relève via /usage.",
-  "version": "0.6.3",
+  "description": "Générateur France Student pour Antigravity : génération sans écriture directe sur le PC, modèles forts prioritaires, mode Auto/Manuel, Plan B robuste, catalogue des modèles et journal de bord intégré.",
+  "version": "0.7.0",
   "logo": "assets/logo.png",
   "suggestedPrompts": [
-    "Utilise /send pour déléguer cette tâche de code",
-    "Vérifie mon quota France Student restant avec fs_quota",
-    "Ouvre le panneau France Student [ATG] pour suivre les jobs en cours"
+    "Utilise /send pour générer ce bloc de code avec France Student",
+    "Consulte /logs pour analyser la dernière erreur France Student",
+    "Ouvre le panneau France Student [ATG] pour gérer le mode Auto/Manuel et les modèles"
   ]
 }

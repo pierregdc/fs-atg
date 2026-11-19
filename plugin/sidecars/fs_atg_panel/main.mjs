@@ -11,60 +11,57 @@ import {
   acquireGlobalSlot,
   apiCredentialStatus,
   compactChatContext,
+  enrichModelsCatalog,
+  estimateAntigravityJobSavings,
+  estimateTokens,
   fetchAgentsAndModels,
   fetchChatContext,
+  fetchModelCatalog,
   fetchQuotaSnapshot,
-  estimateTokens,
   fsJson,
-  groupModelsByTier,
   globalSlotStatus,
+  groupModelsByTier,
   loadState,
   normalizeProviderTokenUsage,
   parseTaskDirectives,
   pickModel,
   readLiveJobs,
-  resolveApiKey,
-  saveState,
-  saveApiKey,
+  recordAntigravitySavings,
   removeApiKey,
+  resolveApiKey,
+  saveApiKey,
+  saveState,
   streamGenerationWithRefusalFallback,
+  syncAgentsRule,
 } from '../../fs_core.mjs';
-import { applyReview, undoReview } from '../../review_store.mjs';
+import { clearLogs, countRecentErrors, logEvent, readLogs } from '../../logger.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let state = loadState();
 let quotaCache = null;
 let modelCache = null;
+let catalogCache = null;
 const jobs = new Map();
 const running = new Map();
 const queue = [];
 
-const PANEL_INSTRUCTIONS = `Réponds de façon concise.
-- Le chat est persistant : ne répète ni conversation ni résumé déjà présent.
-- Lis seulement ce qui est nécessaire et ne prétends pas modifier un workspace sans délégation.`;
+const PANEL_INSTRUCTIONS = `Réponds clairement et directement en français (ou dans la langue de la demande).
+Si du code est demandé, fournis un code complet, propre et directement utilisable dans des blocs Markdown standards, sans blabla inutile.`;
 
-const PANEL_PLAN_INSTRUCTIONS = `Réponds à la demande avec un plan concret, sans modifier quoi que ce soit.
-- Indique les fichiers probablement concernés, les risques et les vérifications.
-- Ne prétends pas avoir appliqué une modification et ne fournis pas de bloc fichier complet.`;
+const PANEL_PLAN_INSTRUCTIONS = `Propose un plan clair, concret et concis : étapes, fichiers concernés et points d'attention, sans rédiger le code complet.`;
 
-const PANEL_DRY_RUN_INSTRUCTIONS = `Prépare une proposition de modification sans rien écrire.
-- Décris les changements, les fichiers probablement concernés et les vérifications.
-- Ce panneau n’a pas de workspace attaché : indique explicitement qu’un diff appliquable nécessite un dry-run MCP avec workspaceRoot.
-- Ne prétends pas avoir appliqué une modification.`;
-
-const EXECUTION_MODES = new Set(['apply', 'plan', 'dry-run']);
+const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'dry-run']);
 const ROUTING_PROFILES = new Set(['eco', 'fast', 'quality', 'security', 'refactor']);
 
 function profileState(st, profile) {
   const routingProfile = ROUTING_PROFILES.has(profile) ? profile
-    : (ROUTING_PROFILES.has(st.routingProfile) ? st.routingProfile : 'eco');
+    : (ROUTING_PROFILES.has(st.routingProfile) ? st.routingProfile : 'quality');
   return { ...st, routingProfile };
 }
 
 function panelInstructions(executionMode) {
   if (executionMode === 'plan') return PANEL_PLAN_INSTRUCTIONS;
-  if (executionMode === 'dry-run') return PANEL_DRY_RUN_INSTRUCTIONS;
   return PANEL_INSTRUCTIONS;
 }
 
@@ -114,10 +111,14 @@ async function panelSession(action = 'status') {
       delete state.directChats.panel;
       saveState(state);
     }
+    logEvent('info', 'panel', 'session.new', 'Session du panneau réinitialisée.');
     return { chatId: null, usagePercent: null, message: 'La prochaine demande ouvrira une nouvelle session.' };
   }
   if (!chatId) return { chatId: null, usagePercent: null, message: 'Aucune session active.' };
-  if (action === 'compact') await compactChatContext(state, chatId);
+  if (action === 'compact') {
+    await compactChatContext(state, chatId);
+    logEvent('info', 'panel', 'session.compact', `Contexte panneau compacté (${chatId}).`, { chatId });
+  }
   const context = await fetchChatContext(state, chatId).catch(() => ({}));
   return { chatId, usagePercent: context?.usagePercent ?? null, message: null };
 }
@@ -134,6 +135,7 @@ async function diagnosticsSnapshot() {
       api = { verified: true, checkedAt: Date.now(), error: null };
     } catch (error) {
       api = { verified: false, checkedAt: Date.now(), error: String(error?.message ?? error).slice(0, 220) };
+      logEvent('error', 'panel', 'diagnostics.api_error', api.error);
     }
     try {
       const bundle = await fetchAgentsAndModels(st);
@@ -146,6 +148,7 @@ async function diagnosticsSnapshot() {
       };
     } catch (error) {
       models = { ...models, checkedAt: Date.now(), error: String(error?.message ?? error).slice(0, 220) };
+      logEvent('error', 'panel', 'diagnostics.models_error', models.error);
     }
   }
   const session = await panelSession('status').catch(() => ({ chatId: null, usagePercent: null }));
@@ -155,33 +158,22 @@ async function diagnosticsSnapshot() {
     models,
     quota: quota ? { remainingPct: quota.remainingPct ?? null, resetAt: quota.resetAt ?? null } : null,
     mcp: {
-      name: 'fs-atg', version: CONNECTOR_VERSION, transport: 'stdio', registration: 'declared',
-      toolCount: MCP_TOOL_CATALOG.length, tools: MCP_TOOL_CATALOG,
-      activeJobs: jobs.size, queuedJobs: queue.length, slots: globalSlotStatus(st),
+      name: 'fs-atg',
+      version: CONNECTOR_VERSION,
+      transport: 'stdio',
+      registration: 'declared',
+      readOnlyWorkspace: true,
+      toolCount: MCP_TOOL_CATALOG.length,
+      tools: MCP_TOOL_CATALOG,
+      activeJobs: jobs.size,
+      queuedJobs: queue.length,
+      slots: globalSlotStatus(st),
     },
     antigravityQuota: ANTIGRAVITY_QUOTA_VISIBILITY,
+    autoDelegate: st.autoDelegate !== false,
+    recentErrors24h: countRecentErrors(),
     session: { savedChatReference: Boolean(session.chatId), usagePercent: session.usagePercent ?? null },
   };
-}
-
-function reviewAction(jobId, action) {
-  const st = loadState();
-  const job = st.history?.find((entry) => entry.id === jobId || entry.jobId === jobId);
-  if (!job?.review?.id) throw new Error('Aucune revue applicable pour ce job.');
-  if (action === 'apply') {
-    job.review = applyReview(job.review.id);
-    job.status = 'done';
-    job.written = job.review.files.map((file) => file.path);
-    job.reviewUnavailable = null;
-  } else if (action === 'undo') {
-    job.review = undoReview(job.review.id);
-    job.status = 'undone';
-    job.written = [];
-  } else {
-    throw new Error('Action de revue invalide.');
-  }
-  saveState(st);
-  return publicView(job);
 }
 
 async function fetchQuota(force = false) {
@@ -205,14 +197,14 @@ async function fetchModels(force = false) {
   return modelCache;
 }
 
-function reviewView(review) {
-  if (!review) return null;
-  const valid = Date.now() <= Number(review.expiresAt ?? 0);
-  return {
-    ...review,
-    canApply: review.status === 'pending' && valid,
-    canUndo: review.status === 'applied' && valid,
-  };
+async function fetchRawCatalog(force = false) {
+  state = loadState();
+  const credential = await apiCredentialStatus(state);
+  if (!credential.configured) return { models: [], at: Date.now() };
+  if (!force && catalogCache && Date.now() - catalogCache.at < 10 * 60_000) return catalogCache;
+  const res = await fetchModelCatalog(state).catch(() => ({ models: [] }));
+  catalogCache = { models: res?.models || [], at: Date.now() };
+  return catalogCache;
 }
 
 function publicView(j) {
@@ -229,8 +221,9 @@ function publicView(j) {
     route: j.routeReason,
     elapsedSec: j.startedAt ? Math.round((end - j.startedAt) / 1000) : 0,
     receivedChars: j.receivedChars,
+    response: j.response ?? j.summary ?? '',
     summary: j.summary,
-    filesWritten: j.written ?? [],
+    filesWritten: [],
     lastThoughts: (j.thoughts || []).slice(-3),
     error: j.error,
     startedAt: j.startedAt,
@@ -242,13 +235,12 @@ function publicView(j) {
     },
     inputEstimateTokens: j.inputEstimateTokens,
     contextMode: j.contextMode,
-    executionMode: j.executionMode ?? 'apply',
+    executionMode: j.executionMode ?? 'generate',
     routingProfile: j.routingProfile ?? null,
-    review: reviewView(j.review),
-    reviewUnavailable: j.reviewUnavailable ?? null,
     slot: j.slot,
     refusals: j.refusals ?? [],
     attemptedModels: j.attemptedModels ?? (j.model ? [j.model] : []),
+    antigravitySavings: j.antigravitySavings ?? null,
   };
 }
 
@@ -258,7 +250,31 @@ function finishJob(job, status) {
   running.delete(job.id);
   jobs.delete(job.id);
   state = loadState();
-  state.history = [{ ...job, thoughts: job.thoughts.slice(-5) }, ...(state.history || [])].slice(0, 30);
+  if (status === 'done') {
+    job.antigravitySavings = estimateAntigravityJobSavings(job, { waitedInline: false, partsCount: 1 });
+    recordAntigravitySavings(state, job.antigravitySavings);
+    logEvent('info', 'panel', 'panel.job.done', `Job panneau ${job.id} terminé (${job.model}, ${job.response?.length ?? 0} car.).`, {
+      jobId: job.id,
+      model: job.model,
+      chars: job.response?.length ?? 0,
+    });
+  } else if (status === 'error') {
+    logEvent('error', 'panel', 'panel.job.error', `Job panneau ${job.id} en échec : ${job.error || 'inconnu'}`, {
+      jobId: job.id,
+      model: job.model,
+      attemptedModels: job.attemptedModels ?? [],
+      refusals: job.refusals ?? [],
+    });
+  } else if (status === 'cancelled') {
+    logEvent('warn', 'panel', 'panel.job.cancelled', `Job panneau ${job.id} annulé.`, { jobId: job.id });
+  }
+  const stored = {
+    ...job,
+    response: String(job.response ?? '').slice(0, 30_000),
+    summary: String(job.summary ?? '').slice(0, 400),
+    thoughts: (job.thoughts || []).slice(-5),
+  };
+  state.history = [stored, ...(state.history || [])].slice(0, 20);
   saveState(state);
   pump();
 }
@@ -287,12 +303,14 @@ async function runJob(job) {
     job.model = route.model;
     job.routeReason = route.reason;
     job.routingProfile = route.profile === 'auto' ? null : route.profile;
-    job.executionMode = job.executionMode ?? route.executionMode ?? 'apply';
+    job.executionMode = job.executionMode ?? route.executionMode ?? 'generate';
     job.contextMode = 'minimal';
     job.inputEstimateTokens = estimateTokens(route.prompt);
 
-    // Plans and previews are intentionally isolated from the persistent chat.
-    const chatId = job.executionMode === 'apply' ? await preparePanelChat(state) : undefined;
+    logEvent('info', 'panel', 'panel.job.start', `Démarrage job panneau ${job.id} (${route.model}).`, { jobId: job.id, model: route.model });
+
+    const usePersistent = job.executionMode !== 'plan' && job.executionMode !== 'dry-run';
+    const chatId = usePersistent ? await preparePanelChat(state) : undefined;
     if (chatId) job.chatId = chatId;
     job.thoughts.push('En attente d’un créneau France Student partagé.');
     const lease = await acquireGlobalSlot(state, `panel-${job.id}`, ac.signal);
@@ -321,11 +339,11 @@ async function runJob(job) {
           thoughtBuf += d;
           if (thoughtBuf.includes('\n') || thoughtBuf.length > 240) flushThought();
         },
-        onRetry: ({ from, to, reason }) => {
+        onRetry: ({ from, to, reason, attempt }) => {
           job.refusals = [...(job.refusals ?? []), { model: from, reason, retryModel: to }];
           job.model = to;
           job.routeReason = `${route.reason} · repli ${from} → ${to}`;
-          job.thoughts.push(`Reprise avec ${to} après refus de ${from}.`);
+          job.thoughts.push(`Repli (${attempt}/3) : ${from} → ${to}.`);
           job.thoughts = job.thoughts.slice(-20);
         },
       });
@@ -334,7 +352,7 @@ async function runJob(job) {
     }
     flushThought();
     job.chatId = result.chatId ?? job.chatId;
-    if (job.executionMode === 'apply') rememberPanelChat(result.chatId);
+    if (usePersistent && result.chatId) rememberPanelChat(result.chatId);
     job.model = result.model ?? job.model;
     job.refusals = result.refusals ?? job.refusals ?? [];
     job.attemptedModels = result.attemptedModels ?? job.attemptedModels;
@@ -342,11 +360,9 @@ async function runJob(job) {
       localPromptEstimateTokens: job.inputEstimateTokens,
       providerUsage: normalizeProviderTokenUsage(result.usage),
     };
-    job.summary = result.text.slice(0, 2000);
+    job.response = String(result.text ?? '').trim().slice(0, 30_000);
+    job.summary = job.response.slice(0, 400);
     job.usage = result.usage;
-    if (job.executionMode === 'dry-run') {
-      job.reviewUnavailable = 'Le panneau n’a pas de workspace local : utilise /dry-run via MCP avec workspaceRoot pour obtenir un diff appliquable.';
-    }
     quotaCache = null;
     void fetchQuota(true).catch(() => null);
     finishJob(job, 'done');
@@ -382,9 +398,14 @@ app.api('/api/state', async () => {
   if (credential.configured && (!quotaCache || Date.now() - quotaCache.at >= 20_000)) {
     await fetchQuota(true).catch(() => null);
   }
-  const modelsBundle = await fetchModels().catch(() => ({ ids: [], metaMap: new Map(), available: false, source: 'unavailable' }));
+  const [modelsBundle, rawCatalog] = await Promise.all([
+    fetchModels().catch(() => ({ ids: [], metaMap: new Map(), available: false, source: 'unavailable' })),
+    fetchRawCatalog().catch(() => ({ models: [] })),
+  ]);
+  state = loadState();
   const { ids, metaMap } = modelsBundle;
   const displayIds = modelsBundle.available ? ids : [];
+  const modelCatalog = displayIds.length ? enrichModelsCatalog(displayIds, metaMap, state, rawCatalog.models) : [];
   const session = await panelSession('status').catch(() => ({ chatId: state.directChats?.panel ?? null, usagePercent: null }));
   const localActive = [...jobs.values()].map(publicView);
   const mcpActive = readLiveJobs().filter((m) => !jobs.has(m.jobId));
@@ -394,10 +415,10 @@ app.api('/api/state', async () => {
     quota: quotaCache,
     cutoff: state.cutoffPercent,
     mode: state.mode,
-    routingProfile: ROUTING_PROFILES.has(state.routingProfile) ? state.routingProfile : 'eco',
+    routingProfile: ROUTING_PROFILES.has(state.routingProfile) ? state.routingProfile : 'quality',
+    autoDelegate: state.autoDelegate !== false,
     maxParallel: state.maxParallel,
     showReasoning: state.showReasoning,
-    useClientTools: state.useClientTools !== false,
     reuseChat: state.reuseChat !== false,
     contextCompactPercent: state.contextCompactPercent ?? 80,
     contextMode: state.contextMode ?? 'minimal',
@@ -408,12 +429,20 @@ app.api('/api/state', async () => {
     tiers: state.tiers,
     tierModels: groupModelsByTier(displayIds, state, metaMap),
     models: displayIds,
+    modelCatalog,
     modelAvailability: { available: Boolean(modelsBundle.available), source: modelsBundle.source ?? 'unavailable' },
     mcp: {
-      name: 'fs-atg', version: CONNECTOR_VERSION, transport: 'stdio', registration: 'declared',
-      toolCount: MCP_TOOL_CATALOG.length, tools: MCP_TOOL_CATALOG,
+      name: 'fs-atg',
+      version: CONNECTOR_VERSION,
+      transport: 'stdio',
+      registration: 'declared',
+      readOnlyWorkspace: true,
+      toolCount: MCP_TOOL_CATALOG.length,
+      tools: MCP_TOOL_CATALOG,
     },
     antigravityQuota: ANTIGRAVITY_QUOTA_VISIBILITY,
+    antigravitySavings: state.antigravitySavings ?? { jobsOffloaded: 0, turnsSavedEst: 0, inputTokensSavedEst: 0, outputTokensSavedEst: 0, totalTokensSavedEst: 0 },
+    recentErrors: countRecentErrors(),
     active: [...localActive, ...mcpActive],
     history: (state.history || []).map((h) => (h.jobId ? h : publicView(h))),
   };
@@ -430,11 +459,23 @@ app.api('/api/refresh', async () => {
   state = loadState();
   const credential = await apiCredentialStatus(state);
   if (!credential.configured) {
-    return { quota: null, models: [], credential, modelAvailability: { available: false, source: 'not-authenticated' } };
+    return { quota: null, models: [], modelCatalog: [], credential, modelAvailability: { available: false, source: 'not-authenticated' } };
   }
   const quota = await fetchQuota(true);
-  const modelsBundle = await fetchModels(true).catch(() => ({ ids: [], available: false, source: 'unavailable' }));
-  return { quota, models: modelsBundle.available ? modelsBundle.ids : [], credential, modelAvailability: { available: Boolean(modelsBundle.available), source: modelsBundle.source ?? 'unavailable' } };
+  const [modelsBundle, rawCatalog] = await Promise.all([
+    fetchModels(true).catch(() => ({ ids: [], metaMap: new Map(), available: false, source: 'unavailable' })),
+    fetchRawCatalog(true).catch(() => ({ models: [] })),
+  ]);
+  state = loadState();
+  const displayIds = modelsBundle.available ? modelsBundle.ids : [];
+  const modelCatalog = displayIds.length ? enrichModelsCatalog(displayIds, modelsBundle.metaMap, state, rawCatalog.models) : [];
+  return {
+    quota,
+    models: displayIds,
+    modelCatalog,
+    credential,
+    modelAvailability: { available: Boolean(modelsBundle.available), source: modelsBundle.source ?? 'unavailable' },
+  };
 });
 
 app.api('/api/key', async (data) => {
@@ -449,21 +490,39 @@ app.api('/api/key', async (data) => {
   else if (apiKey) await saveApiKey(state, apiKey);
   quotaCache = null;
   modelCache = null;
+  catalogCache = null;
   const credential = await apiCredentialStatus(loadState());
   if (!credential.configured) return { ok: true, hasKey: false, credential };
   const quota = await fetchQuota(true);
-  const modelsBundle = await fetchModels(true).catch(() => ({ ids: [], available: false, source: 'unavailable' }));
-  return { ok: true, hasKey: true, credential, quota, models: modelsBundle.available ? modelsBundle.ids : [], modelAvailability: { available: Boolean(modelsBundle.available), source: modelsBundle.source ?? 'unavailable' } };
+  const [modelsBundle, rawCatalog] = await Promise.all([
+    fetchModels(true).catch(() => ({ ids: [], metaMap: new Map(), available: false, source: 'unavailable' })),
+    fetchRawCatalog(true).catch(() => ({ models: [] })),
+  ]);
+  const displayIds = modelsBundle.available ? modelsBundle.ids : [];
+  const modelCatalog = displayIds.length ? enrichModelsCatalog(displayIds, modelsBundle.metaMap, loadState(), rawCatalog.models) : [];
+  return {
+    ok: true,
+    hasKey: true,
+    credential,
+    quota,
+    models: displayIds,
+    modelCatalog,
+    modelAvailability: { available: Boolean(modelsBundle.available), source: modelsBundle.source ?? 'unavailable' },
+  };
 });
 
 app.api('/api/settings', (data) => {
   state = loadState();
   if (data.mode === 'eco' || data.mode === 'fast') state.mode = data.mode;
   if (ROUTING_PROFILES.has(data.routingProfile)) state.routingProfile = data.routingProfile;
+  if (typeof data.autoDelegate === 'boolean') {
+    state.autoDelegate = data.autoDelegate;
+    syncAgentsRule(state.autoDelegate);
+    logEvent('info', 'panel', 'settings.autoDelegate', `Activation Antigravity réglée sur ${state.autoDelegate ? 'Automatique' : 'Manuel'}.`, { autoDelegate: state.autoDelegate });
+  }
   if (typeof data.cutoffPercent === 'number') state.cutoffPercent = Math.max(0, Math.min(90, data.cutoffPercent));
   if (typeof data.maxParallel === 'number') state.maxParallel = Math.max(1, Math.min(6, data.maxParallel));
   if (typeof data.showReasoning === 'boolean') state.showReasoning = data.showReasoning;
-  if (typeof data.useClientTools === 'boolean') state.useClientTools = data.useClientTools;
   if (typeof data.reuseChat === 'boolean') state.reuseChat = data.reuseChat;
   if (typeof data.contextCompactPercent === 'number') state.contextCompactPercent = Math.max(50, Math.min(95, data.contextCompactPercent));
   if (['minimal', 'targeted', 'smart'].includes(data.contextMode)) state.contextMode = data.contextMode;
@@ -479,7 +538,7 @@ app.api('/api/settings', (data) => {
   }
   saveState(state);
   pump();
-  return { ok: true };
+  return { ok: true, autoDelegate: state.autoDelegate !== false };
 });
 
 app.api('/api/session', async (data) => {
@@ -489,10 +548,18 @@ app.api('/api/session', async (data) => {
 
 app.api('/api/diagnostics', async () => await diagnosticsSnapshot());
 
-app.api('/api/review', (data) => {
-  if (!['apply', 'undo'].includes(data.action)) throw new Error('Action de revue invalide.');
-  const action = data.action;
-  return { ok: true, job: reviewAction(String(data.jobId ?? ''), action) };
+app.api('/api/logs', (data) => ({
+  entries: readLogs({
+    limit: Number(data?.limit) || 80,
+    level: data?.level || 'all',
+    jobId: data?.jobId || '',
+  }),
+  recentErrors: countRecentErrors(),
+}));
+
+app.api('/api/logs/clear', () => {
+  clearLogs();
+  return { ok: true, entries: [], recentErrors: 0 };
 });
 
 app.api('/api/delegate', (data) => {
@@ -511,6 +578,7 @@ app.api('/api/delegate', (data) => {
     createdAt: Date.now(),
     receivedChars: 0,
     thoughts: [],
+    response: '',
     summary: '',
   };
   jobs.set(job.id, job);
