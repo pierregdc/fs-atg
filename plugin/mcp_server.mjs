@@ -44,7 +44,15 @@ Si du code est demandé : N'UTILISE JAMAIS create_artifact / artefact / canvas. 
 
 const PLAN_INSTRUCTIONS = `Réponds en style télégraphique (15 lignes max) : fichiers exacts, étapes clés et risques majeurs uniquement. Zéro code complet, zéro blabla.`;
 
-const PATCH_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Ne réécris JAMAIS le fichier complet : réponds uniquement avec les paires exactes TARGET:\n\`\`\`\n...\n\`\`\`\nREPLACE:\n\`\`\`\n...\n\`\`\` nécessaires pour edit_file, sans blabla autour.`;
+const PATCH_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Ne réécris JAMAIS le fichier complet : formate CHAQUE modification exactement ainsi (sans texte autour) :
+TARGET:
+\`\`\`
+extrait exact à remplacer
+\`\`\`
+REPLACE:
+\`\`\`
+nouveau code exact
+\`\`\``;
 
 const PLAN_B_PART_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Donne uniquement le bloc de code ou patch demandé pour cette partie, complet, compact, sans commentaires superflus ni texte autour.`;
 

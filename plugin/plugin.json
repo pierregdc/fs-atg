@@ -5,8 +5,9 @@
   "version": "0.7.0",
   "logo": "assets/logo.png",
   "suggestedPrompts": [
-    "Utilise /send pour générer ce bloc de code avec France Student",
-    "Consulte /logs pour analyser la dernière erreur France Student",
-    "Ouvre le panneau France Student [ATG] pour gérer le mode Auto/Manuel et les modèles"
+    "Utilise /patch pour modifier ce fichier en économisant les tokens Antigravity",
+    "Utilise /plan pour obtenir un plan compact en ≤ 15 lignes sans écrire sur disque",
+    "Utilise /eco pour déléguer rapidement sur un modèle économe",
+    "Consulte /logs pour analyser la dernière erreur France Student"
   ]
 }

@@ -144,18 +144,17 @@ export function saveState(st) {
 export function syncAgentsRule(autoDelegate = true) {
   const auto = Boolean(autoDelegate);
   const header = auto
-    ? 'Mode Automatique actif : délègue immédiatement à `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers avant** pour les **plans, revues/audits, recherches approfondies multi-sources, explications, debug complexe et logiques/fonctions ciblées**. Garde en natif : micro-éditions (<10 lignes), **1 recherche web simple ponctuelle** (`search_web`), et **création complète d’un gros fichier neuf** si Antigravity devait de toute façon tout réécrire via `write_file` (ou demande alors uniquement les parties complexes/scripts courts pour économiser vraiment).'
-    : 'Mode Manuel actif : n’appelle `fs_delegate` **que** si l’utilisateur mentionne explicitement France Student, `@[plugin:fs-atg]` ou une commande (`/send`, `/plan`, `/high`, `/medium`, `/low`, `/eco`, `/fast`, `/logs`). Pour toute commande France Student, appelle immédiatement `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`).';
+    ? 'Mode Automatique actif : délègue immédiatement à `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers avant** (passe `workspaceRoot` + `files` relatifs à `fs_delegate`) pour : **modifications de fichiers existants (`executionMode="patch"`), plans (`executionMode="plan"`), revues/audits, recherches multi-sources, debug et fonctions ciblées**. Garde en natif uniquement : micro-éditions (<10 lignes déjà en contexte), **1 recherche web simple** (`search_web`), ou gros fichier neuf complet réécrit via `write_file` (sauf logique complexe / découpage).'
+    : 'Mode Manuel actif : n’appelle `fs_delegate` ou `fs_session`/`fs_logs`/`fs_diagnostics` **que** si l’utilisateur mentionne France Student, `@[plugin:fs-atg]` ou une commande (`/patch`, `/plan`, `/send`, `/eco`, `/fast`, `/high`, `/medium`, `/low`, `/dry-run`, `/compact`, `/new`, `/diagnostics`, `/logs`).';
   const content = [
     '# France Student [ATG]',
     '',
     header,
     '',
-    '- **Lecture seule sur le PC (économie maximale)** : France Student n’écrit jamais sur disque ; il renvoie le résultat dans `response`. Pour économiser les tokens Antigravity, demande des **réponses compactes, plans télégraphiques (`executionMode="plan"`), patches `TARGET/REPLACE` (`executionMode="patch"` sur fichier existant)** ou fonctions isolées plutôt que de gros fichiers entiers à recopier.',
-    '- **Consignes concises** : formule des demandes simples en langage naturel en exigeant du code sans blabla ni commentaires superflus.',
-    '- **Plan B** : si Plan A échoue ou est incomplet, relance en `planB: true` avec `parts` (2–4 petits blocs indépendants, modèle Claude recommandé pour le code web inline sans artefact) ; en ultime recours seulement, termine nativement.',
-    '- **Journal de bord** : si l’utilisateur signale un problème avec France Student, appelle immédiatement `fs_logs` (et `fs_diagnostics` si besoin).',
-    '- N’appelle `fs_job_status` (`waitSeconds=45`) que si `status` est `waiting` ou `running`. `/new` et `/compact` appellent `fs_session`. Ne révèle jamais de clé ; `fs_quota` concerne France Student, `/usage` mesure Antigravity.',
+    '- **Boost économie maximal** : passe `files` en lecture seule à `fs_delegate` (évite les `read_file` Antigravity), utilise `executionMode="patch"` sur fichier existant (-52 % à -70 % mesurés) et `executionMode="plan"` pour cadrer en ≤ 15 lignes, et vise 1 seul appel `< 45s` (`claude-haiku-5-5` / `claude-sonnet-5-5` rapides sans artefact).',
+    '- **Lecture seule sur le PC** : France Student n’écrit jamais sur disque ; applique ses blocs/patches courts avec `edit_file`.',
+    '- **Plan B** : si Plan A échoue ou est incomplet, relance en `planB: true` avec `parts` (2–4 petits blocs indépendants, modèles Claude inline) ; en ultime recours seulement, termine nativement.',
+    '- **Journal & état** : `/logs` → `fs_logs`, `/diagnostics` → `fs_diagnostics`, `/new` ou `/compact` → `fs_session` (côté France Student). `/usage` mesure Antigravity.',
     '',
   ].join('\n');
   mkdirSync(dirname(RULES_PATH), { recursive: true });
@@ -1587,10 +1586,12 @@ export function estimateAntigravityJobSavings(job, { waitedInline = false, parts
   const mode = String(job?.executionMode || 'generate');
   const isPlanOrReadOnly = mode === 'plan' || mode === 'dry-run';
   const isPatch = mode === 'patch';
+  const offloadedFiles = Array.isArray(job?.files) ? Math.min(6, job.files.length) : 0;
+  const avoidedFileReadTokens = offloadedFiles * 600;
   // Read/write tool copy overhead: patches avoid full-file writes, plans avoid file writes completely.
-  const avoidedExplorationTokens = isPlanOrReadOnly
+  const avoidedExplorationTokens = (isPlanOrReadOnly
     ? 2_200
-    : (isPatch ? 2_600 : (responseTokens >= 300 ? 2_800 : 900));
+    : (isPatch ? 2_600 : (responseTokens >= 300 ? 2_800 : 900))) + avoidedFileReadTokens;
   const readCostTokens = Math.round(responseTokens * (isPlanOrReadOnly ? 0.35 : (isPatch ? 0.45 : 0.65)));
   const netSaved = Math.max(0, avoidedExplorationTokens + Math.round(responseTokens * 0.8) - readCostTokens);
   const turnsSavedEst = (waitedInline ? 1 : 0) + Math.max(1, Number(partsCount) || 1);

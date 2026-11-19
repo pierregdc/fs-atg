@@ -21,6 +21,19 @@ Plugin Antigravity (panneau latéral + serveur MCP) pour déléguer plans, diagn
 - **Plan A + Plan B** : réessai automatique sur session isolée ou découpage en petits blocs (`planB: true`, `parts: [...]`).
 - **Journal de bord (`fs_logs`)** : logs rotatifs filtrables conservant les compteurs numériques `usage` tout en masquant clés API et jetons.
 
+## Commandes `/` disponibles dans Antigravity
+
+| Commande | Action / Routage | Objectif économie Antigravity |
+|---|---|---|
+| `/patch` | `executionMode="patch"` + lecture `files` côté MCP | Renvoie uniquement des paires `TARGET` / `REPLACE` pour `edit_file` (**-52 % à -70 %** mesurés) |
+| `/plan` | `executionMode="plan"` (≤ 15 lignes) | Plan télégraphique sans code ni écriture disque |
+| `/eco`, `/fast`, `/low` | `claude-haiku-5-5` / modèles rapides (< 15 s) | Finir en **1 seul appel MCP**, moitié moins de texte lu par Antigravity |
+| `/medium` | `claude-sonnet-5-5` prioritaire | Code inline dense sans redirection `create_artifact` |
+| `/high` | Gamme forte (`opus`, `gpt-6.2-astra`, `gpt-6.2-sol`) | Architecture, audits, debug ou logique complexe |
+| `/send`, `/dry-run` | Délégation directe / aperçu sans écriture | Blocs ciblés ou proposition à valider (`files` lus côté MCP) |
+| `/new`, `/compact` | Session persistante France Student (`fs_session`) | Repartir à zéro ou compacter le contexte côté France Student (`/usage` & `/compact` côté Antigravity) |
+| `/diagnostics`, `/logs` | Lecture seule état & journal rotatif (`fs_logs`) | Contrôle clé/API/modèles/quota et suivi d'erreurs |
+
 ## Quand déléguer pour économiser vraiment ?
 
 - **Gain réel élevé (~50 % à 80 %)** : plans d'architecture, revues de code, audits multi-fichiers, comparatifs multi-critères, débogage et fonctions/patches ciblés.
