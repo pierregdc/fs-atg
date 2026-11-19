@@ -54,6 +54,32 @@ Plugin Antigravity (panneau latéral + serveur MCP) pour déléguer plans, diagn
 
 La mesure officielle de consommation Antigravity reste accessible directement via `/usage`.
 
+## Exemples concrets (4 cas réels testés)
+
+### 1. Créer une calculatrice 3D complète de A à Z (`0 %` d'économie de quota)
+- **Antigravity seul** : génère et écrit directement `7 273` car. en 1 étape.
+- **Via France Student (`Plan B`)** : génère une version plus complète de `24 149` car. (`15 989` tokens côté France Student), **mais** comme `fs-atg` n'écrit pas sur le disque, Antigravity doit ensuite tout recopier via `write_file` — ce qui annule l'économie de quota Antigravity.
+
+| Antigravity natif (`7 273` car.) | France Student `Plan B` (`24 149` car.) |
+| :---: | :---: |
+| ![Calculatrice Antigravity](docs/images/calc-antigravity.png) | ![Calculatrice France Student](docs/images/calc-fs.png) |
+
+### 2. Modifier une page existante avec `/patch` (**`-94,9 %`** à écrire)
+- **Demande** : ajouter un raccourci clavier sur la calculatrice de `7 273` car.
+- **Résultat** : France Student lit le fichier lui-même et ne renvoie que **`371` car.** (`1` appel en `27,95 s`). Antigravity n'a presque rien à lire ni à réécrire.
+
+### 3. Préparer un plan avant de coder avec `/plan` (**19 lignes**, `0` fichier touché)
+- **Demande** : plan pour ajouter un historique persistant avec recherche et export JSON.
+- **Résultat** : résumé structuré en **`19` lignes** (`1 855` car., `16,2 s`) sans que Antigravity explore tous tes dossiers.
+
+### 4. Écrire une petite fonction utilitaire avec `/eco` (`5–8 s`, **433 car.**)
+- **Demande** : fonction `formatBytes` en JavaScript.
+- **Résultat** : `claude-haiku-5-5` répond en **`7,99 s`** et **`433` car.** (`1` seul aller-retour, ~2× moins de texte à lire qu'un gros modèle).
+
+### 5. Faire 1 petite recherche web rapide (`~0 %` d'économie → garder en natif)
+- **Demande** : trouver le Top 3 des modèles IA du moment.
+- **Résultat** : `search_web` natif prend **1 étape**, passer par France Student prend aussi **1 étape**. Aucun intérêt à déléguer une recherche simple.
+
 ## Installation rapide
 
 ```bash
