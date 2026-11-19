@@ -25,6 +25,18 @@ export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const RULES_PATH = join(__dirname, 'rules', 'AGENTS.md');
 export const RECENT_MODEL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 export const HEAVY_PRIORITY = Object.freeze(['opus', 'gpt-6.2-astra', 'gpt-6.2-sol', 'astra', 'gpt-6.1-sol', 'gpt-6-sol', 'fable', 'kimi-k3']);
+export const MEDIUM_PRIORITY = Object.freeze(['sonnet', 'gpt-5.6-sol', 'terra']);
+export const LIGHT_PRIORITY = Object.freeze(['haiku', 'gpt-6-luna', 'luna']);
+const TIER_PRIORITY = { heavy: HEAVY_PRIORITY, medium: MEDIUM_PRIORITY, light: LIGHT_PRIORITY };
+
+function pickTierCandidate(pool, tier, state) {
+  const tierPool = pool.filter((id) => classifyTier(id, state) === tier);
+  for (const kw of TIER_PRIORITY[tier] || []) {
+    const hit = tierPool.find((id) => id.toLowerCase().includes(kw));
+    if (hit) return hit;
+  }
+  return tierPool[0] ?? null;
+}
 
 // Shared, inspectable connector metadata. It is never account or quota data.
 export const MCP_TOOL_CATALOG = Object.freeze([
@@ -139,7 +151,7 @@ export function syncAgentsRule(autoDelegate = true) {
     '',
     header,
     '',
-    '- **Lecture seule sur le PC (économie maximale)** : France Student n’écrit jamais sur disque ; il renvoie le résultat dans `response`. Pour économiser les tokens Antigravity, demande des **réponses compactes, plans télégraphiques, diagnostics ou blocs/patches ciblés** plutôt que de gros fichiers entiers à recopier ligne par ligne.',
+    '- **Lecture seule sur le PC (économie maximale)** : France Student n’écrit jamais sur disque ; il renvoie le résultat dans `response`. Pour économiser les tokens Antigravity, demande des **réponses compactes, plans télégraphiques (`executionMode="plan"`), patches `TARGET/REPLACE` (`executionMode="patch"` sur fichier existant)** ou fonctions isolées plutôt que de gros fichiers entiers à recopier.',
     '- **Consignes concises** : formule des demandes simples en langage naturel en exigeant du code sans blabla ni commentaires superflus.',
     '- **Plan B** : si Plan A échoue ou est incomplet, relance en `planB: true` avec `parts` (2–4 petits blocs indépendants, modèle Claude recommandé pour le code web inline sans artefact) ; en ultime recours seulement, termine nativement.',
     '- **Journal de bord** : si l’utilisateur signale un problème avec France Student, appelle immédiatement `fs_logs` (et `fs_diagnostics` si besoin).',
@@ -833,6 +845,7 @@ export function parseTaskDirectives(raw) {
     const next = prompt.slice(slash[0].length);
     if (command === 'send') { prompt = next; continue; }
     if (command === 'plan') { executionMode = 'plan'; prompt = next; continue; }
+    if (command === 'patch') { executionMode = 'patch'; prompt = next; continue; }
     if (command === 'dry-run' || command === 'dryrun' || command === 'preview') { executionMode = 'dry-run'; prompt = next; continue; }
     if (command === 'apply') { executionMode = 'apply'; prompt = next; continue; }
     const profileValue = normalizeRoutingProfile(command);
@@ -892,17 +905,7 @@ export function pickModel(raw, available, state, explicit) {
   const order = tier === 'heavy' ? ['heavy', 'medium', 'light']
     : tier === 'light' ? ['light', 'medium', 'heavy'] : ['medium', 'heavy', 'light'];
   for (const t of order) {
-    let hit;
-    if (t === 'heavy') {
-      const heavyPool = pool.filter((id) => classifyTier(id, state) === 'heavy');
-      for (const kw of HEAVY_PRIORITY) {
-        hit = heavyPool.find((id) => id.toLowerCase().includes(kw));
-        if (hit) break;
-      }
-      if (!hit) hit = heavyPool[0];
-    } else {
-      hit = pool.find((id) => classifyTier(id, state) === t);
-    }
+    const hit = pickTierCandidate(pool, t, state);
     if (hit) {
       const label = t === 'light' ? 'faible' : t === 'heavy' ? 'fort' : 'équilibré';
       return {
@@ -1487,27 +1490,19 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
   const pickNextCandidate = (current, reason = '') => {
     const allowed = [...new Set(availableModels || [])].filter((c) => !tried.has(c) && modelIsAllowed(c, request.state));
     if (!allowed.length) return null;
-    if (/artefact/i.test(String(reason))) {
-      for (const kw of ['sonnet', 'opus', 'haiku']) {
+    if (/artefact|tronquée|sans bloc de code/i.test(String(reason))) {
+      for (const kw of ['sonnet', 'haiku', 'opus']) {
         const hit = allowed.find((id) => id.toLowerCase().includes(kw));
         if (hit) return hit;
       }
     }
+    const curTier = classifyTier(current, request.state);
     const sameTier = sameTierFallbackModels(current, availableModels, request.state).filter((c) => !tried.has(c));
-    if (classifyTier(current, request.state) === 'heavy' && sameTier.length) {
-      for (const kw of HEAVY_PRIORITY) {
-        const hit = sameTier.find((id) => id.toLowerCase().includes(kw));
-        if (hit) return hit;
-      }
-      return sameTier[0];
+    if (sameTier.length) {
+      return pickTierCandidate(sameTier, curTier, request.state) ?? sameTier[0];
     }
-    for (const kw of HEAVY_PRIORITY) {
-      const hit = allowed.find((id) => classifyTier(id, request.state) === 'heavy' && id.toLowerCase().includes(kw));
-      if (hit) return hit;
-    }
-    if (sameTier.length) return sameTier[0];
     for (const t of ['heavy', 'medium', 'light']) {
-      const hit = allowed.find((c) => classifyTier(c, request.state) === t);
+      const hit = pickTierCandidate(allowed, t, request.state);
       if (hit) return hit;
     }
     return allowed[0] ?? null;
@@ -1524,10 +1519,17 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
         model,
         chatId,
       });
-      if (!String(result?.text ?? '').trim()) {
+      const trimmedText = String(result?.text ?? '').trim();
+      if (!trimmedText) {
         const emptyErr = new Error('Réponse vide reçue du modèle.');
         emptyErr.retryable = true;
         throw emptyErr;
+      }
+      const expectsCodeBlock = /(?:bloc|TARGET|```|javascript|typescript|python|html|css)/i.test(String(request.instructions ?? ''));
+      if (expectsCodeBlock && trimmedText.length < 65 && !trimmedText.includes('```')) {
+        const stubErr = new Error('Réponse trop courte/tronquée sans bloc de code.');
+        stubErr.retryable = true;
+        throw stubErr;
       }
       logEvent('info', 'core', 'stream.done', `Réponse reçue de ${model} (${result.text.length} car., ${Math.round((Date.now() - t0) / 1000)}s).`, {
         model,
@@ -1584,12 +1586,12 @@ export function estimateAntigravityJobSavings(job, { waitedInline = false, parts
   const responseTokens = Math.max(0, Math.round(outputChars / 4));
   const mode = String(job?.executionMode || 'generate');
   const isPlanOrReadOnly = mode === 'plan' || mode === 'dry-run';
-  // Read/write tool copy overhead: if full code blocks are returned for Antigravity to write_file,
-  // Antigravity still pays ~responseTokens to read/write them; real net savings come from offloaded reasoning/exploration.
+  const isPatch = mode === 'patch';
+  // Read/write tool copy overhead: patches avoid full-file writes, plans avoid file writes completely.
   const avoidedExplorationTokens = isPlanOrReadOnly
     ? 2_200
-    : (responseTokens >= 300 ? 2_800 : 900);
-  const readCostTokens = Math.round(responseTokens * (isPlanOrReadOnly ? 0.35 : 0.65));
+    : (isPatch ? 2_600 : (responseTokens >= 300 ? 2_800 : 900));
+  const readCostTokens = Math.round(responseTokens * (isPlanOrReadOnly ? 0.35 : (isPatch ? 0.45 : 0.65)));
   const netSaved = Math.max(0, avoidedExplorationTokens + Math.round(responseTokens * 0.8) - readCostTokens);
   const turnsSavedEst = (waitedInline ? 1 : 0) + Math.max(1, Number(partsCount) || 1);
   return {

@@ -44,10 +44,12 @@ Si du code est demandé : N'UTILISE JAMAIS create_artifact / artefact / canvas. 
 
 const PLAN_INSTRUCTIONS = `Réponds en style télégraphique (15 lignes max) : fichiers exacts, étapes clés et risques majeurs uniquement. Zéro code complet, zéro blabla.`;
 
+const PATCH_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Ne réécris JAMAIS le fichier complet : réponds uniquement avec les paires exactes TARGET:\n\`\`\`\n...\n\`\`\`\nREPLACE:\n\`\`\`\n...\n\`\`\` nécessaires pour edit_file, sans blabla autour.`;
+
 const PLAN_B_PART_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Donne uniquement le bloc de code ou patch demandé pour cette partie, complet, compact, sans commentaires superflus ni texte autour.`;
 
 const FINAL = new Set(['done', 'error', 'cancelled']);
-const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'dry-run']);
+const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'patch', 'dry-run']);
 const ROUTING_PROFILES = new Set(['eco', 'fast', 'quality', 'security', 'refactor']);
 const jobs = new Map();
 const running = new Map();
@@ -488,7 +490,9 @@ async function runJob(job) {
       job.inputEstimateTokens = estimateTokens(local.prompt);
       const instructions = job.executionMode === 'plan'
         ? PLAN_INSTRUCTIONS
-        : (job.planB ? PLAN_B_PART_INSTRUCTIONS : NATURAL_INSTRUCTIONS);
+        : (job.executionMode === 'patch'
+          ? PATCH_INSTRUCTIONS
+          : (job.planB ? PLAN_B_PART_INSTRUCTIONS : NATURAL_INSTRUCTIONS));
 
       let result;
       try {
@@ -595,14 +599,14 @@ server.registerTool('fs_delegate', {
   title: 'Déléguer à France Student [ATG]',
   description: 'Délègue à France Student (lecture seule PC) plans, diagnostics, recherches multi-sources, explications et blocs/patches ciblés. Renvoie une réponse compacte dans response pour économiser les tokens Antigravity (éviter pour 1 simple search_web ponctuel ou pour recopier un gros fichier neuf entier via write_file).',
   inputSchema: {
-    task: z.string().min(3).describe('Consigne claire en phrases normales (commandes possibles : /send, /plan, /eco, /fast, /low, /medium, /high).'),
+    task: z.string().min(3).describe('Consigne claire en phrases normales (commandes possibles : /send, /plan, /patch, /eco, /fast, /low, /medium, /high).'),
     workspaceRoot: z.string().optional().describe('Chemin du workspace (lecture seule uniquement pour files/session). Jamais écrit.'),
     files: z.array(z.string()).optional().describe('Chemins relatifs à joindre en lecture seule si indispensable.'),
     model: z.string().optional(),
     priority: z.number().int().min(0).max(9).optional(),
     contextMode: z.enum(['minimal', 'targeted', 'smart']).optional().describe('minimal recommandé = phrase seule sans surcharger.'),
     parentJobId: z.string().optional().describe('Suite d’un job précédent.'),
-    executionMode: z.enum(['generate', 'apply', 'plan', 'dry-run']).optional().describe('Tous strictement sans écriture PC ; plan retourne uniquement un plan.'),
+    executionMode: z.enum(['generate', 'apply', 'plan', 'patch', 'dry-run']).optional().describe('Sans écriture PC ; plan retourne un plan court, patch retourne uniquement TARGET/REPLACE pour edit_file.'),
     routingProfile: z.enum(['eco', 'fast', 'quality', 'security', 'refactor']).optional(),
     planB: z.boolean().optional().describe('Active le Plan B (chat neuf isolé ou découpage via parts) en cas d’échec du Plan A.'),
     parts: z.array(z.string().min(3)).max(6).optional().describe('Plan B : 2 à 6 petites sous-demandes simples générées séparément pour assemblage.'),
