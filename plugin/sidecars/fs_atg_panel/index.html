@@ -145,25 +145,31 @@
     }
     .icon-btn:hover { color: var(--fs-fg); background: color-mix(in srgb, var(--fs-fg) 8%, transparent); }
     .pct-val { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--fs-fg); letter-spacing: -.03em; }
-    .gauge-wrap { position: relative; padding-bottom: 12px; cursor: pointer; }
-    .gauge { height: 6px; background: color-mix(in srgb, var(--fs-fg) 9%, transparent); border-radius: var(--fs-pill); overflow: hidden; }
-    .gauge > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--fs-blue-deep), var(--fs-blue-light)); border-radius: var(--fs-pill); transition: width .45s ease, background .25s; }
+    .gauge-wrap {
+      position: relative; padding: 6px 0 18px; cursor: pointer; touch-action: none; user-select: none;
+      outline: none;
+    }
+    .gauge-wrap:focus-visible .cutoff-knob { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fs-warn) 38%, transparent); }
+    .gauge { height: 8px; background: color-mix(in srgb, var(--fs-fg) 10%, transparent); border-radius: var(--fs-pill); overflow: hidden; }
+    .gauge > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--fs-blue-deep), var(--fs-blue-light)); border-radius: var(--fs-pill); transition: width .35s ease, background .25s; pointer-events: none; }
     .gauge.low > div { background: var(--fs-warn); }
     .gauge.crit > div { background: var(--fs-bad); }
-    .cutoff-tick { position: absolute; top: -2px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; pointer-events: none; }
-    .cutoff-line { width: 1.5px; height: 10px; background: var(--fs-warn); border-radius: 2px; }
-    .cutoff-lbl { font-size: 8.5px; font-weight: 700; color: var(--fs-warn); margin-top: 1px; }
-    .meta { font-size: 10px; color: var(--fs-faint); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .cutoff-ctrl {
-      display: flex; align-items: center; gap: 6px; margin-top: 7px;
-      padding: 5px 8px; border-radius: 9px;
-      background: color-mix(in srgb, var(--fs-bg) 55%, transparent);
-      border: 1px solid var(--fs-line-soft);
+    .cutoff-tick {
+      position: absolute; top: 1px; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center;
+      padding: 0 8px; cursor: grab; z-index: 2;
     }
-    .cutoff-ctrl input[type="range"] {
-      flex: 1; min-width: 60px; accent-color: var(--fs-warn); cursor: pointer; height: 4px;
-      background: transparent; border: 0; padding: 0;
+    .gauge-wrap.dragging .cutoff-tick, .cutoff-tick:active { cursor: grabbing; }
+    .cutoff-knob {
+      width: 10px; height: 18px; border-radius: 5px;
+      background: var(--fs-warn); border: 2px solid var(--fs-bg);
+      box-shadow: 0 1px 4px rgba(0,0,0,.65);
+      transition: transform .12s ease;
     }
+    .gauge-wrap.dragging .cutoff-knob, .cutoff-tick:hover .cutoff-knob { transform: scale(1.14); }
+    .cutoff-lbl { font-size: 9px; font-weight: 700; color: #fcd34d; margin-top: 1px; line-height: 1; white-space: nowrap; }
+    .meta { font-size: 10px; color: var(--fs-faint); display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .meta-right { display: inline-flex; align-items: center; gap: 6px; }
     .cutoff-presets { display: inline-flex; gap: 3px; flex-shrink: 0; }
     .mini-pill {
       border: 1px solid var(--fs-line); background: transparent; color: var(--fs-muted);
@@ -461,25 +467,27 @@
           <span class="pct-val" id="pct">—</span>
         </span>
       </div>
-      <div class="gauge-wrap" id="gauge" title="Cliquer pour ajuster ou actualiser">
+      <div class="gauge-wrap" id="gauge" role="slider" tabindex="0"
+           aria-label="Coupe-circuit sur la jauge de budget"
+           aria-valuemin="0" aria-valuemax="90" aria-valuenow="15" aria-valuetext="15 %"
+           title="Cliquer ou glisser le curseur orange pour régler le coupe-circuit (0 à 90 %)">
         <div class="gauge" id="gaugeBar"><div id="bar"></div></div>
         <div class="cutoff-tick" id="cutoffTick" style="left: 15%">
-          <div class="cutoff-line"></div>
-          <div class="cutoff-lbl" id="cutoffNum">15</div>
+          <span class="cutoff-knob"></span>
+          <span class="cutoff-lbl" id="cutoffNum">15%</span>
         </div>
       </div>
       <div class="meta">
         <span id="qtxt">Chargement…</span>
-        <span>Réserve : <b id="cutoff">—</b></span>
-      </div>
-      <div class="cutoff-ctrl" title="Réglage rapide du coupe-circuit sans passer par Réglages">
-        <input type="range" id="heroCutoffRange" min="0" max="90" step="5" value="15" />
-        <div class="cutoff-presets" id="cutoffPresets">
-          <button type="button" class="mini-pill" data-cutoff="0">0%</button>
-          <button type="button" class="mini-pill" data-cutoff="10">10%</button>
-          <button type="button" class="mini-pill" data-cutoff="15">15%</button>
-          <button type="button" class="mini-pill" data-cutoff="25">25%</button>
-        </div>
+        <span class="meta-right">
+          <span>Réserve : <b id="cutoff">—</b></span>
+          <span class="cutoff-presets" id="cutoffPresets">
+            <button type="button" class="mini-pill" data-cutoff="0">0%</button>
+            <button type="button" class="mini-pill" data-cutoff="10">10%</button>
+            <button type="button" class="mini-pill" data-cutoff="15">15%</button>
+            <button type="button" class="mini-pill" data-cutoff="25">25%</button>
+          </span>
+        </span>
       </div>
 
       <div class="hero-pills">
@@ -757,7 +765,24 @@
     const KEY_MASK = '••••••••••••';
     let keyIsMask = false;
     let keyIsVisible = false;
+    let draggingCutoff = null;
     const expandedHistory = new Set();
+
+    function applyCutoffVisual(val) {
+      const pct = Math.max(0, Math.min(90, Math.round(Number(val) || 0)));
+      const gaugeEl = $('gauge');
+      $('cutoffTick').style.left = pct + '%';
+      $('cutoffNum').textContent = pct + '%';
+      $('cutoff').textContent = pct + ' %';
+      if (gaugeEl) {
+        gaugeEl.setAttribute('aria-valuenow', String(pct));
+        gaugeEl.setAttribute('aria-valuetext', pct + ' %');
+      }
+      document.querySelectorAll('#cutoffPresets .mini-pill').forEach((b) => {
+        b.classList.toggle('on', Number(b.dataset.cutoff) === pct);
+      });
+      return pct;
+    }
 
     const ICO_CHECK = '<svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
     const ICO_X = '<svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
@@ -1100,21 +1125,16 @@
       $('connPill').className = 'status-pill' + (connected ? ' on' : '');
       $('connTxt').textContent = connected ? 'Connecté' : (S.hasKey ? 'Configuré' : 'Hors ligne');
 
+      const activeCutoff = draggingCutoff !== null ? draggingCutoff : cutoff;
       $('pct').textContent = q == null ? '—' : Math.round(q) + ' %';
       $('bar').style.width = (q == null ? 0 : q) + '%';
-      $('gaugeBar').className = 'gauge' + (q == null ? '' : q < cutoff ? ' crit' : q < cutoff * 2 ? ' low' : '');
-      $('cutoffTick').style.left = cutoff + '%';
-      $('cutoffNum').textContent = cutoff;
+      $('gaugeBar').className = 'gauge' + (q == null ? '' : q < activeCutoff ? ' crit' : q < activeCutoff * 2 ? ' low' : '');
+      applyCutoffVisual(activeCutoff);
 
       const metaParts = [];
       if (qObj?.at) metaParts.push('MàJ ' + fmtAgo(qObj.at));
       if (qObj?.resetAt) metaParts.push('Reset ' + new Date(qObj.resetAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
       $('qtxt').textContent = metaParts.join(' · ') || 'Quota France Student';
-      $('cutoff').textContent = cutoff + ' %';
-      $('heroCutoffRange').value = cutoff;
-      document.querySelectorAll('#cutoffPresets .mini-pill').forEach((b) => {
-        b.classList.toggle('on', Number(b.dataset.cutoff) === cutoff);
-      });
 
       $('heroProfileSelect').value = S.routingProfile || 'quality';
       const sav = S.antigravitySavings;
@@ -1193,11 +1213,8 @@
       catch (e) { flash(e.message, 'toast', true); }
     };
     async function saveCutoff(val) {
-      const pct = Math.max(0, Math.min(90, Number(val) || 0));
-      $('cutoff').textContent = pct + ' %';
-      $('cutoffTick').style.left = pct + '%';
-      $('cutoffNum').textContent = pct;
-      $('heroCutoffRange').value = pct;
+      const pct = applyCutoffVisual(val);
+      S.cutoff = pct;
       $('cutoffInput').value = pct;
       try {
         await api('/api/settings', { cutoffPercent: pct });
@@ -1210,20 +1227,47 @@
       try { await api('/api/refresh', {}); flash('Quota actualisé'); await poll(); }
       catch (e) { flash(e.message, 'toast', true); }
     };
-    $('gauge').onclick = async () => {
-      try { await api('/api/refresh', {}); flash('Quota actualisé'); await poll(); }
-      catch (e) { flash(e.message, 'toast', true); }
-    };
-    $('heroCutoffRange').addEventListener('input', (e) => {
-      const pct = Number(e.target.value);
-      $('cutoff').textContent = pct + ' %';
-      $('cutoffTick').style.left = pct + '%';
-      $('cutoffNum').textContent = pct;
-      document.querySelectorAll('#cutoffPresets .mini-pill').forEach((b) => {
-        b.classList.toggle('on', Number(b.dataset.cutoff) === pct);
-      });
+    function pctFromPointer(clientX) {
+      const rect = $('gauge').getBoundingClientRect();
+      if (!rect.width) return S.cutoff ?? 15;
+      const ratio = (clientX - rect.left) / rect.width;
+      return Math.max(0, Math.min(90, Math.round(ratio * 100)));
+    }
+    const gaugeWrap = $('gauge');
+    gaugeWrap.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      gaugeWrap.setPointerCapture(e.pointerId);
+      gaugeWrap.classList.add('dragging');
+      draggingCutoff = applyCutoffVisual(pctFromPointer(e.clientX));
     });
-    $('heroCutoffRange').addEventListener('change', (e) => saveCutoff(e.target.value));
+    gaugeWrap.addEventListener('pointermove', (e) => {
+      if (draggingCutoff === null) return;
+      draggingCutoff = applyCutoffVisual(pctFromPointer(e.clientX));
+    });
+    function finishGaugeDrag(e) {
+      if (draggingCutoff === null) return;
+      const finalPct = draggingCutoff;
+      draggingCutoff = null;
+      gaugeWrap.classList.remove('dragging');
+      try { if (gaugeWrap.hasPointerCapture(e.pointerId)) gaugeWrap.releasePointerCapture(e.pointerId); } catch {}
+      void saveCutoff(finalPct);
+    }
+    gaugeWrap.addEventListener('pointerup', finishGaugeDrag);
+    gaugeWrap.addEventListener('pointercancel', finishGaugeDrag);
+    gaugeWrap.addEventListener('keydown', (e) => {
+      const step = e.shiftKey ? 1 : 5;
+      const cur = typeof S.cutoff === 'number' ? S.cutoff : 15;
+      let next = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = Math.min(90, cur + step);
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = Math.max(0, cur - step);
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = 90;
+      if (next !== null) {
+        e.preventDefault();
+        void saveCutoff(next);
+      }
+    });
     document.querySelectorAll('#cutoffPresets .mini-pill').forEach((b) => {
       b.onclick = () => saveCutoff(b.dataset.cutoff);
     });
