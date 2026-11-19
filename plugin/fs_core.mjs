@@ -746,7 +746,7 @@ export function refusalReasonFromEvent(event) {
   return structured ? (reason || MISSING_REFUSAL_REASON) : null;
 }
 
-const ARTIFACT_STUB_PATTERN = /(?:create_artifact|panneau latéral|j[’']ai créé un artefact|est disponibles? dans [«"'])/i;
+const ARTIFACT_STUB_PATTERN = /(?:create_artifact|artefact|panneau latéral|disponibles? dans|se trouve dans|voir dans [«"'])/i;
 
 /** A text-only fallback detects explicit refusals and short server-artifact redirects. */
 export function refusalReasonFromText(text) {
