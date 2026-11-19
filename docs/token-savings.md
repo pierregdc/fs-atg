@@ -18,6 +18,11 @@
 - `estimateAntigravityJobSavings` ([plugin/fs_core.mjs](../plugin/fs_core.mjs)) utilise un calcul conservateur qui **déduit le coût de lecture** de `response` côté Antigravity (`Math.round(chars / 4)`), au lieu d'un forfait fixe gonflé.
 - L'API fournisseur (`usage.input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`) reste tracée telle quelle dans le journal (`fs_logs`) sans extrapolation.
 
+## Résumé simple : où tu gagnes vs où tu ne gagnes pas
+
+- **Gros gain** : `/patch` (**`-94,9 %`** mesurés sur un fichier de `7 273` car. ramené à `371` car., **`-52,2 %`** sur un petit fichier de ~150 lignes), `/plan` (8 à 19 lignes en 8–16 s), `/eco` / `/low` (`433–683` car. en 5–8 s), `/medium` (`~800–2 300` car. en 6–14 s), `/high` (analyses/comparatifs en `2 478` car.), et discussions directes dans le panneau latéral (**`0` token Antigravity**).
+- **Pas de gain (`0 %` voire perte)** : créer un gros fichier neuf complet recopié ensuite via `write_file`, faire `1` recherche web simple (`search_web`), ou modifier `< 10` lignes déjà visibles.
+
 ## Vérifier votre consommation Antigravity réelle
 
 Le connecteur n'a pas accès au compteur interne d'Antigravity (`ANTIGRAVITY_QUOTA_VISIBILITY.available = false`). Pour vérifier l'impact réel sur votre quota Antigravity, utilisez la commande `/usage` avant et après une tâche comparable.

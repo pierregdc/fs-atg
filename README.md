@@ -34,11 +34,25 @@ Plugin Antigravity (panneau latéral + serveur MCP) pour déléguer plans, diagn
 | `/new`, `/compact` | Session persistante France Student (`fs_session`) | Repartir à zéro ou compacter le contexte côté France Student (`/usage` & `/compact` côté Antigravity) |
 | `/diagnostics`, `/logs` | Lecture seule état & journal rotatif (`fs_logs`) | Contrôle clé/API/modèles/quota et suivi d'erreurs |
 
-## Quand déléguer pour économiser vraiment ?
+## Quand gagne-t-on vraiment du quota Antigravity ? (expliqué simplement)
 
-- **Gain réel élevé (~50 % à 80 %)** : plans d'architecture, revues de code, audits multi-fichiers, comparatifs multi-critères, débogage et fonctions/patches ciblés.
-- **À garder en natif (~0 % de gain en délégation)** : micro-éditions (`< 10` lignes), **1 recherche `search_web` ponctuelle**, ou génération complète d'un gros fichier neuf si Antigravity doit ensuite tout réécrire ligne par ligne via `write_file`.
-- La mesure officielle de consommation Antigravity reste accessible directement via `/usage`.
+`fs-atg` fonctionne en **lecture seule sur le PC** : France Student fait le gros du travail, puis renvoie le résultat à Antigravity. **Plus la réponse est courte et ciblée, plus tu économises Antigravity.**
+
+| Ce que tu demandes / commandes | Tu gagnes ? | Pourquoi & combien concrètement (mesuré en test) |
+|---|---|---|
+| **`/patch`** *(modifier juste un bout d'un fichier existant)* | **OUI — Énorme gain** | Au lieu de réécrire tout le fichier (`7 273` car.), France Student renvoie juste les **`371` car.** à changer (**`-94,9 %`** à écrire ; **`-52,2 %`** sur un petit fichier de ~150 lignes). |
+| **`/plan`** *(cadrer avant de toucher aux fichiers)* | **OUI — Gros gain** | Antigravity reçoit juste un résumé clair en **8 à 19 lignes** (**8 à 16 s**) au lieu de réfléchir et fouiller tes dossiers tout seul. |
+| **Discuter dans le panneau latéral France Student** | **OUI — Gain 100 %** | Tant que tu échanges dans le panneau, **Antigravity ne travaille pas = `0` quota utilisé**. |
+| **`/eco` ou `/low`** *(petite question, petite fonction, bug rapide)* | **OUI — Gros gain** | Répond en **5 à 8 s** et très court (**`433` à `683` car.**), soit environ **2× moins de texte à lire** pour Antigravity qu'un gros modèle (`1 487` car.). |
+| **`/medium`** *(fonction moyenne, bout de CSS/JS propre)* | **OUI — Bon gain** | Répond en **6 à 14 s** sans bavardage (**`~800` à `2 300` car.**) sans redirection d'artefact. |
+| **`/high`** *(gros problème, comparaison, analyse compliquée)* | **OUI — Gros gain** | La grosse réflexion se fait côté France Student (**22 s**, tableau comparatif complet en **`2 478` car.**). |
+| **Donner les fichiers directement à France Student (`files`)** | **OUI — Gain moyen** | France Student lit lui-même jusqu'à **6 fichiers (`24 000` car. max)** sans qu'Antigravity ait besoin de les ouvrir un par un avant. |
+| **`/compact` (Antigravity) / `/new` (France Student)** | **OUI — Bonus malin** | Nettoie la mémoire quand le fil devient long pour que les prochains messages coûtent moins cher. |
+| **Créer un gros fichier tout neuf de A à Z** | **NON — `0 %` d'économie** | France Student génère la page (`24 149` car. sur la calculatrice 3D), mais comme il ne peut pas écrire sur disque, **Antigravity doit tout réécrire mot pour mot** via `write_file`. |
+| **Faire 1 petite recherche web rapide** | **NON — `~0 %` d'économie** | `search_web` natif prend **1 étape**, passer par France Student prend aussi **1 étape**. |
+| **Changer moins de 10 lignes juste sous ses yeux** | **NON — Perte nette** | Corriger direct coûte moins cher qu'un aller-retour vers France Student + correction. |
+
+La mesure officielle de consommation Antigravity reste accessible directement via `/usage`.
 
 ## Installation rapide
 
