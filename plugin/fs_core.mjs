@@ -438,12 +438,13 @@ function asList(value) {
  * metadata available without making model routing depend on a single shape.
  */
 export async function fetchModelCatalog(state) {
-  const primary = await fsJson(state, 'GET', '/models').catch(() => null);
-  if (primary) return { available: true, source: '/models', models: asList(primary), raw: primary };
-  const fallback = await fsJson(state, 'GET', '/v1/models').catch(() => null);
+  const v1 = await fsJson(state, 'GET', '/v1/models').catch(() => null);
+  const v1List = asList(v1);
+  if (v1List.length) return { available: true, source: '/v1/models', models: v1List, raw: v1 };
+  const fallback = await fsJson(state, 'GET', '/models').catch(() => null);
   return {
     available: fallback !== null,
-    source: fallback ? '/v1/models' : null,
+    source: fallback ? '/models' : null,
     models: asList(fallback),
     raw: fallback,
   };
@@ -527,15 +528,19 @@ function normalizeTimestampMs(raw) {
 }
 
 export async function fetchAgentsAndModels(state) {
-  const agents = await fsJson(state, 'GET', '/chats/agents').catch(() => null);
+  const [agents, v1] = await Promise.all([
+    fsJson(state, 'GET', '/chats/agents').catch(() => null),
+    fsJson(state, 'GET', '/v1/models').catch(() => null),
+  ]);
   const agentMap = new Map();
   const metaMap = new Map();
   const ids = [];
+
   if (Array.isArray(agents) && agents.length) {
     for (const a of agents) {
       if (a?.isActive === false) continue;
       const modelId = String(a.model || a.name || a.id);
-      if (!agentMap.has(modelId)) {
+      if (!metaMap.has(modelId)) {
         agentMap.set(modelId, a.id);
         metaMap.set(modelId, {
           id: modelId,
@@ -548,23 +553,38 @@ export async function fetchAgentsAndModels(state) {
         ids.push(modelId);
       }
     }
-    return { ids, agentMap, metaMap, available: true, source: 'chats/agents' };
   }
-  try {
-    const r = await fsJson(state, 'GET', '/v1/models');
-    const list = (r?.data ?? []).map((m) => {
-      metaMap.set(m.id, {
-        id: m.id,
-        name: m.name || m.id,
-        provider: m.owned_by || 'api',
-        contextWindow: typeof m.contextWindow === 'number' ? m.contextWindow : null,
-        isDefault: false,
-        apiCreatedAt: normalizeTimestampMs(m.created ?? m.createdAt ?? m.addedAt),
-      });
-      return m.id;
+
+  for (const m of v1?.data ?? []) {
+    if (!m?.id) continue;
+    const apiCreatedAt = normalizeTimestampMs(m.created ?? m.createdAt ?? m.addedAt);
+    if (metaMap.has(m.id)) {
+      const existing = metaMap.get(m.id);
+      if (apiCreatedAt && !existing.apiCreatedAt) existing.apiCreatedAt = apiCreatedAt;
+      continue;
+    }
+    metaMap.set(m.id, {
+      id: m.id,
+      name: m.name || m.id,
+      provider: m.owned_by || (m.id.startsWith('claude') ? 'anthropic' : 'openai'),
+      contextWindow: typeof m.contextWindow === 'number' ? m.contextWindow : null,
+      isDefault: false,
+      apiCreatedAt,
     });
-    if (list.length) return { ids: list, agentMap, metaMap, available: true, source: 'v1/models' };
-  } catch { /* fallback to pre-registered defaults */ }
+    ids.push(m.id);
+  }
+
+  if (ids.length) {
+    return {
+      ids,
+      agentMap,
+      metaMap,
+      available: true,
+      source: (Array.isArray(agents) && agents.length && v1?.data?.length)
+        ? 'chats/agents+v1/models'
+        : (Array.isArray(agents) && agents.length ? 'chats/agents' : 'v1/models'),
+    };
+  }
   return defaultModelsBundle();
 }
 
@@ -605,10 +625,9 @@ export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { pe
     const tier = classifyTier(id, state);
     const addedAt = apiCreatedAt ?? rec.firstSeenAt ?? null;
     const addedSource = apiCreatedAt ? 'api' : (rec.firstSeenAt ? 'detected' : 'unknown');
-    const isNew = Boolean(
-      (apiCreatedAt && (now - apiCreatedAt <= RECENT_MODEL_WINDOW_MS)) ||
-      (!rec.baseline && rec.firstSeenAt && (now - rec.firstSeenAt <= RECENT_MODEL_WINDOW_MS))
-    );
+    const isNew = apiCreatedAt
+      ? (now - apiCreatedAt <= RECENT_MODEL_WINDOW_MS)
+      : Boolean(!rec.baseline && rec.firstSeenAt && (now - rec.firstSeenAt <= RECENT_MODEL_WINDOW_MS));
     rows.push({
       id,
       name: meta?.name || id,

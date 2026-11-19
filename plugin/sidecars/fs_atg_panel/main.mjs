@@ -604,4 +604,5 @@ app.api('/api/cancel', (data) => {
   return { ok: true };
 });
 
+logEvent('info', 'panel', 'panel.started', `Panneau latéral France Student [ATG] v${CONNECTOR_VERSION} démarré.`);
 app.run();

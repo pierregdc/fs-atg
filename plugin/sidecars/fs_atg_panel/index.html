@@ -135,7 +135,14 @@
     .status-pill.on .dot { background: #34d399; box-shadow: 0 0 8px #34d399; animation: pulseDot 2s infinite; }
     @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 
-    .qrow { display: flex; justify-content: space-between; align-items: baseline; font-size: 10.5px; color: var(--fs-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+    .qrow { display: flex; justify-content: space-between; align-items: center; font-size: 10.5px; color: var(--fs-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+    .qrow-right { display: inline-flex; align-items: center; gap: 6px; }
+    .icon-btn {
+      width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--fs-line-soft);
+      background: color-mix(in srgb, var(--fs-fg) 4%, transparent); color: var(--fs-muted);
+      display: grid; place-items: center; cursor: pointer; padding: 0;
+    }
+    .icon-btn:hover { color: var(--fs-fg); background: color-mix(in srgb, var(--fs-fg) 8%, transparent); }
     .pct-val { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--fs-fg); letter-spacing: -.03em; }
     .gauge-wrap { position: relative; padding-bottom: 12px; cursor: pointer; }
     .gauge { height: 6px; background: color-mix(in srgb, var(--fs-fg) 9%, transparent); border-radius: var(--fs-pill); overflow: hidden; }
@@ -146,17 +153,40 @@
     .cutoff-line { width: 1.5px; height: 10px; background: var(--fs-warn); border-radius: 2px; }
     .cutoff-lbl { font-size: 8.5px; font-weight: 700; color: var(--fs-warn); margin-top: 1px; }
     .meta { font-size: 10px; color: var(--fs-faint); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .cutoff-ctrl {
+      display: flex; align-items: center; gap: 6px; margin-top: 7px;
+      padding: 5px 8px; border-radius: 9px;
+      background: color-mix(in srgb, var(--fs-bg) 55%, transparent);
+      border: 1px solid var(--fs-line-soft);
+    }
+    .cutoff-ctrl input[type="range"] {
+      flex: 1; min-width: 60px; accent-color: var(--fs-warn); cursor: pointer; height: 4px;
+      background: transparent; border: 0; padding: 0;
+    }
+    .cutoff-presets { display: inline-flex; gap: 3px; flex-shrink: 0; }
+    .mini-pill {
+      border: 1px solid var(--fs-line); background: transparent; color: var(--fs-muted);
+      border-radius: 6px; padding: 1px 5px; font-size: 9.5px; font-weight: 600; cursor: pointer;
+    }
+    .mini-pill:hover { color: var(--fs-fg); background: color-mix(in srgb, var(--fs-fg) 6%, transparent); }
+    .mini-pill.on { background: color-mix(in srgb, var(--fs-warn) 22%, transparent); border-color: color-mix(in srgb, var(--fs-warn) 50%, transparent); color: #fcd34d; }
 
     /* Hero Synthetic Pills + Auto/Manual Switch */
-    .hero-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+    .hero-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 9px; }
     .synth-pill {
-      padding: 6px 8px; border-radius: 9px;
+      padding: 5px 8px; border-radius: 9px;
       background: color-mix(in srgb, var(--fs-fg) 4%, transparent);
       border: 1px solid var(--fs-line-soft);
       font-size: 10.5px; color: var(--fs-muted);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      display: flex; align-items: center; gap: 4px; min-width: 0;
     }
     .synth-pill strong { color: var(--fs-fg); font-weight: 650; }
+    .pill-select {
+      border: 0; background: transparent; color: var(--fs-fg); font-weight: 650; font-size: 10.5px;
+      padding: 0; width: 100%; min-width: 0; cursor: pointer; text-overflow: ellipsis;
+    }
+    .pill-select:focus { outline: none; box-shadow: none; }
+    .pill-select option { background: var(--fs-card); color: var(--fs-fg); }
     .ro-note { margin-top: 8px; font-size: 10px; color: var(--fs-faint); display: flex; align-items: center; gap: 5px; }
 
     .auto-box {
@@ -420,8 +450,16 @@
         <span class="status-pill" id="connPill"><span class="dot"></span><span id="connTxt">Chargement…</span></span>
       </div>
 
-      <div class="qrow"><span>Budget chat restant</span><span class="pct-val" id="pct">—</span></div>
-      <div class="gauge-wrap" id="gauge" title="Actualiser le quota (clic)">
+      <div class="qrow">
+        <span>Budget chat restant</span>
+        <span class="qrow-right">
+          <button type="button" class="icon-btn" id="refreshQuotaBtn" title="Actualiser le quota">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+          <span class="pct-val" id="pct">—</span>
+        </span>
+      </div>
+      <div class="gauge-wrap" id="gauge" title="Cliquer pour ajuster ou actualiser">
         <div class="gauge" id="gaugeBar"><div id="bar"></div></div>
         <div class="cutoff-tick" id="cutoffTick" style="left: 15%">
           <div class="cutoff-line"></div>
@@ -430,11 +468,29 @@
       </div>
       <div class="meta">
         <span id="qtxt">Chargement…</span>
-        <span>Coupe-circuit : <b id="cutoff">—</b></span>
+        <span>Réserve : <b id="cutoff">—</b></span>
+      </div>
+      <div class="cutoff-ctrl" title="Réglage rapide du coupe-circuit sans passer par Réglages">
+        <input type="range" id="heroCutoffRange" min="0" max="90" step="5" value="15" />
+        <div class="cutoff-presets" id="cutoffPresets">
+          <button type="button" class="mini-pill" data-cutoff="0">0%</button>
+          <button type="button" class="mini-pill" data-cutoff="10">10%</button>
+          <button type="button" class="mini-pill" data-cutoff="15">15%</button>
+          <button type="button" class="mini-pill" data-cutoff="25">25%</button>
+        </div>
       </div>
 
       <div class="hero-pills">
-        <div class="synth-pill" id="profilePill">Profil : <strong>Qualité (fort)</strong></div>
+        <div class="synth-pill" id="profilePill">
+          <span>Profil :</span>
+          <select id="heroProfileSelect" class="pill-select" title="Changer de profil directement">
+            <option value="quality">Qualité ★</option>
+            <option value="eco">Éco</option>
+            <option value="fast">Rapide</option>
+            <option value="security">Sécurité ★</option>
+            <option value="refactor">Refonte ★</option>
+          </select>
+        </div>
         <div class="synth-pill" id="savingsPill">Éco. ATG : <strong>0 tok</strong></div>
       </div>
 
@@ -723,6 +779,11 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      const ct = res.headers?.get?.('content-type') || '';
+      if (!ct.includes('application/json')) {
+        if (res.status === 404) throw new Error('Endpoint indisponible (recharge la fenêtre Antigravity pour redémarrer le panneau).');
+        throw new Error(`Réponse non JSON (HTTP ${res.status})`);
+      }
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       return json;
@@ -1048,10 +1109,12 @@
       if (qObj?.resetAt) metaParts.push('Reset ' + new Date(qObj.resetAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
       $('qtxt').textContent = metaParts.join(' · ') || 'Quota France Student';
       $('cutoff').textContent = cutoff + ' %';
+      $('heroCutoffRange').value = cutoff;
+      document.querySelectorAll('#cutoffPresets .mini-pill').forEach((b) => {
+        b.classList.toggle('on', Number(b.dataset.cutoff) === cutoff);
+      });
 
-      const profileNames = { quality: 'Qualité (fort ★)', eco: 'Éco (léger)', fast: 'Rapide', security: 'Sécurité ★', refactor: 'Refonte ★' };
-      const profLabel = profileNames[S.routingProfile] || 'Qualité (fort ★)';
-      $('profilePill').innerHTML = `Profil : <strong>${esc(profLabel)}</strong>`;
+      $('heroProfileSelect').value = S.routingProfile || 'quality';
       const sav = S.antigravitySavings;
       $('savingsPill').innerHTML = sav?.jobsOffloaded
         ? `Éco. ATG : <strong>~${fmtNum(sav.totalTokensSavedEst)} tok</strong>`
@@ -1067,6 +1130,7 @@
       $('tabModelsCnt').textContent = catalog.length ? String(catalog.length) : '—';
       $('tabModelsNew').hidden = !catalog.some((m) => m.isNew);
       if (activeTab === 'models') renderModelsTab();
+      if (activeTab === 'logs') void loadLogs();
       if (!settingsLoaded) { syncSettingsForm(); settingsLoaded = true; }
     }
 
@@ -1126,10 +1190,48 @@
       try { await api('/api/session', { action: 'new' }); flash('Nouvelle session prête'); await poll(); }
       catch (e) { flash(e.message, 'toast', true); }
     };
+    async function saveCutoff(val) {
+      const pct = Math.max(0, Math.min(90, Number(val) || 0));
+      $('cutoff').textContent = pct + ' %';
+      $('cutoffTick').style.left = pct + '%';
+      $('cutoffNum').textContent = pct;
+      $('heroCutoffRange').value = pct;
+      $('cutoffInput').value = pct;
+      try {
+        await api('/api/settings', { cutoffPercent: pct });
+        flash(`Coupe-circuit : ${pct} %`);
+        await poll();
+      } catch (e) { flash(e.message, 'toast', true); }
+    }
+
+    $('refreshQuotaBtn').onclick = async () => {
+      try { await api('/api/refresh', {}); flash('Quota actualisé'); await poll(); }
+      catch (e) { flash(e.message, 'toast', true); }
+    };
     $('gauge').onclick = async () => {
       try { await api('/api/refresh', {}); flash('Quota actualisé'); await poll(); }
       catch (e) { flash(e.message, 'toast', true); }
     };
+    $('heroCutoffRange').addEventListener('input', (e) => {
+      const pct = Number(e.target.value);
+      $('cutoff').textContent = pct + ' %';
+      $('cutoffTick').style.left = pct + '%';
+      $('cutoffNum').textContent = pct;
+      document.querySelectorAll('#cutoffPresets .mini-pill').forEach((b) => {
+        b.classList.toggle('on', Number(b.dataset.cutoff) === pct);
+      });
+    });
+    $('heroCutoffRange').addEventListener('change', (e) => saveCutoff(e.target.value));
+    document.querySelectorAll('#cutoffPresets .mini-pill').forEach((b) => {
+      b.onclick = () => saveCutoff(b.dataset.cutoff);
+    });
+    $('heroProfileSelect').addEventListener('change', async (e) => {
+      try {
+        await api('/api/settings', { routingProfile: e.target.value });
+        flash('Profil mis à jour');
+        await poll();
+      } catch (err) { flash(err.message, 'toast', true); }
+    });
     $('refreshModelsBtn').onclick = async () => {
       try {
         const res = await api('/api/refresh', {});
@@ -1161,15 +1263,18 @@
       };
     });
 
-    $('refreshLogsBtn').onclick = loadLogs;
+    $('refreshLogsBtn').onclick = async () => { await loadLogs(); flash('Journal actualisé'); };
     $('copyLogsBtn').onclick = async () => {
       const txt = JSON.stringify(logEntries || [], null, 2);
       await navigator.clipboard.writeText(txt).catch(() => {});
       flash('Logs copiés');
     };
     $('clearLogsBtn').onclick = async () => {
-      await api('/api/logs/clear', {});
-      await loadLogs();
+      try {
+        await api('/api/logs/clear', {});
+        await loadLogs();
+        flash('Journal vidé');
+      } catch (e) { flash(e.message, 'toast', true); }
     };
 
     $('useAllBtn').onclick = async () => {
