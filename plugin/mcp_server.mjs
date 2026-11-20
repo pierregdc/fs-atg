@@ -9,8 +9,10 @@ import {
   ANTIGRAVITY_QUOTA_VISIBILITY,
   CONNECTOR_VERSION,
   MCP_TOOL_CATALOG,
+  REASONING_EFFORTS,
   acquireGlobalSlot,
   apiCredentialStatus,
+  buildReasoningDirective,
   compactChatContext,
   compactCatalog,
   enrichModelsCatalog,
@@ -24,9 +26,11 @@ import {
   fetchRemoteCatalog,
   formatWorkspaceSymbolIndex,
   fsJson,
+  getGlobalCooldown,
   globalSlotStatus,
   loadState,
   normalizeProviderTokenUsage,
+  normalizeReasoningEffort,
   parseTaskDirectives,
   pickModel,
   recordAntigravitySavings,
@@ -149,10 +153,11 @@ function connectorSnapshot(st) {
     toolCount: MCP_TOOL_CATALOG.length,
     tools: MCP_TOOL_CATALOG,
     slots: globalSlotStatus(st),
+    cooldown: getGlobalCooldown(st),
   };
 }
 
-function normalizedDelegation(task, requestedMode, requestedProfile, requestedPerm) {
+function normalizedDelegation(task, requestedMode, requestedProfile, requestedPerm, requestedEffort) {
   const rawTask = String(task ?? '').trim();
   const directives = parseTaskDirectives(rawTask);
   const executionMode = EXECUTION_MODES.has(requestedMode) ? requestedMode : directives.executionMode;
@@ -160,7 +165,9 @@ function normalizedDelegation(task, requestedMode, requestedProfile, requestedPe
     : (ROUTING_PROFILES.has(directives.profile) ? directives.profile : undefined);
   const permissionMode = PERMISSION_MODES.includes(requestedPerm) ? requestedPerm
     : (PERMISSION_MODES.includes(directives.permissionMode) ? directives.permissionMode : undefined);
-  return { task: directives.prompt, rawTask, executionMode, routingProfile, permissionMode };
+  const reasoningEffort = REASONING_EFFORTS.includes(requestedEffort) ? requestedEffort
+    : (REASONING_EFFORTS.includes(directives.reasoningEffort) ? directives.reasoningEffort : undefined);
+  return { task: directives.prompt, rawTask, executionMode, routingProfile, permissionMode, reasoningEffort };
 }
 
 function profileState(st, profile) {
@@ -297,7 +304,9 @@ function publicView(j) {
     commandsRun: j.commandsRun ?? [],
     toolTurns: j.toolTurns ?? 0,
     permissionMode: j.permissionMode ?? null,
-    lastThoughts: (j.thoughts || []).slice(-3),
+    reasoningEffort: j.reasoningEffort ?? null,
+    lastThoughts: (j.thoughts || []).slice(-8),
+    thoughts: (j.thoughts || []).slice(-12),
     error: j.error,
     planBRecommended: Boolean(j.planBRecommended),
     planBHint: j.planBHint ?? null,
@@ -377,7 +386,7 @@ function finishJob(job, status) {
     ...job,
     response: String(job.response ?? '').slice(0, 30_000),
     summary: String(job.summary ?? '').slice(0, 400),
-    thoughts: (job.thoughts || []).slice(-5),
+    thoughts: (job.thoughts || []).slice(-12),
   };
   if (job.workspaceRoot) st.lastWorkspaceRoot = resolve(job.workspaceRoot);
   st.history = [stored, ...(st.history || [])].slice(0, 20);
@@ -409,12 +418,15 @@ async function runJob(job) {
     }
 
     const { ids, agentMap } = await fetchAgentsAndModels(st);
+    const effectiveEffort = normalizeReasoningEffort(job.reasoningEffort || st.reasoningEffort, 'deep');
+    st.reasoningEffort = effectiveEffort;
     const route = pickModel(job.rawTask ?? job.task, ids, st, job.explicitModel);
     job.model = route.model;
     job.routeReason = route.reason;
     job.routingProfile = route.profile === 'auto' ? null : route.profile;
     job.executionMode = job.executionMode ?? route.executionMode ?? 'generate';
     job.permissionMode = job.permissionMode ?? route.permissionMode ?? undefined;
+    job.reasoningEffort = route.reasoningEffort ?? effectiveEffort;
     job.contextMode = contextModeOf(job, st);
     notify();
 
@@ -560,13 +572,14 @@ async function runJob(job) {
       const local = buildNaturalPrompt(route.prompt, job, st, Boolean(chatId), { useTools: clientTools.length > 0 });
       job.contextMode = local.mode;
       job.inputEstimateTokens = estimateTokens(local.prompt);
-      const instructions = clientTools.length
+      const baseInstructions = clientTools.length
         ? CLIENT_TOOLS_INSTRUCTIONS
         : (job.executionMode === 'plan'
           ? PLAN_INSTRUCTIONS
           : (job.executionMode === 'patch'
             ? PATCH_INSTRUCTIONS
             : (job.planB ? PLAN_B_PART_INSTRUCTIONS : NATURAL_INSTRUCTIONS)));
+      const instructions = baseInstructions + buildReasoningDirective(job.reasoningEffort, job.executionMode);
 
       let result;
       try {
@@ -580,6 +593,7 @@ async function runJob(job) {
           chatId,
           clientTools,
           executeToolCall: runner ? (call) => runner.execute(call) : null,
+          maxToolTurns: 18,
           onToolCall: ({ turn, name }) => {
             job.thoughts.push(`Outil #${turn} : ${name}`);
             job.thoughts = job.thoughts.slice(-20);
@@ -590,7 +604,7 @@ async function runJob(job) {
         });
       } catch (err) {
         const status = Number(err?.status ?? 0);
-        const canIsolatePlanB = !ac.signal.aborted && status !== 401 && status !== 403 && Boolean(chatId) && !job.planB;
+        const canIsolatePlanB = !err?.noPlanB && !ac.signal.aborted && status !== 401 && status !== 403 && Boolean(chatId) && !job.planB;
         if (!canIsolatePlanB) throw err;
         // Repli Plan B automatique immédiat sur chat neuf isolé (sans outils client si ceux-ci ont bloqué)
         job.planB = true;
@@ -696,6 +710,7 @@ server.registerTool('fs_delegate', {
     parentJobId: z.string().optional().describe('Suite d’un job précédent.'),
     executionMode: z.enum(['generate', 'apply', 'plan', 'patch', 'dry-run']).optional().describe('apply/generate autorisent les outils selon permissionMode ; plan/patch/dry-run restent en lecture seule.'),
     permissionMode: z.enum(['plan', 'acceptEdits', 'full']).optional().describe('Surcharge ponctuelle : plan (lecture seule), acceptEdits (lecture + écriture/édition avec /undo), full (+ run_command sécurisé).'),
+    reasoningEffort: z.enum(['standard', 'deep', 'max']).optional().describe('Niveau de raisonnement : standard, deep (approfondi, défaut), ou max (raisonnement maximal + priorité modèles forts).'),
     routingProfile: z.enum(['eco', 'fast', 'quality', 'security', 'refactor']).optional(),
     planB: z.boolean().optional().describe('Active le Plan B (chat neuf isolé ou découpage via parts) en cas d’échec du Plan A.'),
     parts: z.array(z.string().min(3)).max(6).optional().describe('Plan B : 2 à 6 petites sous-demandes simples générées séparément.'),
@@ -703,8 +718,16 @@ server.registerTool('fs_delegate', {
     verbose: z.boolean().optional(),
   },
 }, async (a) => {
-  const delegation = normalizedDelegation(a.task, a.executionMode, a.routingProfile, a.permissionMode);
+  const delegation = normalizedDelegation(a.task, a.executionMode, a.routingProfile, a.permissionMode, a.reasoningEffort);
   if (!delegation.task && !a.parts?.length) throw new Error('Consigne vide après les commandes locales.');
+  if (a.workspaceRoot) {
+    const st = loadState();
+    const resolvedWs = resolve(a.workspaceRoot);
+    if (st.lastWorkspaceRoot !== resolvedWs) {
+      st.lastWorkspaceRoot = resolvedWs;
+      saveState(st);
+    }
+  }
   const waitSec = typeof a.waitSeconds === 'number' ? Math.max(0, Math.min(45, a.waitSeconds)) : 45;
   const firstLine = (delegation.task || a.parts?.[0] || '').split('\n')[0];
   const job = {
@@ -712,7 +735,7 @@ server.registerTool('fs_delegate', {
     title: `${ATG} ${firstLine.slice(0, 70)}${firstLine.length > 70 ? '…' : ''}`,
     task: delegation.task || a.parts?.join(' ; '),
     rawTask: delegation.rawTask,
-    workspaceRoot: a.workspaceRoot,
+    workspaceRoot: a.workspaceRoot || loadState().lastWorkspaceRoot || undefined,
     files: a.files ?? [],
     explicitModel: a.model,
     parentId: a.parentJobId,
@@ -720,6 +743,7 @@ server.registerTool('fs_delegate', {
     contextMode: a.contextMode,
     executionMode: delegation.executionMode,
     permissionMode: delegation.permissionMode,
+    reasoningEffort: delegation.reasoningEffort,
     routingProfile: delegation.routingProfile,
     planB: Boolean(a.planB || a.parts?.length),
     parts: Array.isArray(a.parts) && a.parts.length ? a.parts.slice(0, 6) : undefined,

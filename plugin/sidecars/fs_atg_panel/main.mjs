@@ -8,8 +8,11 @@ import {
   ANTIGRAVITY_QUOTA_VISIBILITY,
   CONNECTOR_VERSION,
   MCP_TOOL_CATALOG,
+  REASONING_EFFORTS,
   acquireGlobalSlot,
   apiCredentialStatus,
+  buildReasoningDirective,
+  clearGlobalCooldown,
   compactChatContext,
   enrichModelsCatalog,
   estimateAntigravityJobSavings,
@@ -19,10 +22,13 @@ import {
   fetchModelCatalog,
   fetchQuotaSnapshot,
   fsJson,
+  getGlobalCooldown,
+  getModelCooldown,
   globalSlotStatus,
   groupModelsByTier,
   loadState,
   normalizeProviderTokenUsage,
+  normalizeReasoningEffort,
   parseTaskDirectives,
   pickModel,
   readLiveJobs,
@@ -37,12 +43,20 @@ import {
 import { clearLogs, countRecentErrors, logEvent, readLogs } from '../../logger.mjs';
 import {
   addProjectNote,
+  buildTurn1Annex,
   clearProjectMemory,
   getProjectMemory,
+  observePromptSignals,
   removeProjectNote,
   setPreprompt,
 } from '../../memory_store.mjs';
-import { PERMISSION_MODES, listUndoEntries, undoLastChange } from '../../tools_engine.mjs';
+import {
+  PERMISSION_MODES,
+  createWorkspaceToolRunner,
+  listUndoEntries,
+  toolsForPermissionMode,
+  undoLastChange,
+} from '../../tools_engine.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -54,12 +68,16 @@ const jobs = new Map();
 const running = new Map();
 const queue = [];
 
+const PANEL_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis (list_directory, search_files, read_file, et selon permission edit_file, write_file, run_command). Ne réécris pas le code dans ta réponse finale : termine par un bilan ultra-court (<= 6 lignes) des fichiers modifiés et commandes exécutées.`;
+
 const PANEL_INSTRUCTIONS = `Réponds clairement et directement en français (ou dans la langue de la demande).
 Si du code est demandé, fournis un code complet, propre et directement utilisable dans des blocs Markdown standards, sans blabla inutile.`;
 
 const PANEL_PLAN_INSTRUCTIONS = `Propose un plan clair, concret et concis : étapes, fichiers concernés et points d'attention, sans rédiger le code complet.`;
 
-const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'dry-run']);
+const PANEL_PATCH_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Ne réécris JAMAIS le fichier complet : formate CHAQUE modification exactement avec TARGET: suivi d'un bloc de code et REPLACE: suivi d'un bloc de code.`;
+
+const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'patch', 'dry-run']);
 const ROUTING_PROFILES = new Set(['eco', 'fast', 'quality', 'security', 'refactor']);
 
 function profileState(st, profile) {
@@ -68,18 +86,26 @@ function profileState(st, profile) {
   return { ...st, routingProfile };
 }
 
-function panelInstructions(executionMode) {
-  if (executionMode === 'plan') return PANEL_PLAN_INSTRUCTIONS;
-  return PANEL_INSTRUCTIONS;
+function panelInstructions(executionMode, { useTools = false, reasoningEffort = 'deep' } = {}) {
+  const base = useTools
+    ? PANEL_TOOLS_INSTRUCTIONS
+    : (executionMode === 'plan'
+      ? PANEL_PLAN_INSTRUCTIONS
+      : (executionMode === 'patch' ? PANEL_PATCH_INSTRUCTIONS : PANEL_INSTRUCTIONS));
+  return base + buildReasoningDirective(reasoningEffort, executionMode);
 }
 
-function normalizeDelegation(task, requestedMode, requestedProfile) {
+function normalizeDelegation(task, requestedMode, requestedProfile, requestedPerm, requestedEffort) {
   const rawTask = String(task ?? '').trim();
   const directives = parseTaskDirectives(rawTask);
   const executionMode = EXECUTION_MODES.has(requestedMode) ? requestedMode : directives.executionMode;
   const routingProfile = ROUTING_PROFILES.has(requestedProfile) ? requestedProfile
     : (ROUTING_PROFILES.has(directives.profile) ? directives.profile : undefined);
-  return { task: directives.prompt, rawTask, executionMode, routingProfile };
+  const permissionMode = PERMISSION_MODES.includes(requestedPerm) ? requestedPerm
+    : (PERMISSION_MODES.includes(directives.permissionMode) ? directives.permissionMode : undefined);
+  const reasoningEffort = REASONING_EFFORTS.includes(requestedEffort) ? requestedEffort
+    : (REASONING_EFFORTS.includes(directives.reasoningEffort) ? directives.reasoningEffort : undefined);
+  return { task: directives.prompt, rawTask, executionMode, routingProfile, permissionMode, reasoningEffort };
 }
 
 async function preparePanelChat(st) {
@@ -234,7 +260,10 @@ function publicView(j) {
     filesWritten: j.filesWritten ?? [],
     commandsRun: j.commandsRun ?? [],
     toolTurns: j.toolTurns ?? 0,
-    lastThoughts: (j.thoughts || []).slice(-3),
+    permissionMode: j.permissionMode ?? null,
+    reasoningEffort: j.reasoningEffort ?? null,
+    lastThoughts: (j.thoughts || []).slice(-8),
+    thoughts: (j.thoughts || []).slice(-12),
     error: j.error,
     startedAt: j.startedAt,
     endedAt: j.endedAt,
@@ -282,7 +311,7 @@ function finishJob(job, status) {
     ...job,
     response: String(job.response ?? '').slice(0, 30_000),
     summary: String(job.summary ?? '').slice(0, 400),
-    thoughts: (job.thoughts || []).slice(-5),
+    thoughts: (job.thoughts || []).slice(-12),
   };
   state.history = [stored, ...(state.history || [])].slice(0, 20);
   saveState(state);
@@ -309,19 +338,48 @@ async function runJob(job) {
     }
     const { ids, agentMap } = await fetchModels();
     state = profileState(loadState(), job.routingProfile);
+    const effectiveEffort = normalizeReasoningEffort(job.reasoningEffort || state.reasoningEffort, 'deep');
+    state.reasoningEffort = effectiveEffort;
     const route = pickModel(job.rawTask ?? job.task, ids, state, job.explicitModel);
     job.model = route.model;
     job.routeReason = route.reason;
     job.routingProfile = route.profile === 'auto' ? null : route.profile;
     job.executionMode = job.executionMode ?? route.executionMode ?? 'generate';
+    job.permissionMode = job.permissionMode ?? route.permissionMode ?? (PERMISSION_MODES.includes(state.permissionMode) ? state.permissionMode : 'acceptEdits');
+    job.reasoningEffort = route.reasoningEffort ?? effectiveEffort;
     job.contextMode = 'minimal';
-    job.inputEstimateTokens = estimateTokens(route.prompt);
 
-    logEvent('info', 'panel', 'panel.job.start', `Démarrage job panneau ${job.id} (${route.model}).`, { jobId: job.id, model: route.model });
+    const wsRoot = job.workspaceRoot || state.lastWorkspaceRoot || '';
+    const useTools = Boolean(
+      state.useClientTools !== false &&
+      wsRoot &&
+      job.executionMode !== 'patch'
+    );
+    const clientTools = useTools ? toolsForPermissionMode(job.permissionMode, job.executionMode) : [];
+    const runner = clientTools.length
+      ? createWorkspaceToolRunner({
+        workspaceRoot: wsRoot,
+        permissionMode: job.permissionMode,
+        jobId: job.id,
+        onMutation: (list) => { job.filesWritten = list; },
+        onCommand: (list) => { job.commandsRun = list; },
+      })
+      : null;
+
+    logEvent('info', 'panel', 'panel.job.start', `Démarrage job panneau ${job.id} (${route.model}).`, { jobId: job.id, model: route.model, tools: clientTools.length, reasoningEffort: job.reasoningEffort });
 
     const usePersistent = job.executionMode !== 'plan' && job.executionMode !== 'dry-run';
     const chatId = usePersistent ? await preparePanelChat(state) : undefined;
     if (chatId) job.chatId = chatId;
+
+    let finalPrompt = route.prompt;
+    if (wsRoot && !chatId) {
+      try { observePromptSignals(wsRoot, route.prompt); } catch { /* ignore */ }
+      const annex = buildTurn1Annex(wsRoot, { includeShortContext: Boolean(clientTools.length) });
+      if (annex) finalPrompt += `\n\n${annex}`;
+    }
+    job.inputEstimateTokens = estimateTokens(finalPrompt);
+
     job.thoughts.push('En attente d’un créneau France Student partagé.');
     const lease = await acquireGlobalSlot(state, `panel-${job.id}`, ac.signal);
     job.slot = lease.index + 1;
@@ -330,33 +388,71 @@ async function runJob(job) {
     let liveText = '';
     let result;
     try {
-      result = await streamGenerationWithRefusalFallback({
-        state,
-        model: route.model,
-        availableModels: ids,
-        agentMap,
-        instructions: panelInstructions(job.executionMode),
-        prompt: route.prompt,
-        chatId,
-        signal: ac.signal,
-        onChatId: (cid) => { job.chatId = cid; },
-        onText: (d) => {
-          job.receivedChars += d.length;
-          liveText += d;
-          job.summary = liveText.slice(-300);
-        },
-        onReasoning: (d) => {
-          thoughtBuf += d;
-          if (thoughtBuf.includes('\n') || thoughtBuf.length > 240) flushThought();
-        },
-        onRetry: ({ from, to, reason, attempt }) => {
-          job.refusals = [...(job.refusals ?? []), { model: from, reason, retryModel: to }];
-          job.model = to;
-          job.routeReason = `${route.reason} · repli ${from} → ${to}`;
-          job.thoughts.push(`Repli (${attempt}/3) : ${from} → ${to}.`);
-          job.thoughts = job.thoughts.slice(-20);
-        },
-      });
+      try {
+        result = await streamGenerationWithRefusalFallback({
+          state,
+          model: route.model,
+          availableModels: ids,
+          agentMap,
+          instructions: panelInstructions(job.executionMode, { useTools: clientTools.length > 0, reasoningEffort: job.reasoningEffort }),
+          prompt: finalPrompt,
+          chatId,
+          clientTools,
+          executeToolCall: runner ? (call) => runner.execute(call) : null,
+          maxToolTurns: 18,
+          onToolCall: ({ turn, name }) => {
+            job.thoughts.push(`Outil #${turn} : ${name}`);
+            job.thoughts = job.thoughts.slice(-20);
+          },
+          signal: ac.signal,
+          onChatId: (cid) => { job.chatId = cid; },
+          onText: (d) => {
+            job.receivedChars += d.length;
+            liveText += d;
+            job.summary = liveText.slice(-300);
+          },
+          onReasoning: (d) => {
+            thoughtBuf += d;
+            if (thoughtBuf.includes('\n') || thoughtBuf.length > 240) flushThought();
+          },
+          onRetry: ({ from, to, reason, attempt }) => {
+            job.refusals = [...(job.refusals ?? []), { model: from, reason, retryModel: to }];
+            job.model = to;
+            job.routeReason = `${route.reason} · repli ${from} → ${to}`;
+            job.thoughts.push(`Repli (${attempt}/3) : ${from} → ${to}.`);
+            job.thoughts = job.thoughts.slice(-20);
+          },
+        });
+      } catch (err) {
+        const status = Number(err?.status ?? 0);
+        if (!err?.noPlanB && !ac.signal.aborted && status !== 401 && status !== 403 && Boolean(chatId)) {
+          job.thoughts.push('Plan B automatique : nouvel essai sur session neuve isolée…');
+          result = await streamGenerationWithRefusalFallback({
+            state,
+            model: route.model,
+            availableModels: ids,
+            agentMap,
+            instructions: panelInstructions(job.executionMode, { useTools: false, reasoningEffort: job.reasoningEffort }),
+            prompt: route.prompt,
+            chatId: undefined,
+            clientTools: [],
+            executeToolCall: null,
+            signal: ac.signal,
+            onChatId: (cid) => { job.chatId = cid; },
+            onText: (d) => {
+              job.receivedChars += d.length;
+              liveText += d;
+              job.summary = liveText.slice(-300);
+            },
+            onReasoning: (d) => {
+              thoughtBuf += d;
+              if (thoughtBuf.includes('\n') || thoughtBuf.length > 240) flushThought();
+            },
+          });
+        } else {
+          throw err;
+        }
+      }
     } finally {
       lease.release();
     }
@@ -366,6 +462,11 @@ async function runJob(job) {
     job.model = result.model ?? job.model;
     job.refusals = result.refusals ?? job.refusals ?? [];
     job.attemptedModels = result.attemptedModels ?? job.attemptedModels;
+    job.toolTurns = result.toolTurns ?? 0;
+    if (runner) {
+      job.filesWritten = runner.getFilesWritten();
+      job.commandsRun = runner.getCommandsRun();
+    }
     job.tokenMeasurement = result.tokenMeasurement ?? {
       localPromptEstimateTokens: job.inputEstimateTokens,
       providerUsage: normalizeProviderTokenUsage(result.usage),
@@ -415,7 +516,12 @@ app.api('/api/state', async () => {
   state = loadState();
   const { ids, metaMap } = modelsBundle;
   const displayIds = modelsBundle.available ? ids : [];
-  const modelCatalog = displayIds.length ? enrichModelsCatalog(displayIds, metaMap, state, rawCatalog.models) : [];
+  const modelCatalog = displayIds.length
+    ? enrichModelsCatalog(displayIds, metaMap, state, rawCatalog.models).map((m) => ({
+      ...m,
+      cooldown: getModelCooldown(m.id),
+    }))
+    : [];
   const session = await panelSession('status').catch(() => ({ chatId: state.directChats?.panel ?? null, usagePercent: null }));
   const localActive = [...jobs.values()].map(publicView);
   const mcpActive = readLiveJobs().filter((m) => !jobs.has(m.jobId));
@@ -426,6 +532,7 @@ app.api('/api/state', async () => {
     hasKey: credential.configured === true,
     credential,
     quota: quotaCache,
+    cooldown: getGlobalCooldown(state),
     cutoff: state.cutoffPercent,
     mode: state.mode,
     routingProfile: ROUTING_PROFILES.has(state.routingProfile) ? state.routingProfile : 'quality',
@@ -436,7 +543,8 @@ app.api('/api/state', async () => {
     projectMemory: getProjectMemory(wsRoot),
     autoDelegate: state.autoDelegate !== false,
     maxParallel: state.maxParallel,
-    showReasoning: state.showReasoning,
+    showReasoning: state.showReasoning !== false,
+    reasoningEffort: normalizeReasoningEffort(state.reasoningEffort, 'deep'),
     reuseChat: state.reuseChat !== false,
     contextCompactPercent: state.contextCompactPercent ?? 80,
     contextMode: state.contextMode ?? 'minimal',
@@ -474,6 +582,7 @@ app.api('/api/clear-history', () => {
 });
 
 app.api('/api/refresh', async () => {
+  clearGlobalCooldown();
   state = loadState();
   const credential = await apiCredentialStatus(state);
   if (!credential.configured) {
@@ -549,6 +658,7 @@ app.api('/api/settings', (data) => {
   if (typeof data.cutoffPercent === 'number') state.cutoffPercent = Math.max(0, Math.min(90, data.cutoffPercent));
   if (typeof data.maxParallel === 'number') state.maxParallel = Math.max(1, Math.min(6, data.maxParallel));
   if (typeof data.showReasoning === 'boolean') state.showReasoning = data.showReasoning;
+  if (data.reasoningEffort !== undefined) state.reasoningEffort = normalizeReasoningEffort(data.reasoningEffort, state.reasoningEffort || 'deep');
   if (typeof data.reuseChat === 'boolean') state.reuseChat = data.reuseChat;
   if (typeof data.contextCompactPercent === 'number') state.contextCompactPercent = Math.max(50, Math.min(95, data.contextCompactPercent));
   if (['minimal', 'targeted', 'smart'].includes(data.contextMode)) state.contextMode = data.contextMode;
@@ -609,7 +719,7 @@ app.api('/api/logs/clear', () => {
 });
 
 app.api('/api/delegate', (data) => {
-  const delegation = normalizeDelegation(data.task, data.executionMode, data.routingProfile);
+  const delegation = normalizeDelegation(data.task, data.executionMode, data.routingProfile, data.permissionMode, data.reasoningEffort);
   if (!delegation.task) throw new Error('Tâche vide après les commandes locales.');
   const firstLine = delegation.task.split('\n')[0];
   const job = {
@@ -617,8 +727,11 @@ app.api('/api/delegate', (data) => {
     title: `${ATG} ${firstLine.slice(0, 70)}${firstLine.length > 70 ? '…' : ''}`,
     task: delegation.task,
     rawTask: delegation.rawTask,
+    workspaceRoot: data.workspaceRoot || loadState().lastWorkspaceRoot || undefined,
     explicitModel: data.model || undefined,
     executionMode: delegation.executionMode,
+    permissionMode: delegation.permissionMode,
+    reasoningEffort: delegation.reasoningEffort,
     routingProfile: delegation.routingProfile,
     status: 'queued',
     createdAt: Date.now(),

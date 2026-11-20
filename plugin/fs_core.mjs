@@ -30,10 +30,15 @@ export const MEDIUM_PRIORITY = Object.freeze(['sonnet', 'gpt-5.6-sol', 'terra'])
 export const LIGHT_PRIORITY = Object.freeze(['haiku', 'gpt-6-luna', 'luna']);
 const TIER_PRIORITY = { heavy: HEAVY_PRIORITY, medium: MEDIUM_PRIORITY, light: LIGHT_PRIORITY };
 
+export const COOLDOWN_DURATION_MS = 10 * 60 * 1000;
+export const UNAVAILABLE_REASON = 'IA non dispo';
+
 const modelCooldowns = new Map();
-export function recordModelCooldown(modelId, message = '') {
+let globalCooldownMemory = null;
+
+export function recordModelCooldown(modelId, message = '', reason = UNAVAILABLE_REASON) {
   if (!modelId) return;
-  let until = Date.now() + 10 * 60 * 1000;
+  let until = Date.now() + COOLDOWN_DURATION_MS;
   const m = /Reset at (\S+?Z)/i.exec(String(message));
   if (m) {
     const parsed = Date.parse(m[1]);
@@ -41,13 +46,127 @@ export function recordModelCooldown(modelId, message = '') {
       until = parsed;
     }
   }
-  modelCooldowns.set(modelId, until);
+  const entry = { until, reason: reason || UNAVAILABLE_REASON, detail: String(message || '').slice(0, 140) };
+  modelCooldowns.set(modelId, entry);
+  try {
+    const st = loadState();
+    st.modelCooldowns = { ...(st.modelCooldowns || {}), [modelId]: entry };
+    saveState(st);
+  } catch { /* ignore */ }
 }
+
+export function getModelCooldown(modelId) {
+  let entry = modelCooldowns.get(modelId);
+  if (!entry) {
+    try {
+      const st = loadState();
+      entry = st?.modelCooldowns?.[modelId] || null;
+      if (entry) modelCooldowns.set(modelId, entry);
+    } catch { /* ignore */ }
+  }
+  if (!entry) return null;
+  const until = typeof entry === 'number' ? entry : Number(entry.until || 0);
+  if (Date.now() >= until) {
+    modelCooldowns.delete(modelId);
+    return null;
+  }
+  return {
+    until,
+    remainingSec: Math.max(1, Math.ceil((until - Date.now()) / 1000)),
+    reason: (typeof entry === 'object' && entry.reason) ? entry.reason : UNAVAILABLE_REASON,
+    detail: (typeof entry === 'object' && entry.detail) ? entry.detail : '',
+  };
+}
+
 export function isModelOnCooldown(modelId) {
-  const until = modelCooldowns.get(modelId);
-  if (!until) return false;
-  if (Date.now() >= until) { modelCooldowns.delete(modelId); return false; }
-  return true;
+  return Boolean(getModelCooldown(modelId));
+}
+
+export function recordGlobalCooldown(reason = UNAVAILABLE_REASON, detail = '') {
+  const until = Date.now() + COOLDOWN_DURATION_MS;
+  const entry = {
+    until,
+    reason: reason || UNAVAILABLE_REASON,
+    detail: String(detail || '').slice(0, 160),
+    at: Date.now(),
+  };
+  globalCooldownMemory = entry;
+  try {
+    const st = loadState();
+    st.globalCooldown = entry;
+    saveState(st);
+  } catch { /* ignore */ }
+  logEvent('error', 'core', 'cooldown.global', `Cooldown 10 min activé : ${entry.reason}`, entry);
+  return entry;
+}
+
+export function clearGlobalCooldown() {
+  globalCooldownMemory = null;
+  modelCooldowns.clear();
+  try {
+    const st = loadState();
+    if (st.globalCooldown || st.modelCooldowns) {
+      delete st.globalCooldown;
+      delete st.modelCooldowns;
+      saveState(st);
+    }
+  } catch { /* ignore */ }
+}
+
+export function getGlobalCooldown(state = null) {
+  const st = state || (() => { try { return loadState(); } catch { return null; } })();
+  const entry = globalCooldownMemory || st?.globalCooldown || null;
+  if (!entry || !entry.until) return { active: false, reason: null, until: null, remainingSec: 0 };
+  if (Date.now() >= Number(entry.until)) {
+    globalCooldownMemory = null;
+    try {
+      const latest = loadState();
+      if (latest.globalCooldown) {
+        delete latest.globalCooldown;
+        saveState(latest);
+      }
+    } catch { /* ignore */ }
+    return { active: false, reason: null, until: null, remainingSec: 0 };
+  }
+  const remainingSec = Math.max(1, Math.ceil((Number(entry.until) - Date.now()) / 1000));
+  return {
+    active: true,
+    reason: entry.reason || UNAVAILABLE_REASON,
+    detail: entry.detail || '',
+    until: Number(entry.until),
+    remainingSec,
+  };
+}
+
+export function rankModelsBestToWorst(models = [], state = null) {
+  const unique = [...new Set(models || [])].filter((id) => modelIsAllowed(id, state));
+  const ordered = [];
+  const seen = new Set();
+  for (const tier of ['heavy', 'medium', 'light']) {
+    const tierPool = unique.filter((id) => classifyTier(id, state) === tier);
+    const prio = TIER_PRIORITY[tier] || [];
+    for (const kw of prio) {
+      for (const id of tierPool) {
+        if (!seen.has(id) && id.toLowerCase().includes(kw)) {
+          seen.add(id);
+          ordered.push(id);
+        }
+      }
+    }
+    for (const id of tierPool) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        ordered.push(id);
+      }
+    }
+  }
+  for (const id of unique) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      ordered.push(id);
+    }
+  }
+  return ordered;
 }
 
 function pickTierCandidate(pool, tier, state) {
@@ -108,6 +227,29 @@ export const DEFAULT_AGENTS = [
   { id: -2005, name: 'Claude Fable 5.2', model: 'claude-fable-5-2', modelProvider: 'anthropic' },
 ];
 
+export const REASONING_EFFORTS = Object.freeze(['standard', 'deep', 'max']);
+
+export function normalizeReasoningEffort(val, fallback = 'deep') {
+  const v = String(val ?? '').trim().toLowerCase();
+  if (v === 'standard' || v === 'low' || v === 'normal') return 'standard';
+  if (v === 'max' || v === 'maximum' || v === 'high' || v === 'xhigh' || v === 'boost') return 'max';
+  if (v === 'deep' || v === 'medium' || v === 'approfondi' || v === 'think') return 'deep';
+  return REASONING_EFFORTS.includes(fallback) ? fallback : 'deep';
+}
+
+export function buildReasoningDirective(effort = 'deep', executionMode = 'generate') {
+  const eff = normalizeReasoningEffort(effort, 'deep');
+  if (eff === 'standard') return '';
+  if (eff === 'max') {
+    return executionMode === 'plan'
+      ? ` Protocole de raisonnement MAXIMUM : décompose l'architecture, vérifie chaque dépendance inter-fichiers, anticipe les cas limites, régressions, failles de sécurité et goulots de performance avant de formuler le plan.`
+      : ` Protocole de raisonnement MAXIMUM : avant toute écriture ou réponse, analyse méthodiquement la cause racine, les invariants du code, les effets de bord multi-fichiers et les cas limites (erreurs, types, concurrence, sécurité). Vérifie systématiquement la cohérence syntaxique et logique du résultat final.`;
+  }
+  return executionMode === 'plan'
+    ? ` Raisonnement approfondi : vérifie les dépendances et cas limites avant de structurer les étapes.`
+    : ` Raisonnement approfondi : analyse les contraintes, dépendances et cas limites avant de coder ou modifier un fichier, et vérifie la cohérence finale.`;
+}
+
 export const DEFAULT_STATE = {
   stateVersion: 2,
   apiKey: '',
@@ -121,6 +263,7 @@ export const DEFAULT_STATE = {
   autoDelegate: true,
   maxParallel: 3,
   showReasoning: true,
+  reasoningEffort: 'deep',
   useClientTools: true,
   enableWebSearch: true,
   reuseChat: true,
@@ -179,26 +322,29 @@ export function saveState(st) {
 /** Keeps rules/AGENTS.md synchronized with Auto/Manual & permission mode in the UI. */
 export function syncAgentsRule(autoDelegate = true, permissionMode = null) {
   const auto = Boolean(autoDelegate);
+  const st = loadState();
   const effectivePerm = PERMISSION_MODES.includes(permissionMode)
     ? permissionMode
-    : (loadState().permissionMode || 'acceptEdits');
+    : (st.permissionMode || 'acceptEdits');
   const writesDirectly = effectivePerm === 'acceptEdits' || effectivePerm === 'full';
   const header = auto
     ? (writesDirectly
-      ? `Mode Automatique actif (permission : \`${effectivePerm}\`) : pour **créer, modifier, refactorer, déboguer, planifier${effectivePerm === 'full' ? ', tester' : ''} ou analyser**, appelle **immédiatement** \`fs_delegate\` avec \`workspaceRoot\` et \`contextMode="minimal"\`, \`waitSeconds=45\` **sans lire les fichiers avant**. France Student lit et écrit directement sur disque (avec sauvegarde \`/undo\`) et ne te renvoie qu’un court bilan (\`filesWritten\`, \`commandsRun\`). Garde en natif uniquement : micro-éditions (<10 lignes déjà visibles) et 1 recherche web ponctuelle (\`search_web\`).`
-      : 'Mode Automatique actif (permission : `plan` — lecture seule) : délègue immédiatement à `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers avant** (passe `workspaceRoot` + `files` relatifs) pour : **modifications (`executionMode="patch"`), plans (`executionMode="plan"`), revues/audits, debug et fonctions ciblées**. Garde en natif : micro-éditions (<10 lignes), **1 recherche web simple** (`search_web`), et gros fichiers neufs via `write_file`.')
-    : 'Mode Manuel actif : n’appelle `fs_delegate`, `fs_undo`, `fs_memory`, `fs_session`, `fs_logs` ou `fs_diagnostics` **que** si l’utilisateur mentionne France Student, `@[plugin:fs-atg]` ou une commande (`/patch`, `/plan`, `/send`, `/eco`, `/fast`, `/high`, `/medium`, `/low`, `/dry-run`, `/undo`, `/memory`, `/remember`, `/mode`, `/compact`, `/new`, `/diagnostics`, `/logs`).';
+      ? `PRIORITÉ ABSOLUE — Mode Automatique actif (permission : \`${effectivePerm}\`) : pour **toute création de fichier, modification, refactorisation, débogage, exploration de code, planification${effectivePerm === 'full' ? ', exécution de tests/commandes' : ''} ou analyse technique**, appelle **IMMÉDIATEMENT EN PREMIER** \`fs_delegate\` avec \`workspaceRoot\` (chemin absolu du projet), \`contextMode="minimal"\` et \`waitSeconds=45\`. **INTERDICTION** de lire les fichiers (\`read_file\`, \`grep_search\`, \`find_by_name\`) ou de les éditer (\`edit_file\`, \`write_file\`) en natif avant d’appeler \`fs_delegate\` : France Student dispose de ses propres outils locaux (\`list_directory\`, \`search_files\`, \`read_file\`, \`edit_file\`, \`write_file\`${effectivePerm === 'full' ? ', \`run_command\`' : ''}) avec sauvegarde atomique \`/undo\`, agit directement sur le disque et te renvoie un bilan court (\`filesWritten\`, \`commandsRun\`).`
+      : 'PRIORITÉ ABSOLUE — Mode Automatique actif (permission : `plan` — lecture seule) : délègue immédiatement en premier à `fs_delegate` (`workspaceRoot`, `contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers en natif avant** pour : **modifications (`executionMode="patch"`), plans (`executionMode="plan"`), exploration, revues/audits, debug et génération de code**.')
+    : 'Mode Manuel actif : n’appelle `fs_delegate`, `fs_undo`, `fs_memory`, `fs_session`, `fs_logs` ou `fs_diagnostics` **que** si l’utilisateur mentionne France Student, `@[plugin:fs-atg]` ou une commande (`/patch`, `/plan`, `/send`, `/eco`, `/fast`, `/high`, `/medium`, `/low`, `/think`, `/max`, `/dry-run`, `/undo`, `/memory`, `/remember`, `/mode`, `/compact`, `/new`, `/diagnostics`, `/logs`).';
   const content = [
     '# France Student [ATG]',
     '',
     header,
     '',
     writesDirectly
-      ? '- **Économie maximale (écriture directe + `/undo`)** : en mode `acceptEdits` / `full`, passe `workspaceRoot` à `fs_delegate` pour que France Student lise, modifie (`edit_file`/`write_file`) et vérifie sans qu’Antigravity ait à recopier le code. Si besoin de revenir en arrière : `/undo` → `fs_undo`. Pour un simple patch manuel : `executionMode="patch"`.'
-      : '- **Lecture seule (`plan`)** : passe `files` en lecture seule à `fs_delegate`, utilise `executionMode="patch"` (-52 % à -95 % mesurés) et `executionMode="plan"` (≤ 15 lignes), et applique les courts extraits avec `edit_file`.',
-    '- **Mémoire & continuité** : `/remember` et `/memory` appellent `fs_memory` ; `FRST.md` / `FRSTCLI.md` et les notes projet sont injectés automatiquement au 1er tour côté France Student.',
-    '- **Plan B** : si Plan A échoue ou est incomplet, relance en `planB: true` avec `parts` (2–4 petits blocs, modèles Claude inline) ; en ultime recours seulement, termine nativement.',
-    '- **Journal & état** : `/logs` → `fs_logs`, `/diagnostics` → `fs_diagnostics`, `/new` ou `/compact` → `fs_session` (côté France Student). `/usage` mesure Antigravity.',
+      ? '- **Zéro gaspillage de quota Antigravity** : ne fais jamais d’exploration ou de réécriture native quand `fs_delegate` peut tout exécuter de bout en bout sur disque avec `workspaceRoot`. Une fois `fs_delegate` terminé (`status: "done"` avec `filesWritten`), présente directement le résultat à l’utilisateur sans relire ni rééditer les fichiers modifiés. Si besoin d’annuler : `/undo` → `fs_undo`.'
+      : '- **Lecture seule (`plan`)** : passe `workspaceRoot` à `fs_delegate`, utilise `executionMode="patch"` ou `executionMode="plan"`, et applique uniquement les courts extraits retournés avec `edit_file`.',
+    '- **Exceptions natives strictes** : garde en natif Antigravity **uniquement** : (1) micro-retouche triviale `< 5 lignes` déjà visible dans le message, (2) question purement conversationnelle sans accès au code, (3) recherche web externe (`search_web`) ou navigateur (`browser`).',
+    '- **Raisonnement boosté & Mémoire** : utilise `reasoningEffort="max"` (ou `/max`, `/think`) sur les tâches complexes ; `/remember` et `/memory` appellent `fs_memory` (`FRST.md` + notes + faits appris sont injectés automatiquement au 1er tour).',
+    '- **Cascade 502/429 & Cooldown 10 min (`IA non dispo`)** : en cas d’erreur 502/503/429, France Student bascule automatiquement du meilleur modèle au moins fort (`heavy` → `medium` → `light`). Si aucun modèle ne répond, un cooldown de 10 min est activé avec le motif `IA non dispo` : pendant ce cooldown, exécute directement la tâche en natif sans rappeler `fs_delegate`.',
+    '- **Plan B** : si Plan A échoue hors `IA non dispo`, relance en `planB: true` avec `parts` (2–4 petits blocs) ; n’exécute nativement qu’en tout dernier recours.',
+    '- **Journal & état** : `/logs` → `fs_logs`, `/diagnostics` → `fs_diagnostics`, `/new` ou `/compact` → `fs_session`. `/usage` mesure Antigravity.',
     '',
   ].join('\n');
   mkdirSync(dirname(RULES_PATH), { recursive: true });
@@ -881,6 +1027,7 @@ export function parseTaskDirectives(raw) {
   let profile = null;
   let executionMode = 'apply';
   let permissionMode = null;
+  let reasoningEffort = null;
   // `/plan /security audit src/auth` is valid: all recognised directives are local.
   for (;;) {
     const slash = /^\s*\/([a-zA-ZÀ-ÿ0-9_-]+)(?:\s+|$)/.exec(prompt);
@@ -892,6 +1039,8 @@ export function parseTaskDirectives(raw) {
     if (command === 'patch') { executionMode = 'patch'; prompt = next; continue; }
     if (command === 'dry-run' || command === 'dryrun' || command === 'preview') { executionMode = 'dry-run'; prompt = next; continue; }
     if (command === 'apply') { executionMode = 'apply'; prompt = next; continue; }
+    if (command === 'think' || command === 'deep' || command === 'reason') { reasoningEffort = 'deep'; prompt = next; continue; }
+    if (command === 'max' || command === 'boost' || command === 'xhigh') { reasoningEffort = 'max'; requested = requested ?? { kind: 'tier', value: 'heavy' }; prompt = next; continue; }
     if (command === 'mode') {
       const m = /^(\S+)(?:\s+|$)/.exec(next);
       const val = m ? normalizedDirective(m[1]) : '';
@@ -907,7 +1056,7 @@ export function parseTaskDirectives(raw) {
     if (MODEL_ALIASES[command]) { requested = { kind: 'model', value: MODEL_ALIASES[command] }; prompt = next; continue; }
     break;
   }
-  return { prompt: prompt.trim(), tagModel, requested, profile, executionMode, permissionMode };
+  return { prompt: prompt.trim(), tagModel, requested, profile, executionMode, permissionMode, reasoningEffort };
 }
 
 /** Non-writing modes may discover local files but never edit or create them. */
@@ -945,13 +1094,14 @@ export function pickModel(raw, available, state, explicit) {
   const forcedTier = requested?.kind === 'tier' ? requested.value : TIER_ALIASES[wantedNorm];
   const profile = directives.profile || normalizeRoutingProfile(state?.routingProfile) || 'auto';
 
+  const effectiveEffort = normalizeReasoningEffort(directives.reasoningEffort || state?.reasoningEffort, 'deep');
   if (wanted && !forcedTier) {
     const hit = pool.find((id) => has(id, [wanted]));
-    if (hit) return { model: hit, prompt, reason: `forcé : ${wanted}`, profile, executionMode: directives.executionMode, permissionMode: directives.permissionMode };
+    if (hit) return { model: hit, prompt, reason: `forcé : ${wanted}`, profile, executionMode: directives.executionMode, permissionMode: directives.permissionMode, reasoningEffort: effectiveEffort };
     throw new Error(`Modèle « ${wanted} » indisponible ou bloqué.`);
   }
 
-  const preferredTier = profileTier(profile, prompt);
+  const preferredTier = effectiveEffort === 'max' ? 'heavy' : profileTier(profile, prompt);
   const tier = forcedTier || preferredTier || (HEAVY.test(prompt) || prompt.length > 4000 ? 'heavy'
     : LIGHT.test(prompt) && prompt.length < 800 ? 'light' : 'medium');
   const order = tier === 'heavy' ? ['heavy', 'medium', 'light']
@@ -964,11 +1114,13 @@ export function pickModel(raw, available, state, explicit) {
         model: hit,
         prompt,
         reason: forcedTier ? `catégorie : ${label}`
-          : (preferredTier ? `profil ${profile} : ${label}${t !== tier ? ' (repli)' : ''}`
-            : `auto : ${label}${t !== tier ? ' (repli)' : ''}`),
+          : (effectiveEffort === 'max' ? `raisonnement max : ${label}`
+            : (preferredTier ? `profil ${profile} : ${label}${t !== tier ? ' (repli)' : ''}`
+              : `auto : ${label}${t !== tier ? ' (repli)' : ''}`)),
         profile,
         executionMode: directives.executionMode,
         permissionMode: directives.permissionMode,
+        reasoningEffort: effectiveEffort,
       };
     }
   }
@@ -979,6 +1131,7 @@ export function pickModel(raw, available, state, explicit) {
     profile,
     executionMode: directives.executionMode,
     permissionMode: directives.permissionMode,
+    reasoningEffort: effectiveEffort,
   };
 }
 
@@ -1392,6 +1545,9 @@ export async function streamGeneration({
   }
   const effectiveSignal = timeoutCtrl.signal;
 
+  const eff = normalizeReasoningEffort(state?.reasoningEffort, 'deep');
+  const apiEffort = eff === 'max' ? 'high' : (eff === 'deep' ? 'medium' : 'low');
+
   const runOpenAiResponses = async () => {
     const body = {
       model,
@@ -1399,7 +1555,7 @@ export async function streamGeneration({
       stream: true,
       input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
     };
-    if (state.showReasoning) body.reasoning = { summary: 'auto' };
+    if (state.showReasoning !== false) body.reasoning = { effort: apiEffort, summary: 'auto' };
     const res = await fetch(base + '/v1/responses', {
       method: 'POST',
       signal: effectiveSignal,
@@ -1475,6 +1631,29 @@ export async function streamGeneration({
         }
         throw fail;
       }
+      const ct = String(res.headers?.get?.('content-type') ?? '');
+      if (/application\/json/i.test(ct)) {
+        const data = await res.json();
+        const cid = data?.chat_id ?? data?.chatId;
+        if (cid) {
+          chatId = cid;
+          activeChatId = cid;
+          onChatId?.(cid);
+        }
+        const msg = data?.message ?? data;
+        const refusal = refusalReasonFromEvent(data);
+        if (refusal) throw new ModelRefusalError(refusal, { chatId });
+        if (typeof msg?.reasoning === 'string' && msg.reasoning) onReasoning?.(msg.reasoning);
+        if (typeof msg?.content === 'string' && msg.content) {
+          turn.text += msg.content;
+          combinedText += (combinedText ? '\n' : '') + msg.content;
+          onText?.(msg.content);
+        }
+        turn.toolCalls = extractApiToolCalls(msg);
+        addUsage(msg?.tokenUsage ?? data?.response?.usage ?? data?.usage);
+        if (turn.text.trim()) lastNonEmptyTurnText = turn.text;
+        return turn;
+      }
       let lastEventId;
       let completed = false;
       try {
@@ -1494,12 +1673,20 @@ export async function streamGeneration({
             turn.text += ev.text;
             combinedText += ev.text;
             onText?.(ev.text);
-          } else if (ev?.type === 'response.reasoning_summary_text.delta') {
-            onReasoning?.(ev.delta ?? '');
+          } else if (
+            ev?.type === 'response.reasoning_summary_text.delta' ||
+            ev?.type === 'response.reasoning.delta' ||
+            ev?.type === 'reasoning.delta' ||
+            ev?.type === 'thinking.delta'
+          ) {
+            onReasoning?.(ev.delta ?? ev.text ?? '');
           } else if (ev?.type === 'completed' || ev?.type === 'response.completed' || ev?.type === 'stream.completed') {
             const refusal = refusalReasonFromEvent(ev);
             if (refusal) throw new ModelRefusalError(refusal, { chatId });
             completed = true;
+            if (typeof ev.message?.reasoning === 'string' && ev.message.reasoning) {
+              onReasoning?.(ev.message.reasoning);
+            }
             if (!turn.text && ev.message?.content) {
               turn.text = String(ev.message.content);
               combinedText += (combinedText ? '\n' : '') + turn.text;
@@ -1647,45 +1834,64 @@ export async function streamGeneration({
 }
 
 /**
- * Retries refusals, empty completions, timeouts or transient failures up to
- * 3 distinct models total, prioritizing strong models first.
+ * Retries refusals, empty completions, 502/429/upstream errors or timeouts by
+ * cascading through available models from BEST to WORST (heavy -> medium -> light).
+ * If no model succeeds, activates a 10-minute cooldown with motif "IA non dispo".
  */
 export async function streamGenerationWithRefusalFallback({ availableModels = [], onRetry, ...request }) {
+  const gc = getGlobalCooldown(request.state);
+  if (gc.active) {
+    const mins = Math.max(1, Math.ceil(gc.remainingSec / 60));
+    const cdErr = new Error(`${UNAVAILABLE_REASON} (cooldown 10 min actif : réessaie dans ~${mins} min)`);
+    cdErr.noPlanB = true;
+    cdErr.reason = UNAVAILABLE_REASON;
+    cdErr.cooldownUntil = gc.until;
+    throw cdErr;
+  }
+
+  const rankedAll = rankModelsBestToWorst(
+    availableModels?.length ? availableModels : [request.model].filter(Boolean),
+    request.state
+  );
   const tried = new Set();
   const refusals = [];
-  let model = request.model;
+  let model = request.model && rankedAll.includes(request.model) ? request.model : (rankedAll[0] || request.model);
+  if (isModelOnCooldown(model)) {
+    const firstReady = rankedAll.find((m) => !isModelOnCooldown(m));
+    if (firstReady) model = firstReady;
+  }
   let chatId = request.chatId;
   let activeRequest = { ...request };
-  const maxAttempts = 3;
+  const maxAttempts = Math.max(1, rankedAll.length || 1);
 
-  const pickNextCandidate = (current, reason = '') => {
-    const allowedAll = [...new Set(availableModels || [])].filter((c) => !tried.has(c) && modelIsAllowed(c, activeRequest.state));
-    if (!allowedAll.length) return null;
-    const ready = allowedAll.filter((c) => !isModelOnCooldown(c));
-    const allowed = ready.length ? ready : allowedAll;
+  const pickNextBestToWorst = (current, reason = '') => {
+    const untried = rankedAll.filter((c) => !tried.has(c));
+    if (!untried.length) return null;
+    const ready = untried.filter((c) => !isModelOnCooldown(c));
+    const pool = ready.length ? ready : untried;
+
+    // If an entire provider upstream just returned 502/429 capacity error, prefer trying the other provider family first while keeping best-to-worst order.
+    const isUpstreamOutage = /502|503|504|BAD_GATEWAY|no responses upstream has available capacity|rate_limit_error|TOO_MANY_REQUESTS|\b429\b/i.test(String(reason));
+    if (isUpstreamOutage && current) {
+      const curIsClaude = /claude|opus|sonnet|haiku|fable/i.test(current);
+      const otherFamily = pool.find((id) => (/claude|opus|sonnet|haiku|fable/i.test(id)) !== curIsClaude);
+      if (otherFamily) return otherFamily;
+    }
+
     if (/artefact|tronquée|sans bloc de code|client tools are not supported/i.test(String(reason))) {
-      for (const kw of ['sonnet', 'haiku', 'opus']) {
-        const hit = allowed.find((id) => id.toLowerCase().includes(kw));
+      for (const kw of ['opus', 'sonnet', 'haiku']) {
+        const hit = pool.find((id) => id.toLowerCase().includes(kw));
         if (hit) return hit;
       }
     }
-    const curTier = classifyTier(current, activeRequest.state);
-    const sameTier = sameTierFallbackModels(current, availableModels, activeRequest.state).filter((c) => !tried.has(c) && allowed.includes(c));
-    if (sameTier.length) {
-      return pickTierCandidate(sameTier, curTier, activeRequest.state) ?? sameTier[0];
-    }
-    for (const t of ['heavy', 'medium', 'light']) {
-      const hit = pickTierCandidate(allowed, t, activeRequest.state);
-      if (hit) return hit;
-    }
-    return allowed[0] ?? null;
+    return pool[0] ?? null;
   };
 
   for (;;) {
     tried.add(model);
     const attemptNum = tried.size;
     const t0 = Date.now();
-    logEvent('info', 'core', 'stream.attempt', `Essai ${attemptNum}/${maxAttempts} avec ${model}.`, { model, attempt: attemptNum, hasChatId: Boolean(chatId), clientTools: Boolean(activeRequest.clientTools?.length) });
+    logEvent('info', 'core', 'stream.attempt', `Essai ${attemptNum}/${maxAttempts} avec ${model} (cascade meilleur -> pire).`, { model, attempt: attemptNum, maxAttempts, hasChatId: Boolean(chatId), clientTools: Boolean(activeRequest.clientTools?.length) });
     try {
       const result = await streamGeneration({
         ...activeRequest,
@@ -1716,8 +1922,13 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
       const isRefusal = error instanceof ModelRefusalError;
       const status = Number(error?.status ?? 0);
       const msg = String(error?.message ?? '');
-      if (status === 429 || /limit reached|no responses upstream has available capacity/i.test(msg)) {
-        recordModelCooldown(model, msg);
+      const isUnavailableOr502 =
+        status === 429 ||
+        status >= 500 ||
+        /502|503|504|BAD_GATEWAY|TOO_MANY_REQUESTS|rate_limit_error|limit reached|no responses upstream has available capacity|upstream|capacity|STREAM_FAILED|\b429\b/i.test(msg);
+
+      if (isUnavailableOr502) {
+        recordModelCooldown(model, msg, UNAVAILABLE_REASON);
       }
 
       // Account lacks clientTools flag: retry cleanly once in inline/patch mode without clientTools.
@@ -1731,11 +1942,10 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
 
       const isAuthErr = (status === 401 || status === 403) && !error?.clientToolsAccountDisabled;
       const isTransient = !isAuthErr && (
+        isUnavailableOr502 ||
         Boolean(error?.retryable) ||
         Boolean(error?.clientToolsUnsupported) ||
-        status === 429 ||
-        status >= 500 ||
-        /Flux SSE interrompu|Délai dépassé|fetch failed|ECONNRESET|ETIMEDOUT|502|503|504|BAD_GATEWAY|upstream|capacity|STREAM_FAILED|\b429\b/i.test(msg)
+        /Flux SSE interrompu|Délai dépassé|fetch failed|ECONNRESET|ETIMEDOUT/i.test(msg)
       );
 
       if (isRefusal) {
@@ -1747,11 +1957,11 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
       error.refusals = refusals;
       error.attemptedModels = [...tried];
 
-      if (activeRequest.signal?.aborted || (!isRefusal && !isTransient) || tried.size >= maxAttempts) {
+      if (activeRequest.signal?.aborted || (!isRefusal && !isTransient)) {
         throw error;
       }
 
-      const next = pickNextCandidate(model, msg);
+      const next = pickNextBestToWorst(model, msg);
       if (!next) {
         if (activeRequest.clientTools?.length) {
           activeRequest = { ...activeRequest, clientTools: [], executeToolCall: null };
@@ -1759,10 +1969,18 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
           onRetry?.({ from: model, to: model, reason: 'Outils client indisponibles -> repli texte/patch', attempt: attemptNum });
           continue;
         }
-        throw error;
+        // Aucun modèle n'a fonctionné du meilleur au pire -> Cooldown global de 10 min avec motif "IA non dispo"
+        const cd = recordGlobalCooldown(UNAVAILABLE_REASON, msg);
+        const allFailedErr = new Error(`${UNAVAILABLE_REASON} — aucun modèle disponible après test du meilleur au moins fort (${tried.size} modèles testés, cooldown 10 min activé).`);
+        allFailedErr.noPlanB = true;
+        allFailedErr.reason = UNAVAILABLE_REASON;
+        allFailedErr.cooldownUntil = cd.until;
+        allFailedErr.attemptedModels = [...tried];
+        allFailedErr.refusals = refusals;
+        throw allFailedErr;
       }
 
-      const reason = isRefusal ? (msg || MISSING_REFUSAL_REASON) : msg.slice(0, 120);
+      const reason = isRefusal ? (msg || MISSING_REFUSAL_REASON) : (isUnavailableOr502 ? `${UNAVAILABLE_REASON} (${msg.slice(0, 80)})` : msg.slice(0, 120));
       logEvent('warn', 'core', 'stream.fallback', `Bascule ${model} → ${next} (essai ${tried.size + 1}/${maxAttempts}).`, { from: model, to: next, reason });
       onRetry?.({ from: model, to: next, reason, attempt: tried.size + 1 });
       model = next;
