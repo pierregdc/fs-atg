@@ -35,6 +35,14 @@ import {
   syncAgentsRule,
 } from '../../fs_core.mjs';
 import { clearLogs, countRecentErrors, logEvent, readLogs } from '../../logger.mjs';
+import {
+  addProjectNote,
+  clearProjectMemory,
+  getProjectMemory,
+  removeProjectNote,
+  setPreprompt,
+} from '../../memory_store.mjs';
+import { PERMISSION_MODES, listUndoEntries, undoLastChange } from '../../tools_engine.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -162,7 +170,7 @@ async function diagnosticsSnapshot() {
       version: CONNECTOR_VERSION,
       transport: 'stdio',
       registration: 'declared',
-      readOnlyWorkspace: true,
+      readOnlyWorkspace: (st.permissionMode || 'acceptEdits') === 'plan' || st.useClientTools === false,
       toolCount: MCP_TOOL_CATALOG.length,
       tools: MCP_TOOL_CATALOG,
       activeJobs: jobs.size,
@@ -223,7 +231,9 @@ function publicView(j) {
     receivedChars: j.receivedChars,
     response: j.response ?? j.summary ?? '',
     summary: j.summary,
-    filesWritten: [],
+    filesWritten: j.filesWritten ?? [],
+    commandsRun: j.commandsRun ?? [],
+    toolTurns: j.toolTurns ?? 0,
     lastThoughts: (j.thoughts || []).slice(-3),
     error: j.error,
     startedAt: j.startedAt,
@@ -409,6 +419,9 @@ app.api('/api/state', async () => {
   const session = await panelSession('status').catch(() => ({ chatId: state.directChats?.panel ?? null, usagePercent: null }));
   const localActive = [...jobs.values()].map(publicView);
   const mcpActive = readLiveJobs().filter((m) => !jobs.has(m.jobId));
+  const wsRoot = state.lastWorkspaceRoot || '';
+  const permMode = PERMISSION_MODES.includes(state.permissionMode) ? state.permissionMode : 'acceptEdits';
+  const useClientTools = state.useClientTools !== false;
   return {
     hasKey: credential.configured === true,
     credential,
@@ -416,6 +429,11 @@ app.api('/api/state', async () => {
     cutoff: state.cutoffPercent,
     mode: state.mode,
     routingProfile: ROUTING_PROFILES.has(state.routingProfile) ? state.routingProfile : 'quality',
+    permissionMode: permMode,
+    useClientTools,
+    lastWorkspaceRoot: wsRoot || null,
+    undoEntries: wsRoot ? listUndoEntries(wsRoot, 15) : [],
+    projectMemory: getProjectMemory(wsRoot),
     autoDelegate: state.autoDelegate !== false,
     maxParallel: state.maxParallel,
     showReasoning: state.showReasoning,
@@ -436,7 +454,7 @@ app.api('/api/state', async () => {
       version: CONNECTOR_VERSION,
       transport: 'stdio',
       registration: 'declared',
-      readOnlyWorkspace: true,
+      readOnlyWorkspace: permMode === 'plan' || !useClientTools,
       toolCount: MCP_TOOL_CATALOG.length,
       tools: MCP_TOOL_CATALOG,
     },
@@ -517,8 +535,16 @@ app.api('/api/settings', (data) => {
   if (ROUTING_PROFILES.has(data.routingProfile)) state.routingProfile = data.routingProfile;
   if (typeof data.autoDelegate === 'boolean') {
     state.autoDelegate = data.autoDelegate;
-    syncAgentsRule(state.autoDelegate);
-    logEvent('info', 'panel', 'settings.autoDelegate', `Activation Antigravity réglée sur ${state.autoDelegate ? 'Automatique' : 'Manuel'}.`, { autoDelegate: state.autoDelegate });
+  }
+  if (PERMISSION_MODES.includes(data.permissionMode)) {
+    state.permissionMode = data.permissionMode;
+  }
+  if (typeof data.useClientTools === 'boolean') {
+    state.useClientTools = data.useClientTools;
+  }
+  if (typeof data.autoDelegate === 'boolean' || PERMISSION_MODES.includes(data.permissionMode)) {
+    syncAgentsRule(state.autoDelegate !== false, state.permissionMode);
+    logEvent('info', 'panel', 'settings.policy', `Règles mises à jour : ${state.autoDelegate !== false ? 'Auto' : 'Manuel'} (${state.permissionMode || 'acceptEdits'}).`);
   }
   if (typeof data.cutoffPercent === 'number') state.cutoffPercent = Math.max(0, Math.min(90, data.cutoffPercent));
   if (typeof data.maxParallel === 'number') state.maxParallel = Math.max(1, Math.min(6, data.maxParallel));
@@ -538,7 +564,27 @@ app.api('/api/settings', (data) => {
   }
   saveState(state);
   pump();
-  return { ok: true, autoDelegate: state.autoDelegate !== false };
+  return { ok: true, autoDelegate: state.autoDelegate !== false, permissionMode: state.permissionMode || 'acceptEdits' };
+});
+
+app.api('/api/undo', (data) => {
+  state = loadState();
+  const ws = String(data?.workspaceRoot || state.lastWorkspaceRoot || '').trim();
+  if (!ws) throw new Error('Aucun workspace actif pour /undo.');
+  const res = undoLastChange(ws, data?.undoId || null);
+  if (res.ok) logEvent('info', 'panel', 'undo.applied', `Restauré ${res.undone.rel} (${res.undone.action}).`, res.undone);
+  return { ...res, undoEntries: listUndoEntries(ws, 15) };
+});
+
+app.api('/api/memory', (data) => {
+  state = loadState();
+  const ws = String(data?.workspaceRoot || state.lastWorkspaceRoot || '').trim();
+  const action = String(data?.action || 'get');
+  if (action === 'add' || action === 'remember') addProjectNote(ws, data?.text || '');
+  else if (action === 'remove' || action === 'forget') removeProjectNote(ws, data?.id || data?.text || '');
+  else if (action === 'clear') clearProjectMemory(ws);
+  else if (action === 'preprompt') setPreprompt(ws, data?.text ?? '');
+  return { ok: true, workspaceRoot: ws || null, projectMemory: getProjectMemory(ws) };
 });
 
 app.api('/api/session', async (data) => {

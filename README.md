@@ -1,92 +1,77 @@
-# France Student pour Antigravity (`fs-atg` v1.0.0)
+# France Student pour Antigravity (`fs-atg` v2.0.0)
 
-Plugin Antigravity (panneau latéral + serveur MCP) pour déléguer plans, diagnostics, recherches multi-sources et blocs de code ciblés aux **14 modèles France Student**, en mode **lecture seule sur le PC**.
+Orchestrateur **France Student** pour Antigravity (panneau latéral + serveur MCP `stdio`) : exécution autonome sur le workspace (`edit_file`, `write_file`, `run_command`) avec **3 modes de permissions**, sauvegarde atomique **`/undo`**, **mémoire projet (`/remember`, `/memory`, `FRST.md`)**, **14 modèles France Student**, routage rapide sans artefact (`enableCanvas: false`) et **jauge unique interactive**.
 
 ## Aperçu
 
-| Accueil (Jauge unique, Auto/Manuel & Profil) | Modèles (14 modèles FS, date & badge Nouveau) |
+| Accueil (Jauge unique, Permissions PC & `/undo`) | Modèles (14 modèles FS, date & badge Nouveau) |
 | :---: | :---: |
 | ![Accueil](docs/images/screen-accueil.png) | ![Modèles](docs/images/screen-modeles.png) |
 
-| Journal de bord (`fs_logs`) | Réglages |
+| Journal de bord (`fs_logs`) | Réglages & Mémoire projet |
 | :---: | :---: |
 | ![Journal](docs/images/screen-journal.png) | ![Réglages](docs/images/screen-reglages.png) |
 
-## Nouveautés & fonctionnalités clés
+## Nouveautés majeures `v2.0.0`
 
-- **Jauge unique interactive (`Accueil`)** : une seule barre regroupe le **budget chat restant** (bleu/noir, sans violet) et le **curseur du coupe-circuit** déplaçable directement à la souris ou au clavier (`0`–`90 %`, raccourcis `0%` `10%` `15%` `25%`), avec sélecteur de profil et mode `Auto / Manuel` sur la même vue.
-- **14 modèles France Student uniquement** : catalogue synchronisé avec `/v1/models` (ID copiable, date d'ajout réelle et badge `Nouveau` < 14 jours) ; priorité aux modèles fiables et **bascule automatique vers Claude (`claude-sonnet-5-5`)** si un modèle tente une redirection `create_artifact` sans code inline.
-- **Prompts & réponses ultra-compacts** : consignes sans texte superflu ni commentaires inutiles, plans télégraphiques en 15 lignes max, et calcul d'économie nette réaliste dans `Éco. ATG` (qui déduit le coût de lecture côté Antigravity).
-- **Lecture seule sur le PC** : France Student n'écrit jamais sur le disque ; il renvoie le résultat dans `response`.
-- **Plan A + Plan B** : réessai automatique sur session isolée ou découpage en petits blocs (`planB: true`, `parts: [...]`).
-- **Journal de bord (`fs_logs`)** : logs rotatifs filtrables conservant les compteurs numériques `usage` tout en masquant clés API et jetons.
+- **Exécution autonome + Sécurité granulaire (3 modes)** :
+  - **Lecture seule (`plan`)** : uniquement `list_directory`, `read_file`, `search_files` (renvoie `/plan` ou `/patch`).
+  - **Édition + Undo (`acceptEdits`, défaut)** : France Student lit, crée et modifie directement tes fichiers (`edit_file` / `write_file` atomiques, contrôle de fraîcheur anti-écrasement, protection `.env` / `.git` / symlinks) et ne renvoie à Antigravity qu’un **bilan court (`filesWritten`)**.
+  - **Complet + Shell (`full`)** : ajoute `run_command` sans shell (`shell: false`), liste blanche/noire stricte (pas de `rm`, `powershell`, `git push`, `npm publish`, `node -e`), filtrage des secrets d’environnement et compression automatique des sorties de tests (`tap-digest` pour `node --test`).
+- **Sauvegarde `/undo` atomique (`fs_undo`)** : pile persistante de 30 restaurations par workspace ; annule en 1 clic dans le panneau (`Annuler (N)`) ou via `/undo` dans le chat.
+- **Mémoire projet & Auto-apprentissage (`fs_memory`)** :
+  - `/remember` & `/memory` (notes persistantes + pré-prompt par projet/global) + lecture hiérarchique de `FRST.md` / `FRSTCLI.md`.
+  - Contexte court automatique (~300–800 car. sans shell : OS, branche Git, `package.json`, 1ᵉʳ niveau) + auto-détection de tes sujets récurrents (≥ 3 mentions).
+- **Fiabilité API & Économie maximale** :
+  - `enableCanvas: false` systématique + prompt placé *avant* les annexes (`---`) pour préserver le prompt cache et réduire les refus.
+  - Cooldown automatique sur `HTTP 429`, priorité à `claude-haiku-5-5` (5–8 s) et `claude-sonnet-5-5`, détection des redirections `create_artifact` & stubs tronqués → bascule automatique vers Claude inline + Plan B (`parts`).
+- **Jauge unique interactive & 14 modèles FS uniquement** : une seule barre budget + coupe-circuit déplaçable (`0`–`90 %`), thème bleu/noir pur sans violet, et journal rotatif `fs_logs`.
 
-## Commandes `/` disponibles dans Antigravity
+## Commandes `/` disponibles dans Antigravity (`17` commandes)
 
-| Commande | Action / Routage | Objectif économie Antigravity |
+| Commande | Outil / Mode | Effet & économie Antigravity |
 |---|---|---|
-| `/patch` | `executionMode="patch"` + lecture `files` côté MCP | Renvoie uniquement des paires `TARGET` / `REPLACE` pour `edit_file` (**-52 % à -70 %** mesurés) |
-| `/plan` | `executionMode="plan"` (≤ 15 lignes) | Plan télégraphique sans code ni écriture disque |
-| `/eco`, `/fast`, `/low` | `claude-haiku-5-5` / modèles rapides (< 15 s) | Finir en **1 seul appel MCP**, moitié moins de texte lu par Antigravity |
-| `/medium` | `claude-sonnet-5-5` prioritaire | Code inline dense sans redirection `create_artifact` |
-| `/high` | Gamme forte (`opus`, `gpt-6.2-astra`, `gpt-6.2-sol`) | Architecture, audits, debug ou logique complexe |
-| `/send`, `/dry-run` | Délégation directe / aperçu sans écriture | Blocs ciblés ou proposition à valider (`files` lus côté MCP) |
-| `/new`, `/compact` | Session persistante France Student (`fs_session`) | Repartir à zéro ou compacter le contexte côté France Student (`/usage` & `/compact` côté Antigravity) |
-| `/diagnostics`, `/logs` | Lecture seule état & journal rotatif (`fs_logs`) | Contrôle clé/API/modèles/quota et suivi d'erreurs |
+| `/send` | `fs_delegate` (`acceptEdits`/`full`) | Délègue création/modification directe avec `filesWritten` & `/undo` (Antigravity ne lit ni ne recopie les fichiers) |
+| `/patch` | `executionMode="patch"` (lecture seule) | Renvoie uniquement les lignes à modifier (**`-94,9 %`** mesurés sur un fichier de `7 273` car.) |
+| `/plan` | `executionMode="plan"` (lecture seule) | Plan télégraphique (≤ 15 lignes), `0` écriture disque |
+| `/dry-run` | `executionMode="dry-run"` (lecture seule) | Aperçu complet à valider avant application |
+| `/mode` | `plan` \| `acceptEdits` \| `full` | Change ou force le mode de permission sur une tâche |
+| `/undo` | `fs_undo` (`action="undo"\|"list"`) | Annule atomiquement la dernière modification France Student |
+| `/remember` | `fs_memory` (`action="remember"`) | Mémorise une règle/note persistante injectée au 1ᵉʳ tour |
+| `/memory` | `fs_memory` (`get` \| `forget` \| `clear` \| `preprompt`) | Consulte, édite ou vide la mémoire et le pré-prompt du projet |
+| `/eco`, `/low`, `/fast` | `claude-haiku-5-5` prioritaire (< 10 s) | 1 seul appel MCP court (`~433–683` car.) |
+| `/medium` | `claude-sonnet-5-5` prioritaire | Rapide avec outils client et zéro artefact |
+| `/high` | Gamme forte (`opus`, `gpt-6.2-astra`, `gpt-6.2-sol`) | Audits, comparatifs, architecture, debug complexe |
+| `/new`, `/compact` | `fs_session` | Réinitialise ou compacte la session côté France Student (`/compact` et `/usage` natifs côté Antigravity) |
+| `/diagnostics`, `/logs` | `fs_diagnostics`, `fs_logs` | Vérifie clé, API, modèles, quota et journal d'erreurs |
 
 ## Quand gagne-t-on vraiment du quota Antigravity ? (expliqué simplement)
 
-`fs-atg` fonctionne en **lecture seule sur le PC** : France Student fait le gros du travail, puis renvoie le résultat à Antigravity. **Plus la réponse est courte et ciblée, plus tu économises Antigravity.**
-
-| Ce que tu demandes / commandes | Tu gagnes ? | Pourquoi & combien concrètement (mesuré en test) |
-|---|---|---|
-| **`/patch`** *(modifier juste un bout d'un fichier existant)* | **OUI — Énorme gain** | Au lieu de réécrire tout le fichier (`7 273` car.), France Student renvoie juste les **`371` car.** à changer (**`-94,9 %`** à écrire ; **`-52,2 %`** sur un petit fichier de ~150 lignes). |
-| **`/plan`** *(cadrer avant de toucher aux fichiers)* | **OUI — Gros gain** | Antigravity reçoit juste un résumé clair en **8 à 19 lignes** (**8 à 16 s**) au lieu de réfléchir et fouiller tes dossiers tout seul. |
-| **Discuter dans le panneau latéral France Student** | **OUI — Gain 100 %** | Tant que tu échanges dans le panneau, **Antigravity ne travaille pas = `0` quota utilisé**. |
-| **`/eco` ou `/low`** *(petite question, petite fonction, bug rapide)* | **OUI — Gros gain** | Répond en **5 à 8 s** et très court (**`433` à `683` car.**), soit environ **2× moins de texte à lire** pour Antigravity qu'un gros modèle (`1 487` car.). |
-| **`/medium`** *(fonction moyenne, bout de CSS/JS propre)* | **OUI — Bon gain** | Répond en **6 à 14 s** sans bavardage (**`~800` à `2 300` car.**) sans redirection d'artefact. |
-| **`/high`** *(gros problème, comparaison, analyse compliquée)* | **OUI — Gros gain** | La grosse réflexion se fait côté France Student (**22 s**, tableau comparatif complet en **`2 478` car.**). |
-| **Donner les fichiers directement à France Student (`files`)** | **OUI — Gain moyen** | France Student lit lui-même jusqu'à **6 fichiers (`24 000` car. max)** sans qu'Antigravity ait besoin de les ouvrir un par un avant. |
-| **`/compact` (Antigravity) / `/new` (France Student)** | **OUI — Bonus malin** | Nettoie la mémoire quand le fil devient long pour que les prochains messages coûtent moins cher. |
-| **Créer un gros fichier tout neuf de A à Z** | **NON — `0 %` d'économie** | France Student génère la page (`24 149` car. sur la calculatrice 3D), mais comme il ne peut pas écrire sur disque, **Antigravity doit tout réécrire mot pour mot** via `write_file`. |
-| **Faire 1 petite recherche web rapide** | **NON — `~0 %` d'économie** | `search_web` natif prend **1 étape**, passer par France Student prend aussi **1 étape**. |
-| **Changer moins de 10 lignes juste sous ses yeux** | **NON — Perte nette** | Corriger direct coûte moins cher qu'un aller-retour vers France Student + correction. |
+- **Avec `v2.0.0` (`acceptEdits` / `full` + `clientTools` actifs)** :
+  - **Modifier / créer un fichier ou lancer `node --check` sur ton projet (`fs_delegate` + `workspaceRoot`)** : **OUI — Énorme gain**. France Student lit (`math.mjs`), crée (`greet.mjs`), modifie et vérifie tout seul, et ne renvoie à Antigravity qu’un résumé de **`269` à `299` caractères** (mesuré en live sur MCP : **`3 314` tokens** économisés sur un mini-test). Antigravity ne réécrit plus les fichiers via `write_file`.
+- **En mode lecture seule (`plan` / `/patch`)** :
+  - **`/patch`** : **`-52,2 %` à `-94,9 %`** de volume à lire et appliquer.
+  - **`/plan`** : résumé en **8 à 19 lignes** sans explorer le projet côté Antigravity.
+  - **Discuter directement dans le panneau latéral** : **`0` token Antigravity** utilisé.
+- **Ce qu’il faut toujours garder en natif Antigravity (`~0 %` ou perte en délégation)** :
+  - **Changer moins de 10 lignes** déjà visibles dans l’éditeur.
+  - **Faire 1 petite recherche web rapide** (`search_web` natif = 1 étape).
 
 La mesure officielle de consommation Antigravity reste accessible directement via `/usage`.
 
-## Exemples concrets (4 cas réels testés)
+## Exemples concrets mesurés
 
-### 1. Créer une calculatrice 3D complète de A à Z (`0 %` d'économie de quota)
-- **Antigravity seul** : génère et écrit directement `7 273` car. en 1 étape.
-- **Via France Student (`Plan B`)** : génère une version plus complète de `24 149` car. (`15 989` tokens côté France Student), **mais** comme `fs-atg` n'écrit pas sur le disque, Antigravity doit ensuite tout recopier via `write_file` — ce qui annule l'économie de quota Antigravity.
+| Exemple | Mode utilisé | Résultat mesuré |
+|---|---|---|
+| **Édition & création autonome (`math.mjs` + `greet.mjs`)** | `v2.0.0` `acceptEdits` (`claude-sonnet-5-5`) | `2` tours d’outils, `2` écritures directes avec `/undo`, résumé renvoyé à Antigravity de seulement **`269` car.** |
+| **Vérification syntaxique shell (`node --check`)** | `v2.0.0` `full` (`claude-sonnet-5-5`) | Exécution directe sans shell (`exit=0`, `81 ms`), réponse de **`299` car.** |
+| **Patch ciblé sans écriture (`calculator-3d`)** | `/patch` (`claude-sonnet-5-5`) | **`371` car.** renvoyés au lieu de `7 273` (**`-94,9 %`**) |
+| **Fonction utilitaire rapide (`formatBytes`)** | `/eco` (`claude-haiku-5-5`) | **`433` car.** en **`7,99 s`** |
+| **Générations comparées (mode texte historique v1)** | Calculatrice 3D & Échecs 2D | Calculatrice : Antigravity `7 273` car. vs FS `24 149` car. · Échecs 2D : Antigravity `6 650` car. vs FS `16 970` car. |
 
-| Antigravity natif (`7 273` car.) | France Student `Plan B` (`24 149` car.) |
+| Calculatrice Antigravity vs France Student | Échecs 2D Antigravity vs France Student |
 | :---: | :---: |
-| ![Calculatrice Antigravity](docs/images/calc-antigravity.png) | ![Calculatrice France Student](docs/images/calc-fs.png) |
-
-### 2. Modifier une page existante avec `/patch` (**`-94,9 %`** à écrire)
-- **Demande** : ajouter un raccourci clavier sur la calculatrice de `7 273` car.
-- **Résultat** : France Student lit le fichier lui-même et ne renvoie que **`371` car.** (`1` appel en `27,95 s`). Antigravity n'a presque rien à lire ni à réécrire.
-
-### 3. Préparer un plan avant de coder avec `/plan` (**19 lignes**, `0` fichier touché)
-- **Demande** : plan pour ajouter un historique persistant avec recherche et export JSON.
-- **Résultat** : résumé structuré en **`19` lignes** (`1 855` car., `16,2 s`) sans que Antigravity explore tous tes dossiers.
-
-### 4. Écrire une petite fonction utilitaire avec `/eco` (`5–8 s`, **433 car.**)
-- **Demande** : fonction `formatBytes` en JavaScript.
-- **Résultat** : `claude-haiku-5-5` répond en **`7,99 s`** et **`433` car.** (`1` seul aller-retour, ~2× moins de texte à lire qu'un gros modèle).
-
-### 5. Faire 1 petite recherche web rapide (`~0 %` d'économie → garder en natif)
-- **Demande** : trouver le Top 3 des modèles IA du moment.
-- **Résultat** : `search_web` natif prend **1 étape**, passer par France Student prend aussi **1 étape**. Aucun intérêt à déléguer une recherche simple.
-
-### 6. Créer un jeu d'échecs 2D complet (`0 %` d'économie sur le neuf, utile pour `/patch` ensuite)
-- **Antigravity seul** : génère et écrit directement `6 650` car. en 1 étape.
-- **Via France Student (`Plan B`)** : génère `16 970` car. (`11 947` tokens côté France Student).
-
-| Échecs 2D Antigravity natif (`6 650` car.) | Échecs 2D France Student (`16 970` car.) |
-| :---: | :---: |
-| ![Échecs Antigravity](docs/images/chess-antigravity.png) | ![Échecs France Student](docs/images/chess-fs.png) |
+| ![Calculatrice Antigravity](docs/images/calc-antigravity.png) ![Calculatrice France Student](docs/images/calc-fs.png) | ![Échecs Antigravity](docs/images/chess-antigravity.png) ![Échecs France Student](docs/images/chess-fs.png) |
 
 ## Installation rapide
 

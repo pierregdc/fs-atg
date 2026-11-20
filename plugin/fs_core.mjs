@@ -10,6 +10,7 @@ import {
   stateCredentialStatus,
 } from './credential_store.mjs';
 import { logEvent } from './logger.mjs';
+import { fitToolOutputs, PERMISSION_MODES } from './tools_engine.mjs';
 
 // Load Windows / OS system root certificates so HTTPS works even when intermediate CAs rely on the OS store.
 if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertificates === 'function') {
@@ -20,7 +21,7 @@ if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertif
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
-export const CONNECTOR_VERSION = '1.0.0';
+export const CONNECTOR_VERSION = '2.0.0';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const RULES_PATH = join(__dirname, 'rules', 'AGENTS.md');
 export const RECENT_MODEL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
@@ -29,26 +30,50 @@ export const MEDIUM_PRIORITY = Object.freeze(['sonnet', 'gpt-5.6-sol', 'terra'])
 export const LIGHT_PRIORITY = Object.freeze(['haiku', 'gpt-6-luna', 'luna']);
 const TIER_PRIORITY = { heavy: HEAVY_PRIORITY, medium: MEDIUM_PRIORITY, light: LIGHT_PRIORITY };
 
+const modelCooldowns = new Map();
+export function recordModelCooldown(modelId, message = '') {
+  if (!modelId) return;
+  let until = Date.now() + 10 * 60 * 1000;
+  const m = /Reset at (\S+?Z)/i.exec(String(message));
+  if (m) {
+    const parsed = Date.parse(m[1]);
+    if (Number.isFinite(parsed) && parsed > Date.now() && parsed - Date.now() <= 2 * 3600_000) {
+      until = parsed;
+    }
+  }
+  modelCooldowns.set(modelId, until);
+}
+export function isModelOnCooldown(modelId) {
+  const until = modelCooldowns.get(modelId);
+  if (!until) return false;
+  if (Date.now() >= until) { modelCooldowns.delete(modelId); return false; }
+  return true;
+}
+
 function pickTierCandidate(pool, tier, state) {
   const tierPool = pool.filter((id) => classifyTier(id, state) === tier);
+  const ready = tierPool.filter((id) => !isModelOnCooldown(id));
+  const candidates = ready.length ? ready : tierPool;
   for (const kw of TIER_PRIORITY[tier] || []) {
-    const hit = tierPool.find((id) => id.toLowerCase().includes(kw));
+    const hit = candidates.find((id) => id.toLowerCase().includes(kw));
     if (hit) return hit;
   }
-  return tierPool[0] ?? null;
+  return candidates[0] ?? null;
 }
 
 // Shared, inspectable connector metadata. It is never account or quota data.
 export const MCP_TOOL_CATALOG = Object.freeze([
-  { name: 'fs_delegate', label: 'Déléguer', writesWorkspace: false },
+  { name: 'fs_delegate', label: 'Déléguer', writesWorkspace: true },
   { name: 'fs_job_status', label: 'Suivi', writesWorkspace: false },
+  { name: 'fs_undo', label: 'Annuler (/undo)', writesWorkspace: true },
+  { name: 'fs_memory', label: 'Mémoire projet', writesWorkspace: false },
   { name: 'fs_logs', label: 'Journal de bord', writesWorkspace: false },
   { name: 'fs_session', label: 'Session', writesWorkspace: false },
   { name: 'fs_quota', label: 'Quota France Student', writesWorkspace: false },
   { name: 'fs_diagnostics', label: 'Diagnostic', writesWorkspace: false },
   { name: 'fs_status', label: 'État du connecteur', writesWorkspace: false },
   { name: 'fs_catalog', label: 'Catalogue', writesWorkspace: false },
-  { name: 'fs_cancel', label: 'Annuler', writesWorkspace: false },
+  { name: 'fs_cancel', label: 'Annuler job', writesWorkspace: false },
 ]);
 export const ANTIGRAVITY_QUOTA_VISIBILITY = Object.freeze({
   available: false,
@@ -84,6 +109,7 @@ export const DEFAULT_AGENTS = [
 ];
 
 export const DEFAULT_STATE = {
+  stateVersion: 2,
   apiKey: '',
   // Non-secret change marker used to invalidate an in-process Credential
   // Manager cache when another Antigravity surface stores or removes a key.
@@ -91,10 +117,12 @@ export const DEFAULT_STATE = {
   cutoffPercent: 15,
   mode: 'eco',
   routingProfile: 'quality',
+  permissionMode: 'acceptEdits',
   autoDelegate: true,
   maxParallel: 3,
   showReasoning: true,
-  useClientTools: false,
+  useClientTools: true,
+  enableWebSearch: true,
   reuseChat: true,
   contextCompactPercent: 80,
   // Minimal does not inject a project map or the content of files.
@@ -115,7 +143,15 @@ export function loadState() {
   try {
     if (existsSync(STATE_PATH)) {
       const raw = readFileSync(STATE_PATH, 'utf-8').replace(/^\uFEFF/, '');
-      return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      const merged = { ...DEFAULT_STATE, ...parsed };
+      if (!parsed.stateVersion || Number(parsed.stateVersion) < 2) {
+        merged.stateVersion = 2;
+        merged.useClientTools = true;
+        merged.permissionMode = PERMISSION_MODES.includes(parsed.permissionMode) ? parsed.permissionMode : 'acceptEdits';
+        saveState(merged);
+      }
+      return merged;
     }
   } catch { /* ignore */ }
   return { ...DEFAULT_STATE };
@@ -140,27 +176,35 @@ export function saveState(st) {
   return false;
 }
 
-/** Keeps rules/AGENTS.md synchronized with the Auto vs Manual toggle in the UI. */
-export function syncAgentsRule(autoDelegate = true) {
+/** Keeps rules/AGENTS.md synchronized with Auto/Manual & permission mode in the UI. */
+export function syncAgentsRule(autoDelegate = true, permissionMode = null) {
   const auto = Boolean(autoDelegate);
+  const effectivePerm = PERMISSION_MODES.includes(permissionMode)
+    ? permissionMode
+    : (loadState().permissionMode || 'acceptEdits');
+  const writesDirectly = effectivePerm === 'acceptEdits' || effectivePerm === 'full';
   const header = auto
-    ? 'Mode Automatique actif : délègue immédiatement à `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers avant** (passe `workspaceRoot` + `files` relatifs à `fs_delegate`) pour : **modifications de fichiers existants (`executionMode="patch"`), plans (`executionMode="plan"`), revues/audits, recherches multi-sources, debug et fonctions ciblées**. Garde en natif uniquement : micro-éditions (<10 lignes déjà en contexte), **1 recherche web simple** (`search_web`), ou gros fichier neuf complet réécrit via `write_file` (sauf logique complexe / découpage).'
-    : 'Mode Manuel actif : n’appelle `fs_delegate` ou `fs_session`/`fs_logs`/`fs_diagnostics` **que** si l’utilisateur mentionne France Student, `@[plugin:fs-atg]` ou une commande (`/patch`, `/plan`, `/send`, `/eco`, `/fast`, `/high`, `/medium`, `/low`, `/dry-run`, `/compact`, `/new`, `/diagnostics`, `/logs`).';
+    ? (writesDirectly
+      ? `Mode Automatique actif (permission : \`${effectivePerm}\`) : pour **créer, modifier, refactorer, déboguer, planifier${effectivePerm === 'full' ? ', tester' : ''} ou analyser**, appelle **immédiatement** \`fs_delegate\` avec \`workspaceRoot\` et \`contextMode="minimal"\`, \`waitSeconds=45\` **sans lire les fichiers avant**. France Student lit et écrit directement sur disque (avec sauvegarde \`/undo\`) et ne te renvoie qu’un court bilan (\`filesWritten\`, \`commandsRun\`). Garde en natif uniquement : micro-éditions (<10 lignes déjà visibles) et 1 recherche web ponctuelle (\`search_web\`).`
+      : 'Mode Automatique actif (permission : `plan` — lecture seule) : délègue immédiatement à `fs_delegate` (`contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers avant** (passe `workspaceRoot` + `files` relatifs) pour : **modifications (`executionMode="patch"`), plans (`executionMode="plan"`), revues/audits, debug et fonctions ciblées**. Garde en natif : micro-éditions (<10 lignes), **1 recherche web simple** (`search_web`), et gros fichiers neufs via `write_file`.')
+    : 'Mode Manuel actif : n’appelle `fs_delegate`, `fs_undo`, `fs_memory`, `fs_session`, `fs_logs` ou `fs_diagnostics` **que** si l’utilisateur mentionne France Student, `@[plugin:fs-atg]` ou une commande (`/patch`, `/plan`, `/send`, `/eco`, `/fast`, `/high`, `/medium`, `/low`, `/dry-run`, `/undo`, `/memory`, `/remember`, `/mode`, `/compact`, `/new`, `/diagnostics`, `/logs`).';
   const content = [
     '# France Student [ATG]',
     '',
     header,
     '',
-    '- **Boost économie maximal** : passe `files` en lecture seule à `fs_delegate` (évite les `read_file` Antigravity), utilise `executionMode="patch"` sur fichier existant (-52 % à -70 % mesurés) et `executionMode="plan"` pour cadrer en ≤ 15 lignes, et vise 1 seul appel `< 45s` (`claude-haiku-5-5` / `claude-sonnet-5-5` rapides sans artefact).',
-    '- **Lecture seule sur le PC** : France Student n’écrit jamais sur disque ; applique ses blocs/patches courts avec `edit_file`.',
-    '- **Plan B** : si Plan A échoue ou est incomplet, relance en `planB: true` avec `parts` (2–4 petits blocs indépendants, modèles Claude inline) ; en ultime recours seulement, termine nativement.',
+    writesDirectly
+      ? '- **Économie maximale (écriture directe + `/undo`)** : en mode `acceptEdits` / `full`, passe `workspaceRoot` à `fs_delegate` pour que France Student lise, modifie (`edit_file`/`write_file`) et vérifie sans qu’Antigravity ait à recopier le code. Si besoin de revenir en arrière : `/undo` → `fs_undo`. Pour un simple patch manuel : `executionMode="patch"`.'
+      : '- **Lecture seule (`plan`)** : passe `files` en lecture seule à `fs_delegate`, utilise `executionMode="patch"` (-52 % à -95 % mesurés) et `executionMode="plan"` (≤ 15 lignes), et applique les courts extraits avec `edit_file`.',
+    '- **Mémoire & continuité** : `/remember` et `/memory` appellent `fs_memory` ; `FRST.md` / `FRSTCLI.md` et les notes projet sont injectés automatiquement au 1er tour côté France Student.',
+    '- **Plan B** : si Plan A échoue ou est incomplet, relance en `planB: true` avec `parts` (2–4 petits blocs, modèles Claude inline) ; en ultime recours seulement, termine nativement.',
     '- **Journal & état** : `/logs` → `fs_logs`, `/diagnostics` → `fs_diagnostics`, `/new` ou `/compact` → `fs_session` (côté France Student). `/usage` mesure Antigravity.',
     '',
   ].join('\n');
   mkdirSync(dirname(RULES_PATH), { recursive: true });
   writeFileSync(RULES_PATH, content, 'utf-8');
-  logEvent('info', 'core', 'settings.rule_synced', `Règle Antigravity mise à jour : mode ${auto ? 'Automatique' : 'Manuel'}.`, { autoDelegate: auto });
-  return { autoDelegate: auto, path: RULES_PATH };
+  logEvent('info', 'core', 'settings.rule_synced', `Règle Antigravity mise à jour : mode ${auto ? 'Automatique' : 'Manuel'} (${effectivePerm}).`, { autoDelegate: auto, permissionMode: effectivePerm });
+  return { autoDelegate: auto, permissionMode: effectivePerm, path: RULES_PATH };
 }
 
 /** Allows a deployment to keep its credential outside the local JSON state. */
@@ -836,6 +880,7 @@ export function parseTaskDirectives(raw) {
   let requested;
   let profile = null;
   let executionMode = 'apply';
+  let permissionMode = null;
   // `/plan /security audit src/auth` is valid: all recognised directives are local.
   for (;;) {
     const slash = /^\s*\/([a-zA-ZÀ-ÿ0-9_-]+)(?:\s+|$)/.exec(prompt);
@@ -847,6 +892,14 @@ export function parseTaskDirectives(raw) {
     if (command === 'patch') { executionMode = 'patch'; prompt = next; continue; }
     if (command === 'dry-run' || command === 'dryrun' || command === 'preview') { executionMode = 'dry-run'; prompt = next; continue; }
     if (command === 'apply') { executionMode = 'apply'; prompt = next; continue; }
+    if (command === 'mode') {
+      const m = /^(\S+)(?:\s+|$)/.exec(next);
+      const val = m ? normalizedDirective(m[1]) : '';
+      if (val === 'plan' || val === 'readonly' || val === 'lecture') { permissionMode = 'plan'; prompt = next.slice(m[0].length); continue; }
+      if (val === 'acceptedits' || val === 'edit' || val === 'edits') { permissionMode = 'acceptEdits'; prompt = next.slice(m[0].length); continue; }
+      if (val === 'full' || val === 'complet' || val === 'shell') { permissionMode = 'full'; prompt = next.slice(m[0].length); continue; }
+      break;
+    }
     const profileValue = normalizeRoutingProfile(command);
     if (profileValue) { profile = profileValue; prompt = next; continue; }
     if (command === 'auto') { requested = { kind: 'auto', value: 'auto' }; prompt = next; continue; }
@@ -854,7 +907,7 @@ export function parseTaskDirectives(raw) {
     if (MODEL_ALIASES[command]) { requested = { kind: 'model', value: MODEL_ALIASES[command] }; prompt = next; continue; }
     break;
   }
-  return { prompt: prompt.trim(), tagModel, requested, profile, executionMode };
+  return { prompt: prompt.trim(), tagModel, requested, profile, executionMode, permissionMode };
 }
 
 /** Non-writing modes may discover local files but never edit or create them. */
@@ -894,7 +947,7 @@ export function pickModel(raw, available, state, explicit) {
 
   if (wanted && !forcedTier) {
     const hit = pool.find((id) => has(id, [wanted]));
-    if (hit) return { model: hit, prompt, reason: `forcé : ${wanted}`, profile, executionMode: directives.executionMode };
+    if (hit) return { model: hit, prompt, reason: `forcé : ${wanted}`, profile, executionMode: directives.executionMode, permissionMode: directives.permissionMode };
     throw new Error(`Modèle « ${wanted} » indisponible ou bloqué.`);
   }
 
@@ -915,6 +968,7 @@ export function pickModel(raw, available, state, explicit) {
             : `auto : ${label}${t !== tier ? ' (repli)' : ''}`),
         profile,
         executionMode: directives.executionMode,
+        permissionMode: directives.permissionMode,
       };
     }
   }
@@ -924,6 +978,7 @@ export function pickModel(raw, available, state, explicit) {
     reason: profile === 'auto' ? 'auto : premier modèle autorisé' : `profil ${profile} : premier modèle autorisé`,
     profile,
     executionMode: directives.executionMode,
+    permissionMode: directives.permissionMode,
   };
 }
 
@@ -1258,6 +1313,42 @@ export function tokenMeasurementForPrompt(prompt, usage) {
 
 const DEFAULT_STREAM_TIMEOUT_MS = 120_000;
 
+function normalizeApiToolCall(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const callId = raw.callId ?? raw.call_id;
+  const name = raw.name;
+  if (typeof callId !== 'string' || !callId || typeof name !== 'string' || !name) return null;
+  let args = raw.arguments ?? {};
+  let argsError = null;
+  if (typeof args === 'string') {
+    try { args = args.trim() ? JSON.parse(args) : {}; }
+    catch { argsError = 'Arguments JSON invalides.'; args = {}; }
+  }
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    argsError ??= 'Les arguments doivent être un objet JSON.';
+    args = {};
+  }
+  const call = { callId, name, arguments: args };
+  if (argsError) call.argsError = argsError;
+  return call;
+}
+
+function extractApiToolCalls(message) {
+  const list = message?.toolCalls;
+  return Array.isArray(list) ? list.map(normalizeApiToolCall).filter(Boolean) : [];
+}
+
+async function cancelChatStreamBestEffort(base, apiKey, chatId) {
+  if (!chatId || !apiKey) return;
+  try {
+    await fetch(`${base}/chats/${encodeURIComponent(chatId)}/stream/cancel`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch { /* best-effort server cancel */ }
+}
+
 export async function streamGeneration({
   state,
   model,
@@ -1265,17 +1356,22 @@ export async function streamGeneration({
   instructions,
   prompt,
   chatId: existingChatId,
+  clientTools = [],
+  executeToolCall = null,
+  maxToolTurns = 12,
   signal,
   timeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
   onText,
   onReasoning,
   onChatId,
+  onToolCall,
 }) {
   const base = OFFICIAL_API_BASE_URL;
   const apiKey = await resolveApiKey(state);
   if (!apiKey) throw new Error('Aucune clé API / sessionToken enregistré.');
   const agentId = agentMap?.get(model);
   const localPromptEstimateTokens = estimateTokens(prompt);
+  let activeChatId = existingChatId ?? null;
 
   const timeoutCtrl = new AbortController();
   const timeoutTimer = setTimeout(() => {
@@ -1283,7 +1379,10 @@ export async function streamGeneration({
     err.retryable = true;
     timeoutCtrl.abort(err);
   }, Math.max(10_000, Number(timeoutMs) || DEFAULT_STREAM_TIMEOUT_MS));
-  const onParentAbort = () => timeoutCtrl.abort(new Error('Annulé.'));
+  const onParentAbort = () => {
+    timeoutCtrl.abort(new Error('Annulé.'));
+    if (activeChatId) void cancelChatStreamBestEffort(base, apiKey, activeChatId);
+  };
   if (signal) {
     if (signal.aborted) {
       clearTimeout(timeoutTimer);
@@ -1340,13 +1439,41 @@ export async function streamGeneration({
   // Mode strictement sans écriture ni clientTools : uniquement des phrases normales.
   const runChatStream = async (id, chatIdToUse) => {
     let chatId = chatIdToUse ?? null;
-    let totalText = '';
-    let lastUsage = null;
+    activeChatId = chatId;
+    const toolsList = Array.isArray(clientTools) && clientTools.length && typeof executeToolCall === 'function'
+      ? [...clientTools]
+      : [];
+    let lastNonEmptyTurnText = '';
+    let combinedText = '';
+    let aggregateUsage = null;
+    let toolTurns = 0;
 
-    const consumeTurn = async (res, turn = { text: '' }, allowResume = true) => {
+    const addUsage = (tu) => {
+      if (!tu) return;
+      const inT = tu.promptTokenCount ?? tu.input_tokens;
+      const outT = tu.candidatesTokenCount ?? tu.output_tokens;
+      const totT = tu.totalTokenCount ?? tu.total_tokens;
+      const reasT = tu.reasoningTokenCount ?? tu.reasoning_tokens;
+      if (inT == null && outT == null && totT == null) return;
+      aggregateUsage ??= { input_tokens: 0, output_tokens: 0, total_tokens: 0, reasoning_tokens: 0 };
+      if (typeof inT === 'number') aggregateUsage.input_tokens += inT;
+      if (typeof outT === 'number') aggregateUsage.output_tokens += outT;
+      if (typeof totT === 'number') aggregateUsage.total_tokens += totT;
+      if (typeof reasT === 'number') aggregateUsage.reasoning_tokens += reasT;
+    };
+
+    const consumeTurn = async (res, turn = { text: '', toolCalls: [] }, allowResume = true) => {
       if (!res.ok || !res.body) {
-        const txt = (await res.text().catch(() => '')).slice(0, 220);
-        throw providerFailure({ message: txt }, `HTTP ${res.status}${txt ? ' — ' + txt : ''}`, { status: res.status, chatId });
+        const txt = (await res.text().catch(() => '')).slice(0, 260);
+        const fail = providerFailure({ message: txt }, `HTTP ${res.status}${txt ? ' — ' + txt : ''}`, { status: res.status, chatId });
+        if (res.status === 400 && /client tools are not supported/i.test(txt)) {
+          fail.clientToolsUnsupported = true;
+          fail.retryable = true;
+        } else if (res.status === 403 && /client[_ ]?tools|2026_11_client_tools/i.test(txt)) {
+          fail.clientToolsAccountDisabled = true;
+          fail.retryable = true;
+        }
+        throw fail;
       }
       let lastEventId;
       let completed = false;
@@ -1356,12 +1483,17 @@ export async function streamGeneration({
           const ev = frame.event;
           if (ev?.type === 'stream.open' && ev.chat_id) {
             chatId = ev.chat_id;
+            activeChatId = chatId;
             onChatId?.(chatId);
           } else if (ev?.type === 'response.output_text.delta') {
             const d = ev.delta ?? '';
             turn.text += d;
-            totalText += d;
+            combinedText += d;
             onText?.(d);
+          } else if (ev?.type === 'response.output_text.done' && !turn.text && ev.text) {
+            turn.text += ev.text;
+            combinedText += ev.text;
+            onText?.(ev.text);
           } else if (ev?.type === 'response.reasoning_summary_text.delta') {
             onReasoning?.(ev.delta ?? '');
           } else if (ev?.type === 'completed' || ev?.type === 'response.completed' || ev?.type === 'stream.completed') {
@@ -1369,17 +1501,11 @@ export async function streamGeneration({
             if (refusal) throw new ModelRefusalError(refusal, { chatId });
             completed = true;
             if (!turn.text && ev.message?.content) {
-              totalText += (totalText ? '\n' : '') + ev.message.content;
+              turn.text = String(ev.message.content);
+              combinedText += (combinedText ? '\n' : '') + turn.text;
             }
-            const tu = ev.message?.tokenUsage;
-            if (tu) {
-              lastUsage = {
-                ...(tu.promptTokenCount !== undefined ? { input_tokens: tu.promptTokenCount } : {}),
-                ...(tu.candidatesTokenCount !== undefined ? { output_tokens: tu.candidatesTokenCount } : {}),
-                ...(tu.totalTokenCount !== undefined ? { total_tokens: tu.totalTokenCount } : {}),
-                ...(tu.reasoningTokenCount !== undefined ? { reasoning_tokens: tu.reasoningTokenCount } : {}),
-              };
-            }
+            turn.toolCalls = extractApiToolCalls(ev.message);
+            addUsage(ev.message?.tokenUsage ?? ev.response?.usage ?? ev.usage);
           } else if (ev?.type === 'response.output_refusal.delta' || ev?.type === 'response.refusal.delta') {
             throw providerFailure(ev, MISSING_REFUSAL_REASON, { chatId });
           } else if (ev?.type === 'error' || ev?.type === 'response.failed') {
@@ -1407,38 +1533,83 @@ export async function streamGeneration({
         }
         throw error;
       }
+      if (turn.text.trim()) lastNonEmptyTurnText = turn.text;
+      return turn;
     };
 
     const headers = {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
+      ...(toolsList.length ? {
+        'francestudent-client-platform': 'cli',
+        'francestudent-client-version': CONNECTOR_VERSION,
+      } : {}),
     };
 
     const continuing = Boolean(chatId);
-    const initialContent = instructions ? `${instructions}\n\n${prompt}` : prompt;
-    const payload = continuing
-      ? { content: prompt, agentId: id }
-      : { agentId: id, initialContent };
+    // Prompt placed BEFORE rules/context annex to preserve prompt cache and prevent GPT instruction refusals.
+    const initialContent = instructions ? `${prompt}\n\n---\n\n${instructions}` : prompt;
+    const firstPayload = continuing
+      ? {
+        content: prompt,
+        agentId: id,
+        enableCanvas: false,
+        ...(toolsList.length ? { clientTools: toolsList } : {}),
+      }
+      : {
+        agentId: id,
+        enableCanvas: false,
+        ...(state?.enableWebSearch !== undefined ? { enableWebSearch: Boolean(state.enableWebSearch) } : {}),
+        initialContent,
+        ...(toolsList.length ? { clientTools: toolsList } : {}),
+      };
 
-    await consumeTurn(await fetch(base + (continuing ? `/chats/${chatId}` : '/chats/stream'), {
+    let turn = await consumeTurn(await fetch(base + (continuing ? `/chats/${chatId}` : '/chats/stream'), {
       method: 'POST',
       signal: effectiveSignal,
       headers,
-      body: JSON.stringify(payload),
+      body: JSON.stringify(firstPayload),
     }));
 
-    const refusal = refusalReasonFromText(totalText);
-    if (refusal) throw new ModelRefusalError(refusal, { chatId });
+    while (turn.toolCalls?.length && toolsList.length && toolTurns < maxToolTurns && !effectiveSignal.aborted) {
+      toolTurns += 1;
+      const rawResults = [];
+      for (const call of turn.toolCalls.slice(0, 32)) {
+        if (effectiveSignal.aborted) break;
+        onToolCall?.({ turn: toolTurns, name: call.name, args: call.arguments });
+        const result = await executeToolCall(call);
+        rawResults.push({
+          callId: call.callId,
+          output: String(result?.output ?? ''),
+          ...(result?.isError ? { isError: true } : {}),
+        });
+      }
+      if (!rawResults.length || !chatId) break;
+      const toolResults = fitToolOutputs(rawResults);
+      turn = await consumeTurn(await fetch(`${base}/chats/${encodeURIComponent(chatId)}`, {
+        method: 'POST',
+        signal: effectiveSignal,
+        headers,
+        body: JSON.stringify({ toolResults, clientTools: toolsList }),
+      }));
+    }
+
+    const finalText = toolTurns > 0 ? (lastNonEmptyTurnText || combinedText) : combinedText;
+    if (!toolTurns) {
+      const refusal = refusalReasonFromText(finalText);
+      if (refusal) throw new ModelRefusalError(refusal, { chatId });
+    }
 
     return {
-      text: totalText,
-      usage: lastUsage,
+      text: finalText,
+      usage: aggregateUsage,
       written: [],
+      toolTurns,
       chatId,
       tokenMeasurement: {
         localPromptEstimateTokens,
-        providerUsage: normalizeProviderTokenUsage(lastUsage),
+        providerUsage: normalizeProviderTokenUsage(aggregateUsage),
       },
     };
   };
@@ -1448,7 +1619,7 @@ export async function streamGeneration({
       return await runChatStream(id, chatId);
     } catch (e) {
       const status = Number(e?.status ?? 0);
-      if (chatId && !effectiveSignal.aborted && !(e instanceof ModelRefusalError) && (status === 400 || status === 404 || status === 410 || status >= 500)) {
+      if (chatId && !effectiveSignal.aborted && !(e instanceof ModelRefusalError) && !e?.clientToolsUnsupported && !e?.clientToolsAccountDisabled && (status === 400 || status === 404 || status === 410 || status >= 500)) {
         logEvent('warn', 'core', 'chat.reset_on_error', `Session ${chatId} réinitialisée après erreur HTTP ${status || '?'} (${model}).`, { model, chatId, status });
         return await runChatStream(id, undefined);
       }
@@ -1484,24 +1655,27 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
   const refusals = [];
   let model = request.model;
   let chatId = request.chatId;
+  let activeRequest = { ...request };
   const maxAttempts = 3;
 
   const pickNextCandidate = (current, reason = '') => {
-    const allowed = [...new Set(availableModels || [])].filter((c) => !tried.has(c) && modelIsAllowed(c, request.state));
-    if (!allowed.length) return null;
-    if (/artefact|tronquée|sans bloc de code/i.test(String(reason))) {
+    const allowedAll = [...new Set(availableModels || [])].filter((c) => !tried.has(c) && modelIsAllowed(c, activeRequest.state));
+    if (!allowedAll.length) return null;
+    const ready = allowedAll.filter((c) => !isModelOnCooldown(c));
+    const allowed = ready.length ? ready : allowedAll;
+    if (/artefact|tronquée|sans bloc de code|client tools are not supported/i.test(String(reason))) {
       for (const kw of ['sonnet', 'haiku', 'opus']) {
         const hit = allowed.find((id) => id.toLowerCase().includes(kw));
         if (hit) return hit;
       }
     }
-    const curTier = classifyTier(current, request.state);
-    const sameTier = sameTierFallbackModels(current, availableModels, request.state).filter((c) => !tried.has(c));
+    const curTier = classifyTier(current, activeRequest.state);
+    const sameTier = sameTierFallbackModels(current, availableModels, activeRequest.state).filter((c) => !tried.has(c) && allowed.includes(c));
     if (sameTier.length) {
-      return pickTierCandidate(sameTier, curTier, request.state) ?? sameTier[0];
+      return pickTierCandidate(sameTier, curTier, activeRequest.state) ?? sameTier[0];
     }
     for (const t of ['heavy', 'medium', 'light']) {
-      const hit = pickTierCandidate(allowed, t, request.state);
+      const hit = pickTierCandidate(allowed, t, activeRequest.state);
       if (hit) return hit;
     }
     return allowed[0] ?? null;
@@ -1511,21 +1685,21 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
     tried.add(model);
     const attemptNum = tried.size;
     const t0 = Date.now();
-    logEvent('info', 'core', 'stream.attempt', `Essai ${attemptNum}/${maxAttempts} avec ${model}.`, { model, attempt: attemptNum, hasChatId: Boolean(chatId) });
+    logEvent('info', 'core', 'stream.attempt', `Essai ${attemptNum}/${maxAttempts} avec ${model}.`, { model, attempt: attemptNum, hasChatId: Boolean(chatId), clientTools: Boolean(activeRequest.clientTools?.length) });
     try {
       const result = await streamGeneration({
-        ...request,
+        ...activeRequest,
         model,
         chatId,
       });
       const trimmedText = String(result?.text ?? '').trim();
-      if (!trimmedText) {
+      if (!trimmedText && !(result?.toolTurns > 0)) {
         const emptyErr = new Error('Réponse vide reçue du modèle.');
         emptyErr.retryable = true;
         throw emptyErr;
       }
-      const expectsCodeBlock = /(?:bloc|TARGET|```|javascript|typescript|python|html|css)/i.test(String(request.instructions ?? ''));
-      if (expectsCodeBlock && trimmedText.length < 65 && !trimmedText.includes('```')) {
+      const expectsCodeBlock = /(?:bloc|TARGET|```|javascript|typescript|python|html|css)/i.test(String(activeRequest.instructions ?? ''));
+      if (!result?.toolTurns && expectsCodeBlock && trimmedText.length < 65 && !trimmedText.includes('```')) {
         const stubErr = new Error('Réponse trop courte/tronquée sans bloc de code.');
         stubErr.retryable = true;
         throw stubErr;
@@ -1534,6 +1708,7 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
         model,
         chars: result.text.length,
         durationMs: Date.now() - t0,
+        toolTurns: result.toolTurns ?? 0,
         usage: result.usage ?? null,
       });
       return { ...result, model, refusals, attemptedModels: [...tried] };
@@ -1541,12 +1716,26 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
       const isRefusal = error instanceof ModelRefusalError;
       const status = Number(error?.status ?? 0);
       const msg = String(error?.message ?? '');
-      const isAuthErr = status === 401 || status === 403;
+      if (status === 429 || /limit reached|no responses upstream has available capacity/i.test(msg)) {
+        recordModelCooldown(model, msg);
+      }
+
+      // Account lacks clientTools flag: retry cleanly once in inline/patch mode without clientTools.
+      if (error?.clientToolsAccountDisabled && activeRequest.clientTools?.length && !activeRequest.signal?.aborted) {
+        logEvent('warn', 'core', 'client_tools.disabled_fallback', `Outils client indisponibles sur ce compte ; bascule en mode texte/patch (${model}).`, { model });
+        activeRequest = { ...activeRequest, clientTools: [], executeToolCall: null };
+        chatId = undefined;
+        onRetry?.({ from: model, to: model, reason: 'Outils client désactivés -> mode texte/patch', attempt: attemptNum });
+        continue;
+      }
+
+      const isAuthErr = (status === 401 || status === 403) && !error?.clientToolsAccountDisabled;
       const isTransient = !isAuthErr && (
         Boolean(error?.retryable) ||
+        Boolean(error?.clientToolsUnsupported) ||
         status === 429 ||
         status >= 500 ||
-        /Flux SSE interrompu|Délai dépassé|fetch failed|ECONNRESET|ETIMEDOUT/i.test(msg)
+        /Flux SSE interrompu|Délai dépassé|fetch failed|ECONNRESET|ETIMEDOUT|502|503|504|BAD_GATEWAY|upstream|capacity|STREAM_FAILED|\b429\b/i.test(msg)
       );
 
       if (isRefusal) {
@@ -1558,12 +1747,18 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
       error.refusals = refusals;
       error.attemptedModels = [...tried];
 
-      if (request.signal?.aborted || (!isRefusal && !isTransient) || tried.size >= maxAttempts) {
+      if (activeRequest.signal?.aborted || (!isRefusal && !isTransient) || tried.size >= maxAttempts) {
         throw error;
       }
 
       const next = pickNextCandidate(model, msg);
       if (!next) {
+        if (activeRequest.clientTools?.length) {
+          activeRequest = { ...activeRequest, clientTools: [], executeToolCall: null };
+          chatId = undefined;
+          onRetry?.({ from: model, to: model, reason: 'Outils client indisponibles -> repli texte/patch', attempt: attemptNum });
+          continue;
+        }
         throw error;
       }
 
@@ -1577,8 +1772,8 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
 }
 
 /**
- * Estimates net Antigravity tokens conservatively saved by offloading reasoning,
- * search synthesis, or planning to France Student (deducting MCP response read overhead).
+ * Estimates net Antigravity tokens conservatively saved by offloading work
+ * directly (clientTools edits/writes) or via compact response synthesis.
  */
 export function estimateAntigravityJobSavings(job, { waitedInline = false, partsCount = 1 } = {}) {
   const outputChars = Number(job?.receivedChars ?? 0);
@@ -1586,9 +1781,29 @@ export function estimateAntigravityJobSavings(job, { waitedInline = false, parts
   const mode = String(job?.executionMode || 'generate');
   const isPlanOrReadOnly = mode === 'plan' || mode === 'dry-run';
   const isPatch = mode === 'patch';
+  const filesWritten = Array.isArray(job?.filesWritten) ? job.filesWritten : [];
+  const writtenChars = filesWritten.reduce((acc, f) => acc + Number(f?.charsWritten ?? 0), 0);
+  const toolTurns = Number(job?.toolTurns ?? 0);
+
+  if (filesWritten.length > 0 || toolTurns > 0) {
+    // Autonomous execution: Antigravity skipped reading, coding, and writing files directly;
+    // it only reads back the short completion summary.
+    const savedWriteTokens = Math.round(writtenChars / 4);
+    const savedToolTurnsTokens = Math.max(1, toolTurns) * 850 + 1_600;
+    const summaryReadCost = Math.round(responseTokens * 0.5);
+    const netSaved = Math.max(0, savedToolTurnsTokens + savedWriteTokens - summaryReadCost);
+    const turnsSavedEst = (waitedInline ? 1 : 0) + Math.max(2, toolTurns);
+    return {
+      source: 'local-estimate',
+      turnsSavedEst,
+      inputTokensSavedEst: Math.max(0, savedToolTurnsTokens - summaryReadCost),
+      outputTokensSavedEst: savedWriteTokens,
+      totalTokensSavedEst: netSaved,
+    };
+  }
+
   const offloadedFiles = Array.isArray(job?.files) ? Math.min(6, job.files.length) : 0;
   const avoidedFileReadTokens = offloadedFiles * 600;
-  // Read/write tool copy overhead: patches avoid full-file writes, plans avoid file writes completely.
   const avoidedExplorationTokens = (isPlanOrReadOnly
     ? 2_200
     : (isPatch ? 2_600 : (responseTokens >= 300 ? 2_800 : 900))) + avoidedFileReadTokens;

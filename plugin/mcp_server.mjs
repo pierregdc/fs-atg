@@ -38,6 +38,27 @@ import {
   writeLiveJobs,
 } from './fs_core.mjs';
 import { LOG_PATH, countRecentErrors, logEvent, readLogs } from './logger.mjs';
+import {
+  addProjectNote,
+  buildTurn1Annex,
+  clearProjectMemory,
+  forgetFact,
+  getProjectMemory,
+  learnFact,
+  observePromptSignals,
+  removeProjectNote,
+  setPreprompt,
+} from './memory_store.mjs';
+import {
+  PERMISSION_MODES,
+  clipText,
+  createWorkspaceToolRunner,
+  listUndoEntries,
+  toolsForPermissionMode,
+  undoLastChange,
+} from './tools_engine.mjs';
+
+const CLIENT_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis (list_directory, search_files, read_file, et selon permission edit_file, write_file, run_command). Ne réécris pas le code dans ta réponse finale : termine par un bilan ultra-court (<= 6 lignes) des fichiers modifiés/commandes lancées.`;
 
 const NATURAL_INSTRUCTIONS = `Réponds en français (ou langue de la demande) de façon ultra-concise et dense : zéro introduction, zéro conclusion, zéro reformulation.
 Si du code est demandé : N'UTILISE JAMAIS create_artifact / artefact / canvas. Écris uniquement le bloc de code ou patch ciblé directement en Markdown, sans commentaires évidents ni texte superflu autour.`;
@@ -115,12 +136,15 @@ function contextModeOf(job, st) {
 }
 
 function connectorSnapshot(st) {
+  const perm = PERMISSION_MODES.includes(st.permissionMode) ? st.permissionMode : 'acceptEdits';
   return {
     name: 'fs-atg',
     version: CONNECTOR_VERSION,
     transport: 'stdio',
     registration: 'declared',
-    readOnlyWorkspace: true,
+    readOnlyWorkspace: perm === 'plan' || st.useClientTools === false,
+    permissionMode: perm,
+    useClientTools: st.useClientTools !== false,
     autoDelegate: st.autoDelegate !== false,
     toolCount: MCP_TOOL_CATALOG.length,
     tools: MCP_TOOL_CATALOG,
@@ -128,13 +152,15 @@ function connectorSnapshot(st) {
   };
 }
 
-function normalizedDelegation(task, requestedMode, requestedProfile) {
+function normalizedDelegation(task, requestedMode, requestedProfile, requestedPerm) {
   const rawTask = String(task ?? '').trim();
   const directives = parseTaskDirectives(rawTask);
   const executionMode = EXECUTION_MODES.has(requestedMode) ? requestedMode : directives.executionMode;
   const routingProfile = ROUTING_PROFILES.has(requestedProfile) ? requestedProfile
     : (ROUTING_PROFILES.has(directives.profile) ? directives.profile : undefined);
-  return { task: directives.prompt, rawTask, executionMode, routingProfile };
+  const permissionMode = PERMISSION_MODES.includes(requestedPerm) ? requestedPerm
+    : (PERMISSION_MODES.includes(directives.permissionMode) ? directives.permissionMode : undefined);
+  return { task: directives.prompt, rawTask, executionMode, routingProfile, permissionMode };
 }
 
 function profileState(st, profile) {
@@ -142,13 +168,13 @@ function profileState(st, profile) {
   return { ...st, routingProfile };
 }
 
-function buildNaturalPrompt(basePrompt, job, st, hasPersistentChat) {
+function buildNaturalPrompt(basePrompt, job, st, hasPersistentChat, { useTools = false } = {}) {
   const mode = contextModeOf(job, st);
   let next = basePrompt;
   if (job.parentId && !hasPersistentChat) {
     const parent = st.history?.find((h) => (h.id || h.jobId) === job.parentId);
     if (parent) {
-      const snippet = String(parent.response || parent.summary || '').slice(0, 1200);
+      const snippet = clipText(parent.response || parent.summary || '', 1200);
       if (snippet) next = `Contexte précédent :\n${snippet}\n\nNouvelle demande : ${next}`;
     }
   }
@@ -159,9 +185,9 @@ function buildNaturalPrompt(basePrompt, job, st, hasPersistentChat) {
       try {
         const safe = resolveSafe(job.workspaceRoot, rel);
         const raw = readFileSync(safe.abs, 'utf-8');
-        const slice = raw.slice(0, Math.max(0, remaining));
+        const slice = clipText(raw, Math.max(512, remaining));
         remaining -= slice.length;
-        chunks.push(`Fichier \`${safe.rel}\` :\n\`\`\`\n${slice}${raw.length > slice.length ? '\n[tronqué]' : ''}\n\`\`\``);
+        chunks.push(`Fichier \`${safe.rel}\` :\n\`\`\`\n${slice}\n\`\`\``);
         if (remaining <= 0) break;
       } catch (e) {
         logEvent('warn', 'mcp', 'context.file_skipped', `Impossible de lire ${rel} : ${e?.message ?? e}`, { jobId: job.id, rel });
@@ -169,8 +195,12 @@ function buildNaturalPrompt(basePrompt, job, st, hasPersistentChat) {
     }
     if (chunks.length) next += `\n\n${chunks.join('\n\n')}`;
   }
-  if (job.workspaceRoot && mode === 'smart') {
-    const index = formatWorkspaceSymbolIndex(workspaceSymbolIndex(job.workspaceRoot, 30), 3_000);
+  if (job.workspaceRoot && !hasPersistentChat) {
+    try { observePromptSignals(job.workspaceRoot, basePrompt); } catch { /* ignore */ }
+    const annex = buildTurn1Annex(job.workspaceRoot, { includeShortContext: Boolean(useTools || mode === 'smart') });
+    if (annex) next += `\n\n${annex}`;
+  } else if (job.workspaceRoot && mode === 'smart') {
+    const index = formatWorkspaceSymbolIndex(workspaceSymbolIndex(job.workspaceRoot, 30), 2_000);
     if (index) next += `\n\nAperçu de structure :\n${index}`;
     else {
       const sketch = workspaceSketch(job.workspaceRoot, 30);
@@ -263,7 +293,10 @@ function publicView(j) {
     receivedChars: j.receivedChars,
     response: j.response ?? j.summary ?? '',
     summary: j.summary,
-    filesWritten: [],
+    filesWritten: j.filesWritten ?? [],
+    commandsRun: j.commandsRun ?? [],
+    toolTurns: j.toolTurns ?? 0,
+    permissionMode: j.permissionMode ?? null,
     lastThoughts: (j.thoughts || []).slice(-3),
     error: j.error,
     planBRecommended: Boolean(j.planBRecommended),
@@ -289,10 +322,18 @@ function publicView(j) {
 function mcpCompactView(j, verbose = false) {
   if (verbose) return publicView(j);
   const responseText = String(j.response ?? '').trim() || String(j.summary ?? '').trim();
+  const filesWritten = Array.isArray(j.filesWritten) && j.filesWritten.length
+    ? j.filesWritten.map(({ path, action, added, removed, undoId }) => ({ path, action, added, removed, ...(undoId ? { undoId } : {}) }))
+    : undefined;
+  const commandsRun = Array.isArray(j.commandsRun) && j.commandsRun.length ? j.commandsRun : undefined;
   return {
     jobId: j.id ?? j.jobId,
     status: j.status,
     model: j.model,
+    ...(j.permissionMode ? { permissionMode: j.permissionMode } : {}),
+    ...(j.toolTurns ? { toolTurns: j.toolTurns } : {}),
+    ...(filesWritten ? { filesWritten } : {}),
+    ...(commandsRun ? { commandsRun } : {}),
     ...(j.planB ? { planB: true } : {}),
     ...(j.partsResponses?.length ? { partsResponses: j.partsResponses } : (responseText ? { response: responseText } : {})),
     ...(j.error ? { error: j.error } : {}),
@@ -338,6 +379,7 @@ function finishJob(job, status) {
     summary: String(job.summary ?? '').slice(0, 400),
     thoughts: (job.thoughts || []).slice(-5),
   };
+  if (job.workspaceRoot) st.lastWorkspaceRoot = resolve(job.workspaceRoot);
   st.history = [stored, ...(st.history || [])].slice(0, 20);
   saveState(st);
   notify();
@@ -372,6 +414,7 @@ async function runJob(job) {
     job.routeReason = route.reason;
     job.routingProfile = route.profile === 'auto' ? null : route.profile;
     job.executionMode = job.executionMode ?? route.executionMode ?? 'generate';
+    job.permissionMode = job.permissionMode ?? route.permissionMode ?? undefined;
     job.contextMode = contextModeOf(job, st);
     notify();
 
@@ -488,19 +531,42 @@ async function runJob(job) {
       }
 
       // Plan A (session persistante) ou Plan B isolé (chat neuf sans historique)
+      const effectivePerm = PERMISSION_MODES.includes(job.permissionMode)
+        ? job.permissionMode
+        : (PERMISSION_MODES.includes(st.permissionMode) ? st.permissionMode : 'acceptEdits');
+      job.permissionMode = effectivePerm;
+      const useTools = Boolean(
+        st.useClientTools !== false &&
+        job.workspaceRoot &&
+        !job.planB &&
+        job.executionMode !== 'patch'
+      );
+      const clientTools = useTools ? toolsForPermissionMode(effectivePerm, job.executionMode) : [];
+      const runner = clientTools.length
+        ? createWorkspaceToolRunner({
+          workspaceRoot: job.workspaceRoot,
+          permissionMode: effectivePerm,
+          jobId: job.id,
+          onMutation: (list) => { job.filesWritten = list; notify(); },
+          onCommand: (list) => { job.commandsRun = list; notify(); },
+        })
+        : null;
+
       const key = directSessionKey(job);
       const usePersistentChat = !job.planB && job.executionMode !== 'plan' && job.executionMode !== 'dry-run';
       const chatId = usePersistentChat ? await prepareDirectChat(st, key) : undefined;
       if (chatId) job.chatId = chatId;
 
-      const local = buildNaturalPrompt(route.prompt, job, st, Boolean(chatId));
+      const local = buildNaturalPrompt(route.prompt, job, st, Boolean(chatId), { useTools: clientTools.length > 0 });
       job.contextMode = local.mode;
       job.inputEstimateTokens = estimateTokens(local.prompt);
-      const instructions = job.executionMode === 'plan'
-        ? PLAN_INSTRUCTIONS
-        : (job.executionMode === 'patch'
-          ? PATCH_INSTRUCTIONS
-          : (job.planB ? PLAN_B_PART_INSTRUCTIONS : NATURAL_INSTRUCTIONS));
+      const instructions = clientTools.length
+        ? CLIENT_TOOLS_INSTRUCTIONS
+        : (job.executionMode === 'plan'
+          ? PLAN_INSTRUCTIONS
+          : (job.executionMode === 'patch'
+            ? PATCH_INSTRUCTIONS
+            : (job.planB ? PLAN_B_PART_INSTRUCTIONS : NATURAL_INSTRUCTIONS)));
 
       let result;
       try {
@@ -512,6 +578,13 @@ async function runJob(job) {
           instructions,
           prompt: local.prompt,
           chatId,
+          clientTools,
+          executeToolCall: runner ? (call) => runner.execute(call) : null,
+          onToolCall: ({ turn, name }) => {
+            job.thoughts.push(`Outil #${turn} : ${name}`);
+            job.thoughts = job.thoughts.slice(-20);
+            notify();
+          },
           signal: ac.signal,
           ...makeStreamCallbacks(),
         });
@@ -519,12 +592,12 @@ async function runJob(job) {
         const status = Number(err?.status ?? 0);
         const canIsolatePlanB = !ac.signal.aborted && status !== 401 && status !== 403 && Boolean(chatId) && !job.planB;
         if (!canIsolatePlanB) throw err;
-        // Repli Plan B automatique immédiat sur chat neuf isolé (sans historique potentiellement lourd/bloqué)
+        // Repli Plan B automatique immédiat sur chat neuf isolé (sans outils client si ceux-ci ont bloqué)
         job.planB = true;
         job.thoughts.push('Plan B automatique : nouvel essai sur session neuve isolée…');
         notify();
         logEvent('warn', 'mcp', 'planB.auto_isolated', `Plan A échoué avec chat persistant ; bascule Plan B sur chat neuf (${err?.message}).`, { jobId: job.id });
-        const freshPrompt = buildNaturalPrompt(route.prompt, job, st, false).prompt;
+        const freshPrompt = buildNaturalPrompt(route.prompt, job, st, false, { useTools: false }).prompt;
         result = await streamGenerationWithRefusalFallback({
           state: st,
           model: route.model,
@@ -533,6 +606,8 @@ async function runJob(job) {
           instructions: PLAN_B_PART_INSTRUCTIONS,
           prompt: freshPrompt,
           chatId: undefined,
+          clientTools: [],
+          executeToolCall: null,
           signal: ac.signal,
           ...makeStreamCallbacks('[Plan B] '),
         });
@@ -544,6 +619,11 @@ async function runJob(job) {
       job.model = result.model ?? job.model;
       job.refusals = result.refusals ?? job.refusals ?? [];
       job.attemptedModels = result.attemptedModels ?? job.attemptedModels;
+      job.toolTurns = result.toolTurns ?? 0;
+      if (runner) {
+        job.filesWritten = runner.getFilesWritten();
+        job.commandsRun = runner.getCommandsRun();
+      }
       job.tokenMeasurement = result.tokenMeasurement ?? {
         localPromptEstimateTokens: job.inputEstimateTokens,
         providerUsage: normalizeProviderTokenUsage(result.usage),
@@ -605,24 +685,25 @@ const server = new McpServer({ name: 'fs-atg', version: CONNECTOR_VERSION });
 
 server.registerTool('fs_delegate', {
   title: 'Déléguer à France Student [ATG]',
-  description: 'Délègue à France Student (lecture seule PC) plans, diagnostics, recherches multi-sources, explications et blocs/patches ciblés. Renvoie une réponse compacte dans response pour économiser les tokens Antigravity (éviter pour 1 simple search_web ponctuel ou pour recopier un gros fichier neuf entier via write_file).',
+  description: 'Délègue à France Student : avec workspaceRoot (mode acceptEdits/full), France Student lit/écrit/teste directement sur le PC avec sauvegarde /undo et renvoie un bilan compact (filesWritten, commandsRun). En mode plan ou patch, reste en lecture seule.',
   inputSchema: {
-    task: z.string().min(3).describe('Consigne claire en phrases normales (commandes possibles : /send, /plan, /patch, /eco, /fast, /low, /medium, /high).'),
-    workspaceRoot: z.string().optional().describe('Chemin du workspace (lecture seule uniquement pour files/session). Jamais écrit.'),
-    files: z.array(z.string()).optional().describe('Chemins relatifs à joindre en lecture seule si indispensable.'),
+    task: z.string().min(3).describe('Consigne claire en phrases normales (commandes possibles : /send, /plan, /patch, /mode, /eco, /fast, /low, /medium, /high).'),
+    workspaceRoot: z.string().optional().describe('Chemin absolu du workspace : active les outils locaux selon permissionMode (lecture/écriture/commandes bornées).'),
+    files: z.array(z.string()).optional().describe('Chemins relatifs à joindre si besoin (hors mode outils autonomes).'),
     model: z.string().optional(),
     priority: z.number().int().min(0).max(9).optional(),
     contextMode: z.enum(['minimal', 'targeted', 'smart']).optional().describe('minimal recommandé = phrase seule sans surcharger.'),
     parentJobId: z.string().optional().describe('Suite d’un job précédent.'),
-    executionMode: z.enum(['generate', 'apply', 'plan', 'patch', 'dry-run']).optional().describe('Sans écriture PC ; plan retourne un plan court, patch retourne uniquement TARGET/REPLACE pour edit_file.'),
+    executionMode: z.enum(['generate', 'apply', 'plan', 'patch', 'dry-run']).optional().describe('apply/generate autorisent les outils selon permissionMode ; plan/patch/dry-run restent en lecture seule.'),
+    permissionMode: z.enum(['plan', 'acceptEdits', 'full']).optional().describe('Surcharge ponctuelle : plan (lecture seule), acceptEdits (lecture + écriture/édition avec /undo), full (+ run_command sécurisé).'),
     routingProfile: z.enum(['eco', 'fast', 'quality', 'security', 'refactor']).optional(),
     planB: z.boolean().optional().describe('Active le Plan B (chat neuf isolé ou découpage via parts) en cas d’échec du Plan A.'),
-    parts: z.array(z.string().min(3)).max(6).optional().describe('Plan B : 2 à 6 petites sous-demandes simples générées séparément pour assemblage.'),
+    parts: z.array(z.string().min(3)).max(6).optional().describe('Plan B : 2 à 6 petites sous-demandes simples générées séparément.'),
     waitSeconds: z.number().min(0).max(45).optional().describe('Attente intégrée (défaut 45s) pour répondre en 1 appel.'),
     verbose: z.boolean().optional(),
   },
 }, async (a) => {
-  const delegation = normalizedDelegation(a.task, a.executionMode, a.routingProfile);
+  const delegation = normalizedDelegation(a.task, a.executionMode, a.routingProfile, a.permissionMode);
   if (!delegation.task && !a.parts?.length) throw new Error('Consigne vide après les commandes locales.');
   const waitSec = typeof a.waitSeconds === 'number' ? Math.max(0, Math.min(45, a.waitSeconds)) : 45;
   const firstLine = (delegation.task || a.parts?.[0] || '').split('\n')[0];
@@ -638,6 +719,7 @@ server.registerTool('fs_delegate', {
     priority: a.priority ?? 5,
     contextMode: a.contextMode,
     executionMode: delegation.executionMode,
+    permissionMode: delegation.permissionMode,
     routingProfile: delegation.routingProfile,
     planB: Boolean(a.planB || a.parts?.length),
     parts: Array.isArray(a.parts) && a.parts.length ? a.parts.slice(0, 6) : undefined,
@@ -789,6 +871,64 @@ server.registerTool('fs_cancel', {
     }
   }
   return asCompactText({ ok: true });
+});
+
+server.registerTool('fs_undo', {
+  title: 'Annuler une modification (/undo) [ATG]',
+  description: 'Liste les dernières sauvegardes ou annule atomiquement la dernière modification écrite par France Student dans le workspace.',
+  inputSchema: {
+    workspaceRoot: z.string().optional().describe('Chemin du workspace (défaut : dernier workspace utilisé).'),
+    action: z.enum(['undo', 'list']).default('undo'),
+    undoId: z.string().optional().describe('ID précis d’une entrée à restaurer (optionnel).'),
+  },
+}, async ({ workspaceRoot, action, undoId }) => {
+  const ws = workspaceRoot || loadState().lastWorkspaceRoot;
+  if (!ws) return asCompactText({ ok: false, error: 'workspaceRoot requis pour /undo.' });
+  if (action === 'list') {
+    const entries = listUndoEntries(ws, 15);
+    return asCompactText({ ok: true, workspaceRoot: ws, count: entries.length, entries });
+  }
+  const res = undoLastChange(ws, undoId || null);
+  if (res.ok) logEvent('info', 'mcp', 'undo.applied', `Restauré ${res.undone.rel} (${res.undone.action}).`, res.undone);
+  return asCompactText(res);
+});
+
+server.registerTool('fs_memory', {
+  title: 'Mémoire projet & pré-prompt [ATG]',
+  description: 'Gère la mémoire persistante par projet (/remember, /memory), les faits appris et le pré-prompt injectés au 1er tour.',
+  inputSchema: {
+    workspaceRoot: z.string().optional().describe('Chemin du workspace (sinon dernier workspace ou profil global).'),
+    action: z.enum(['get', 'remember', 'forget', 'clear', 'preprompt', 'learn']).default('get'),
+    text: z.string().optional().describe('Texte de la note, du fait ou du pré-prompt.'),
+    id: z.string().optional().describe('ID ou index (1..) à supprimer pour forget.'),
+  },
+}, async ({ workspaceRoot, action, text, id }) => {
+  const ws = workspaceRoot || loadState().lastWorkspaceRoot || '';
+  switch (action) {
+    case 'remember': {
+      const r = addProjectNote(ws, text || '');
+      logEvent('info', 'mcp', 'memory.remember', `Note mémorisée (${r.total} au total).`);
+      return asCompactText({ ok: true, ...r });
+    }
+    case 'learn': {
+      const saved = learnFact(ws, text || '');
+      return asCompactText({ ok: true, fact: saved });
+    }
+    case 'forget': {
+      const target = id || text || '';
+      const r = removeProjectNote(ws, target);
+      if (r.removed) return asCompactText({ ok: true, kind: 'note', ...r });
+      const rf = forgetFact(ws, target);
+      return asCompactText({ ok: true, kind: 'fact', ...rf });
+    }
+    case 'clear':
+      return asCompactText({ ok: true, ...clearProjectMemory(ws) });
+    case 'preprompt':
+      return asCompactText({ ok: true, ...setPreprompt(ws, text ?? '') });
+    case 'get':
+    default:
+      return asCompactText({ ok: true, workspaceRoot: ws || null, ...getProjectMemory(ws) });
+  }
 });
 
 const transport = new StdioServerTransport();

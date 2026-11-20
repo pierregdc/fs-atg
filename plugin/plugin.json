@@ -1,13 +1,15 @@
 {
   "name": "fs-atg",
   "displayName": "France Student [ATG]",
-  "description": "Générateur France Student pour Antigravity : génération sans écriture directe sur le PC, modèles forts prioritaires, mode Auto/Manuel, Plan B robuste, catalogue des modèles et journal de bord intégré.",
-  "version": "1.0.0",
+  "description": "Orchestrateur France Student v2.0 pour Antigravity : exécution autonome avec permissions (lecture seule / édition atomique + /undo / shell sécurisé), mémoire projet (/remember, FRST.md), routage rapide sans artefact (Plan A/B), jauge unique et journal de bord.",
+  "version": "2.0.0",
   "logo": "assets/logo.png",
   "suggestedPrompts": [
-    "Utilise /patch pour modifier ce fichier en économisant les tokens Antigravity",
-    "Utilise /plan pour obtenir un plan compact en ≤ 15 lignes sans écrire sur disque",
-    "Utilise /eco pour déléguer rapidement sur un modèle économe",
+    "Utilise /send pour créer ou modifier directement ce module avec France Student",
+    "Utilise /patch pour recevoir uniquement un diff ciblé en lecture seule",
+    "Utilise /undo pour annuler la dernière modification France Student",
+    "Utilise /remember pour mémoriser une règle persistante sur ce projet",
+    "Utilise /plan pour obtenir un plan compact en ≤ 15 lignes",
     "Consulte /logs pour analyser la dernière erreur France Student"
   ]
 }

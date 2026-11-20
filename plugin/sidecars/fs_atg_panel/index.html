@@ -196,6 +196,46 @@
     .pill-select:focus { outline: none; box-shadow: none; }
     .pill-select option { background: var(--fs-card); color: var(--fs-fg); }
     .ro-note { margin-top: 8px; font-size: 10px; color: var(--fs-faint); display: flex; align-items: center; gap: 5px; }
+    .perm-box { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--fs-line-soft); }
+    .perm-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 5px; }
+    .perm-top span { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fs-muted); }
+    .seg-3 {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
+      background: color-mix(in srgb, var(--fs-bg) 75%, #000);
+      border: 1px solid var(--fs-line); border-radius: 9px; padding: 3px;
+    }
+    .seg-3 button {
+      border: 0; background: transparent; color: var(--fs-muted);
+      padding: 5px 4px; border-radius: 7px; cursor: pointer;
+      font-size: 10.5px; font-weight: 650; transition: background .15s, color .15s;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .seg-3 button:hover { color: var(--fs-fg); }
+    .seg-3 button.on { background: color-mix(in srgb, var(--fs-accent) 22%, transparent); color: var(--fs-fg); }
+    .seg-3 button[data-perm="full"].on { background: color-mix(in srgb, var(--fs-warn) 22%, transparent); color: #fcd34d; }
+    .undo-pill {
+      border: 1px solid color-mix(in srgb, var(--fs-warn) 45%, transparent);
+      background: color-mix(in srgb, var(--fs-warn) 14%, transparent);
+      color: #fcd34d; border-radius: 7px; padding: 2px 7px;
+      font-size: 10px; font-weight: 650; cursor: pointer; white-space: nowrap;
+    }
+    .undo-pill:hover { background: color-mix(in srgb, var(--fs-warn) 24%, transparent); }
+    .hist-badges { display: inline-flex; gap: 4px; margin-left: 5px; vertical-align: middle; }
+    .hchip {
+      font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 5px;
+      background: color-mix(in srgb, var(--fs-accent) 18%, transparent);
+      color: var(--fs-blue-light); border: 1px solid color-mix(in srgb, var(--fs-accent) 30%, transparent);
+    }
+    .mem-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; max-height: 130px; overflow-y: auto; }
+    .mem-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      padding: 4px 7px; border-radius: 7px; font-size: 10.5px;
+      background: color-mix(in srgb, var(--fs-fg) 4%, transparent);
+      border: 1px solid var(--fs-line-soft);
+    }
+    .mem-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mem-del { background: transparent; border: 0; color: var(--fs-muted); cursor: pointer; font-size: 11px; padding: 0 3px; }
+    .mem-del:hover { color: var(--fs-bad); }
 
     .auto-box {
       margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--fs-line-soft);
@@ -521,9 +561,17 @@
         <div class="auto-desc" id="autoDelegateDesc">Prioritaire par défaut : délègue les tâches de code pour économiser Antigravity.</div>
       </div>
 
-      <div class="ro-note">
-        <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        Lecture seule · aucune écriture directe sur le PC
+      <div class="perm-box">
+        <div class="perm-top">
+          <span>Permissions PC</span>
+          <button type="button" class="undo-pill" id="undoQuickBtn" hidden title="Annuler la dernière écriture de France Student (/undo)">Annuler (0)</button>
+        </div>
+        <div class="seg-3" id="permSeg">
+          <button type="button" data-perm="plan">Lecture seule</button>
+          <button type="button" data-perm="acceptEdits">Édition + Undo</button>
+          <button type="button" data-perm="full">Complet + Shell</button>
+        </div>
+        <div class="ro-note" id="permDesc">Édition + Undo : écriture directe avec sauvegarde /undo</div>
       </div>
     </div>
 
@@ -675,6 +723,12 @@
       </div>
       <div class="field">
         <div class="toggle-row">
+          <span>Outils client natifs (écriture/lecture autonome)</span>
+          <label class="switch"><input type="checkbox" id="useClientToolsInput" disabled /><span class="slider"></span></label>
+        </div>
+      </div>
+      <div class="field">
+        <div class="toggle-row">
           <span>Résumé de raisonnement</span>
           <label class="switch"><input type="checkbox" id="showReasoningInput" disabled /><span class="slider"></span></label>
         </div>
@@ -684,6 +738,30 @@
         <button type="button" class="btn sm" id="saveEssentialBtn" disabled>Enregistrer</button>
         <span class="toast" id="essentialToast"></span>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-head" style="margin-top:0"><span>Mémoire projet &amp; Pré-prompt</span><span id="memWsTag">—</span></div>
+      <div class="field">
+        <label>Pré-prompt persistant (injecté au 1ᵉʳ tour)</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="prepromptInput" placeholder="Ex : Réponds en français, tests avec node --test…" disabled />
+          <button type="button" class="btn ghost sm" id="savePrepromptBtn" disabled>OK</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Notes projet (/remember)</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="memNoteInput" placeholder="Ajouter une note persistante…" disabled />
+          <button type="button" class="btn sm" id="addMemNoteBtn" disabled>+</button>
+        </div>
+        <div class="mem-list" id="memNotesList"></div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn ghost sm" id="clearMemBtn" disabled>Vider mémoire</button>
+        <span class="toast" id="memToast"></span>
+      </div>
+      <div class="ro-note" id="memFactsList">Faits appris : aucun</div>
     </div>
 
     <details class="card settings-fold">
@@ -964,6 +1042,12 @@
         const title = esc(String(j.title || '').replace(/^\[ATG\]\s*/, ''));
         const ico = j.status === 'done' ? ICO_CHECK : j.status === 'error' ? ICO_X : ICO_PAUSE;
         const respText = j.response || j.summary || j.error || '';
+        const fwCount = Array.isArray(j.filesWritten) ? j.filesWritten.length : 0;
+        const cmdCount = Array.isArray(j.commandsRun) ? j.commandsRun.length : 0;
+        const badges = [
+          fwCount ? `<span class="hchip">${fwCount} fichier(s)</span>` : '',
+          cmdCount ? `<span class="hchip">${cmdCount} cmd</span>` : '',
+        ].filter(Boolean).join('');
         const sub = [
           shortModel(j.model) || 'Auto',
           j.error ? j.error : (respText ? respText.length + ' car.' : 'terminé'),
@@ -973,7 +1057,7 @@
           <div class="hist-row">
             <div class="st-ico ${esc(j.status)}">${ico}</div>
             <div class="hist-main">
-              <span class="hist-title">${title}</span>
+              <span class="hist-title">${title}${badges ? `<span class="hist-badges">${badges}</span>` : ''}</span>
               <div class="hist-sub">${esc(sub)}</div>
             </div>
             <span class="hist-time">${fmtAgo(j.endedAt || j.startedAt)}</span>
@@ -1075,12 +1159,13 @@
 
     function syncSettingsForm() {
       const configIds = [
-        'cutoffInput', 'maxParallelInput', 'showReasoningInput', 'reuseChatInput',
+        'cutoffInput', 'maxParallelInput', 'showReasoningInput', 'reuseChatInput', 'useClientToolsInput',
+        'prepromptInput', 'savePrepromptBtn', 'memNoteInput', 'addMemNoteBtn', 'clearMemBtn',
         'contextCompactInput', 'routingProfileInput', 'tierLightInput', 'tierMediumInput',
         'tierHeavyInput', 'allowedInput', 'blockedInput', 'useAllBtn', 'saveEssentialBtn', 'saveSettingsBtn'
       ];
       const ready = stateLoad === 'ready';
-      configIds.forEach((id) => { $(id).disabled = !ready; });
+      configIds.forEach((id) => { if ($(id)) $(id).disabled = !ready; });
       if (!ready) {
         const label = stateLoad === 'unavailable' ? 'Indisponible' : 'Chargement…';
         ['cutoffInput', 'maxParallelInput', 'contextCompactInput', 'tierLightInput', 'tierMediumInput', 'tierHeavyInput', 'allowedInput', 'blockedInput'].forEach((id) => { $(id).placeholder = label; });
@@ -1091,6 +1176,8 @@
       $('maxParallelInput').value = S.maxParallel ?? 3;
       $('showReasoningInput').checked = S.showReasoning === true;
       $('reuseChatInput').checked = S.reuseChat === true;
+      $('useClientToolsInput').checked = S.useClientTools !== false;
+      $('prepromptInput').value = S.projectMemory?.preprompt || '';
       $('contextCompactInput').value = S.contextCompactPercent ?? 80;
       $('routingProfileInput').value = S.routingProfile || 'quality';
       $('tierLightInput').value = (S.tiers?.light || []).join(', ');
@@ -1143,6 +1230,17 @@
         : 'Éco. ATG : <strong>0 tok</strong>';
 
       document.querySelectorAll('#mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === S.mode));
+      const perm = S.permissionMode || 'acceptEdits';
+      document.querySelectorAll('#permSeg button').forEach((b) => b.classList.toggle('on', b.dataset.perm === perm));
+      $('permDesc').textContent = perm === 'plan'
+        ? 'Lecture seule : analyse, /plan et /patch sans écriture disque'
+        : (perm === 'full'
+          ? 'Complet + Shell : lecture, écriture (/undo) et commandes bornées'
+          : 'Édition + Undo : écriture directe avec sauvegarde /undo');
+      const undoList = Array.isArray(S.undoEntries) ? S.undoEntries : [];
+      $('undoQuickBtn').hidden = undoList.length === 0;
+      $('undoQuickBtn').textContent = `Annuler (${undoList.length})`;
+      renderProjectMemory();
       renderAutoDelegate();
       renderTiers();
       renderActive();
@@ -1292,8 +1390,69 @@
       renderModelsTab();
     });
 
+    function renderProjectMemory() {
+      const mem = S.projectMemory;
+      $('memWsTag').textContent = S.lastWorkspaceRoot ? S.lastWorkspaceRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] : 'Profil global';
+      const notes = Array.isArray(mem?.notes) ? mem.notes : [];
+      $('memNotesList').innerHTML = notes.length
+        ? notes.map((n) => `<div class="mem-item"><span title="${esc(n.text)}">${esc(n.text)}</span><button type="button" class="mem-del" data-del-note="${esc(n.id)}" title="Supprimer">✕</button></div>`).join('')
+        : '<div class="empty-txt" style="padding:4px 0">Aucune note mémorisée</div>';
+      const facts = Array.isArray(mem?.facts) ? mem.facts : [];
+      $('memFactsList').textContent = facts.length
+        ? 'Faits appris : ' + facts.slice(0, 5).map((f) => `${f.text} (${f.weight})`).join(' · ')
+        : 'Faits appris : aucun';
+    }
+
     document.querySelectorAll('#autoDelegateSeg button, #settingsAutoSeg button').forEach((b) => {
       b.onclick = () => setAutoDelegate(b.dataset.auto === 'true');
+    });
+    document.querySelectorAll('#permSeg button').forEach((b) => {
+      b.onclick = async () => {
+        try {
+          await api('/api/settings', { permissionMode: b.dataset.perm });
+          flash(`Permissions : ${b.textContent}`);
+          await poll();
+        } catch (e) { flash(e.message, 'toast', true); }
+      };
+    });
+    $('undoQuickBtn').onclick = async () => {
+      try {
+        const res = await api('/api/undo', {});
+        flash(res.ok ? `Annulé : ${res.undone.rel}` : (res.message || 'Rien à annuler'));
+        await poll();
+      } catch (e) { flash(e.message, 'toast', true); }
+    };
+    $('savePrepromptBtn').onclick = async () => {
+      try {
+        await api('/api/memory', { action: 'preprompt', text: $('prepromptInput').value });
+        flash('Pré-prompt enregistré', 'memToast');
+        await poll();
+      } catch (e) { flash(e.message, 'memToast', true); }
+    };
+    $('addMemNoteBtn').onclick = async () => {
+      const txt = $('memNoteInput').value.trim();
+      if (!txt) return;
+      $('memNoteInput').value = '';
+      try {
+        await api('/api/memory', { action: 'remember', text: txt });
+        flash('Note ajoutée', 'memToast');
+        await poll();
+      } catch (e) { flash(e.message, 'memToast', true); }
+    };
+    $('clearMemBtn').onclick = async () => {
+      try {
+        await api('/api/memory', { action: 'clear' });
+        flash('Mémoire vidée', 'memToast');
+        await poll();
+      } catch (e) { flash(e.message, 'memToast', true); }
+    };
+    $('memNotesList').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-del-note]');
+      if (!btn) return;
+      try {
+        await api('/api/memory', { action: 'forget', id: btn.dataset.delNote });
+        await poll();
+      } catch (err) { flash(err.message, 'memToast', true); }
     });
     document.querySelectorAll('#mode button').forEach((b) => {
       b.onclick = async () => {
@@ -1339,6 +1498,7 @@
           cutoffPercent: Number($('cutoffInput').value),
           reuseChat: $('reuseChatInput').checked,
           showReasoning: $('showReasoningInput').checked,
+          useClientTools: $('useClientToolsInput').checked,
         });
         flash('Réglages enregistrés', 'essentialToast');
         await poll();
