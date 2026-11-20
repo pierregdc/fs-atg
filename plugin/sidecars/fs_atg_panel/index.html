@@ -32,6 +32,7 @@
     html, body { margin: 0; padding: 0; min-height: 100%; }
     body {
       padding: 11px;
+      overflow-x: hidden;
       background:
         radial-gradient(420px 240px at 105% -10%, rgba(79, 140, 255, .20), transparent 65%),
         linear-gradient(160deg, #0d1b38 0%, #091122 34%, #060a12 100%) !important;
@@ -113,14 +114,28 @@
         linear-gradient(145deg, rgba(79, 140, 255, .16), rgba(15, 23, 42, .82) 48%, rgba(9, 13, 22, .94)),
         var(--fs-card);
     }
-    .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 11px; }
+    .hero-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
     .brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .brand-logo { width: 24px; height: 24px; border-radius: 7px; object-fit: contain; flex-shrink: 0; }
-    .hero h1 { font-size: 13px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px; letter-spacing: -.01em; }
+    .brand-logo { width: 26px; height: 26px; padding: 2px; border-radius: 7px; object-fit: contain; flex-shrink: 0; background: color-mix(in srgb, var(--fs-accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--fs-blue-light) 26%, transparent); }
+    .brand-txt { min-width: 0; }
+    .hero h1 { font-size: 13px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 5px; letter-spacing: -.01em; flex-wrap: wrap; }
     .badge {
       font-size: 8.5px; font-weight: 800; border-radius: var(--fs-pill);
       padding: 2px 6px; background: var(--fs-accent); color: #fff; letter-spacing: .05em;
     }
+    .ver-badge {
+      font-size: 8.5px; font-weight: 700; border-radius: var(--fs-pill);
+      padding: 1.5px 5.5px;
+      background: color-mix(in srgb, var(--fs-cyan) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--fs-cyan) 32%, transparent);
+      color: var(--fs-cyan); font-variant-numeric: tabular-nums;
+    }
+    .ws-line {
+      display: inline-flex; align-items: center; gap: 4px; margin-top: 2px;
+      font-size: 10px; font-weight: 600; color: var(--fs-blue-light);
+      max-width: 215px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ws-line[hidden] { display: none; }
     .status-pill {
       display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600;
       padding: 3px 8px; border-radius: var(--fs-pill);
@@ -150,14 +165,20 @@
       outline: none;
     }
     .gauge-wrap:focus-visible .cutoff-knob { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fs-warn) 38%, transparent); }
-    .gauge { height: 8px; background: color-mix(in srgb, var(--fs-fg) 10%, transparent); border-radius: var(--fs-pill); overflow: hidden; }
-    .gauge > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--fs-blue-deep), var(--fs-blue-light)); border-radius: var(--fs-pill); transition: width .35s ease, background .25s; pointer-events: none; }
-    .gauge.low > div { background: var(--fs-warn); }
-    .gauge.crit > div { background: var(--fs-bad); }
+    .gauge { position: relative; height: 8px; background: color-mix(in srgb, var(--fs-fg) 10%, transparent); border-radius: var(--fs-pill); overflow: hidden; }
+    .gauge > #bar { position: relative; z-index: 1; height: 100%; width: 0; background: linear-gradient(90deg, var(--fs-blue-deep), var(--fs-blue-light)); border-radius: var(--fs-pill); transition: width .35s ease, background .25s; pointer-events: none; }
+    .gauge.low > #bar { background: var(--fs-warn); }
+    .gauge.crit > #bar { background: var(--fs-bad); }
+    .cutoff-zone {
+      position: absolute; left: 0; top: 0; bottom: 0; width: 15%; z-index: 2; pointer-events: none;
+      background: repeating-linear-gradient(-45deg, rgba(245, 158, 11, .26), rgba(245, 158, 11, .26) 4px, rgba(245, 158, 11, .10) 4px, rgba(245, 158, 11, .10) 8px);
+      border-right: 1.5px solid rgba(251, 191, 36, .85);
+      transition: width .12s ease;
+    }
     .cutoff-tick {
       position: absolute; top: 1px; transform: translateX(-50%);
       display: flex; flex-direction: column; align-items: center;
-      padding: 0 8px; cursor: grab; z-index: 2;
+      padding: 0 8px; cursor: grab; z-index: 3;
     }
     .gauge-wrap.dragging .cutoff-tick, .cutoff-tick:active { cursor: grabbing; }
     .cutoff-knob {
@@ -179,7 +200,7 @@
     .mini-pill.on { background: color-mix(in srgb, var(--fs-warn) 22%, transparent); border-color: color-mix(in srgb, var(--fs-warn) 50%, transparent); color: #fcd34d; }
 
     /* Hero Synthetic Pills + Auto/Manual Switch */
-    .hero-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 9px; }
+    .hero-pills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 9px; }
     .synth-pill {
       padding: 5px 8px; border-radius: 9px;
       background: color-mix(in srgb, var(--fs-fg) 4%, transparent);
@@ -200,33 +221,64 @@
     .perm-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 5px; }
     .perm-top span { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fs-muted); }
     .seg-3 {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px;
       background: color-mix(in srgb, var(--fs-bg) 75%, #000);
       border: 1px solid var(--fs-line); border-radius: 9px; padding: 3px;
     }
     .seg-3 button {
       border: 0; background: transparent; color: var(--fs-muted);
-      padding: 5px 4px; border-radius: 7px; cursor: pointer;
-      font-size: 10.5px; font-weight: 650; transition: background .15s, color .15s;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      padding: 5px 3px; border-radius: 7px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+      font-size: 10px; font-weight: 650; transition: background .15s, color .15s;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
     }
     .seg-3 button:hover { color: var(--fs-fg); }
     .seg-3 button.on { background: color-mix(in srgb, var(--fs-accent) 22%, transparent); color: var(--fs-fg); }
+    .seg-3 button.on .ico { color: var(--fs-blue-light); }
     .seg-3 button[data-perm="full"].on { background: color-mix(in srgb, var(--fs-warn) 22%, transparent); color: #fcd34d; }
+    .seg-3 button[data-perm="full"].on .ico { color: #fcd34d; }
+    .undo-wrap { position: relative; display: inline-flex; align-items: stretch; }
+    .undo-wrap[hidden] { display: none; }
     .undo-pill {
       border: 1px solid color-mix(in srgb, var(--fs-warn) 45%, transparent);
       background: color-mix(in srgb, var(--fs-warn) 14%, transparent);
       color: #fcd34d; border-radius: 7px; padding: 2px 7px;
       font-size: 10px; font-weight: 650; cursor: pointer; white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .undo-wrap .undo-pill:first-child { border-radius: 7px 0 0 7px; }
+    .undo-drop {
+      border-radius: 0 7px 7px 0 !important; border-left: 0 !important;
+      padding: 2px 5px !important; font-size: 9px !important;
     }
     .undo-pill:hover { background: color-mix(in srgb, var(--fs-warn) 24%, transparent); }
+    .undo-popover {
+      position: absolute; top: calc(100% + 5px); right: 0; left: auto;
+      width: 268px; max-width: calc(100vw - 36px); z-index: 60;
+    }
+    .undo-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      padding: 5px 6px; border-radius: 7px; font-size: 10.5px;
+    }
+    .undo-row:hover { background: color-mix(in srgb, var(--fs-fg) 5%, transparent); }
+    .undo-meta { min-width: 0; flex: 1; }
+    .undo-path { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; color: var(--fs-fg); }
+    .undo-sub { font-size: 9.5px; color: var(--fs-faint); }
+    .undo-mini {
+      border: 1px solid color-mix(in srgb, var(--fs-warn) 40%, transparent);
+      background: color-mix(in srgb, var(--fs-warn) 12%, transparent);
+      color: #fcd34d; border-radius: 6px; padding: 2px 6px;
+      font-size: 9.5px; font-weight: 650; cursor: pointer; flex-shrink: 0;
+    }
+    .undo-mini:hover { background: color-mix(in srgb, var(--fs-warn) 24%, transparent); }
     .hist-badges { display: inline-flex; gap: 4px; margin-left: 5px; vertical-align: middle; }
     .hchip {
       font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 5px;
       background: color-mix(in srgb, var(--fs-accent) 18%, transparent);
       color: var(--fs-blue-light); border: 1px solid color-mix(in srgb, var(--fs-accent) 30%, transparent);
+      font-variant-numeric: tabular-nums;
     }
-    .mem-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; max-height: 130px; overflow-y: auto; }
+    .mem-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; max-height: 150px; overflow-y: auto; }
     .mem-item {
       display: flex; align-items: center; justify-content: space-between; gap: 6px;
       padding: 4px 7px; border-radius: 7px; font-size: 10.5px;
@@ -236,29 +288,47 @@
     .mem-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mem-del { background: transparent; border: 0; color: var(--fs-muted); cursor: pointer; font-size: 11px; padding: 0 3px; }
     .mem-del:hover { color: var(--fs-bad); }
+    .fact-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .fact-pill {
+      font-size: 10px; padding: 2px 7px; border-radius: var(--fs-pill);
+      background: color-mix(in srgb, var(--fs-accent) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--fs-accent) 28%, transparent);
+      color: var(--fs-blue-light);
+    }
 
     .auto-box {
-      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--fs-line-soft);
+      margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--fs-line-soft);
     }
-    .auto-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .auto-head span { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fs-muted); }
+    .auto-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .auto-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fs-muted); white-space: nowrap; }
     .seg {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px;
       background: color-mix(in srgb, var(--fs-bg) 75%, #000);
       border: 1px solid var(--fs-line); border-radius: 9px; padding: 3px;
     }
+    .seg.seg-compact button { padding: 4px 8px; font-size: 10.5px; }
     .seg button {
       border: 0; background: transparent; color: var(--fs-muted);
       padding: 6px 8px; border-radius: 7px; cursor: pointer;
       display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-      font-size: 11px; font-weight: 650; transition: background .15s, color .15s;
+      font-size: 11px; font-weight: 650; transition: background .15s, color .15s; white-space: nowrap;
     }
     .seg button:hover { color: var(--fs-fg); }
     .seg button.on { background: color-mix(in srgb, var(--fs-accent) 22%, transparent); color: var(--fs-fg); }
     .seg button.on .ico { color: var(--fs-accent); }
-    .auto-desc { margin-top: 5px; font-size: 10.5px; color: var(--fs-muted); }
+    .auto-desc { margin-top: 4px; font-size: 10px; color: var(--fs-muted); }
 
     /* Composer */
+    .cmd-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
+    .cmd-pill {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px; font-weight: 650; padding: 2px 7px; border-radius: 6px;
+      background: color-mix(in srgb, var(--fs-fg) 4%, transparent);
+      border: 1px solid var(--fs-line); color: var(--fs-blue-light);
+      cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+    }
+    .cmd-pill:hover { background: color-mix(in srgb, var(--fs-accent) 14%, transparent); border-color: color-mix(in srgb, var(--fs-accent) 42%, transparent); color: var(--fs-fg); }
+    .cmd-pill.on { background: color-mix(in srgb, var(--fs-accent) 22%, transparent); border-color: color-mix(in srgb, var(--fs-accent) 60%, transparent); color: #fff; }
     textarea, select, input[type="text"], input[type="password"], input[type="number"] {
       width: 100%; background: var(--fs-input); color: var(--fs-fg);
       border: 1px solid var(--fs-line); border-radius: var(--fs-r-sm);
@@ -305,7 +375,7 @@
     kbd { background: color-mix(in srgb, var(--fs-fg) 8%, transparent); border: 1px solid var(--fs-line-soft); border-radius: 5px; padding: 1px 5px; font-size: 9.5px; }
 
     .btn {
-      background: var(--fs-accent);
+      background: linear-gradient(135deg, var(--fs-accent), var(--fs-blue-deep));
       color: #fff; border: 0; border-radius: 9px; padding: 6px 12px; min-height: 30px;
       cursor: pointer; font-weight: 600; font-size: 11px;
       display: inline-flex; align-items: center; gap: 5px; transition: filter .15s, background .15s;
@@ -370,6 +440,21 @@
       font-size: 10.5px; white-space: pre-wrap; word-break: break-word;
       max-height: 220px; overflow: auto; margin: 0; color: var(--fs-fg);
     }
+    .hist-sec { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--fs-line-soft); }
+    .hist-sec-lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fs-faint); margin-bottom: 4px; }
+    .hist-row-det {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      font-size: 10px; padding: 2px 0; color: var(--fs-muted);
+    }
+    .hist-row-det code {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px;
+      color: var(--fs-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .diff-stat { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9.5px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .diff-add { color: #34d399; }
+    .diff-del { color: #f87171; }
+    .exit-ok { color: #34d399; font-weight: 650; }
+    .exit-bad { color: #f87171; font-weight: 650; }
     .hist-actions { display: flex; gap: 6px; margin-top: 8px; }
 
     /* Models Tab */
@@ -411,11 +496,12 @@
     .log-det { margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9.5px; color: var(--fs-muted); white-space: pre-wrap; word-break: break-all; }
 
     /* Settings */
+    .settings-subseg { margin-bottom: 10px; }
     .settings-title { font-size: 12px; font-weight: 700; margin: 0 0 10px; display: flex; align-items: center; gap: 7px; }
     .field { margin-bottom: 10px; }
     .field label { display: block; font-size: 10.5px; font-weight: 600; color: var(--fs-muted); margin-bottom: 4px; }
     .field .f-help { font-size: 10px; color: var(--fs-faint); margin-top: 3px; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .toggle-row {
       display: flex; justify-content: space-between; align-items: center; gap: 8px;
       padding: 8px 10px; background: var(--fs-input); border: 1px solid var(--fs-line); border-radius: 10px;
@@ -493,7 +579,13 @@
       <div class="hero-top">
         <div class="brand">
           <img class="brand-logo" alt="France Student" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASzSURBVGhD7VhbjF1jFP6m1dZdoo2G0NaYurTSqHPO3mudkRiioWlKCEGlLuGJEiIRlxeJNwkRqTQVjBAVE52aObP/9Z/21GSIoYJU6INbiw6pUGXKVMt0ZK2953bOmenLXM7D/pL1cvbeZ3/f/r/1r7V+IEWKFClSpEhRBcuKJyGI1iDouAncfUL55VpFnZFldzlI3gfLf2B/BCwlUDFEU+fxdk9NQskF0fmg6HWQ/AWWgZi8CRgAu16E7kVkO+qx0s0pf3z6sKRlNoLiuWB5DOT2xWTlX7DrActrYNkElp/j1bBre0HRQ8i0L0Bm46zyv5tCDMxAxp8J9reD5bOYtBwFy+9gvwWhv8LygP3p4ML1IBGQ/DG0MiQ7EMotCNvmA0/OKP/3yUQdQncqAr8K7Apg+dOIkxwGy3sgdxsyhXnAgN53Nsg9AXIbQO2XIpC7Qe4jsKitjoLdAZBsRhitQGPbKeUvmnjokoeyDOReActPZgty/SD3NUL/IEgW2crYvYV5YFkPloNg+Qfk3kTQOhfc1oBQHgXJbrD028qR/AjyG0DbLkJT53Hlr50YZD6ZhdDfB3J7jBB7/eq/gqIXwIUL0eDmgPzjCISNfChPJ6ujvtck7gNFz5qtNOFzfinYvRxbzmx1CCzfguSOyRHBLbo9qmWUkL5su3k451bbFqlJyfJ5ksiaE38Pkx+KPrDvQl5ythpqG9tyXWf8USyHNqGpWbfbCYYK0ESMiXSD/FUJURXTl2ydgzuNEiknPxj9thr6tdlfg6A0F2FhMVg+teskbyX1YoIxSoDvQrZUH3tcyfjxCI8XmgMlBFEWLDumVkBYmm8FKV+8ESzfH+OrjxW9yMu9aDT7TYOAQZBcm1ipnOAxwv2ArFuO3DvnTK+AzLbTwO6LSoJjhe1gWtQ2WqGbdgEKcivNEhVkq4ZW4qdMuKImBOhL456nnGxlkOsFddyAJV/OtmdrQkC4dTHIWoRKwpWhK7DTeilFbQjwa6sQHS9+Q7Z4sT1bEwLYvVqF5FihSbzLqrFi2gUsalb/f1OF6Hjxi80RiqkXIN1o3LZgqI8P/XXDU1jV0CKnVXfEb9rcyTPxFtzWMDWtBEcdCYFDIO9AUWjdpSYjyUvW38eDzUjy2krvAkkrSHrATps8/W0f2K9D4K4Eu+1DHa41c5MhQNtpcveDZQ/IHR5up+V5ZOUCE6K1gNzbcaNmheoIyG81q2iLvHzzwuQ/1iNw65K5Yv+QUHbfIfR3TU47rVARuegSkCVsPOfGA81XIHkA+WihtcIZdx4ougfsnrP+XlfP0DITl5XqQe4RULQblAw0OidrVc61L5088sOoM9+SWw0WtVQ8UsZfsAuB3Gotsh2faI5oDNQh33oGSO4EuQ+HR0p/AOy2IJCrp2akHIWWmWhsOysmJTtHDPX7ze86qGQKJ5q1wuIKkA5DSljtYkctH4OjNfFuNrVD/WgMHqvo8M5eE1NF6Jy7FyTNIPdGYrfB5O5B6B42u03vsUoZ1OeazEqYhsbJEQdbchChzsBtDZMzMk4M6sw2eiZE8kEyYupqvItcRz5J5ho9WixHU+fJCKO1IHeziUqRIkWKFClSVOJ/3Vji70GskJcAAAAASUVORK5CYII=" />
-          <h1>France Student <span class="badge">ATG</span></h1>
+          <div class="brand-txt">
+            <h1>France Student <span class="badge">ATG</span> <span class="ver-badge">v2.0</span></h1>
+            <div class="ws-line" id="heroWsBadge" hidden>
+              <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span id="heroWsName"></span>
+            </div>
+          </div>
         </div>
         <span class="status-pill" id="connPill"><span class="dot"></span><span id="connTxt">Chargement…</span></span>
       </div>
@@ -511,7 +603,7 @@
            aria-label="Coupe-circuit sur la jauge de budget"
            aria-valuemin="0" aria-valuemax="90" aria-valuenow="15" aria-valuetext="15 %"
            title="Cliquer ou glisser le curseur orange pour régler le coupe-circuit (0 à 90 %)">
-        <div class="gauge" id="gaugeBar"><div id="bar"></div></div>
+        <div class="gauge" id="gaugeBar"><div class="cutoff-zone" id="cutoffZone"></div><div id="bar"></div></div>
         <div class="cutoff-tick" id="cutoffTick" style="left: 15%">
           <span class="cutoff-knob"></span>
           <span class="cutoff-lbl" id="cutoffNum">15%</span>
@@ -545,37 +637,59 @@
       </div>
 
       <div class="auto-box">
-        <div class="auto-head">
-          <span>Utilisation Antigravity</span>
+        <div class="auto-row">
+          <span class="auto-lbl">Délégation</span>
+          <div class="seg seg-compact" id="autoDelegateSeg">
+            <button type="button" data-auto="true" class="on">
+              <svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Automatique
+            </button>
+            <button type="button" data-auto="false">
+              <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              Manuel
+            </button>
+          </div>
         </div>
-        <div class="seg" id="autoDelegateSeg">
-          <button type="button" data-auto="true" class="on">
-            <svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            Automatique
-          </button>
-          <button type="button" data-auto="false">
-            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            Manuel
-          </button>
-        </div>
-        <div class="auto-desc" id="autoDelegateDesc">Prioritaire par défaut : délègue les tâches de code pour économiser Antigravity.</div>
+        <div class="auto-desc" id="autoDelegateDesc">Automatique : France Student gère plans, patchs et tâches ciblées pour économiser Antigravity.</div>
       </div>
 
       <div class="perm-box">
         <div class="perm-top">
           <span>Permissions PC</span>
-          <button type="button" class="undo-pill" id="undoQuickBtn" hidden title="Annuler la dernière écriture de France Student (/undo)">Annuler (0)</button>
+          <div class="undo-wrap" id="undoWrap" hidden>
+            <button type="button" class="undo-pill" id="undoQuickBtn" hidden title="Annuler la dernière écriture de France Student (/undo)">Annuler (0)</button>
+            <button type="button" class="undo-pill undo-drop" id="undoListBtn" aria-label="Voir la pile /undo" title="Voir les fichiers annulables">▾</button>
+            <div class="popover undo-popover" id="undoPopover" hidden>
+              <div class="pop-head"><span>Pile /undo</span><span>Clic pour restaurer</span></div>
+              <div id="undoPopoverList"></div>
+            </div>
+          </div>
         </div>
         <div class="seg-3" id="permSeg">
-          <button type="button" data-perm="plan">Lecture seule</button>
-          <button type="button" data-perm="acceptEdits">Édition + Undo</button>
-          <button type="button" data-perm="full">Complet + Shell</button>
+          <button type="button" data-perm="plan">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span>Lecture seule</span>
+          </button>
+          <button type="button" data-perm="acceptEdits">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            <span>Édition + Undo</span>
+          </button>
+          <button type="button" data-perm="full">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <span>Complet + Shell</span>
+          </button>
         </div>
         <div class="ro-note" id="permDesc">Édition + Undo : écriture directe avec sauvegarde /undo</div>
       </div>
     </div>
 
     <div class="card">
+      <div class="cmd-bar" id="cmdBar" aria-label="Commandes rapides">
+        <button type="button" class="cmd-pill" data-cmd="/patch" title="Modification ciblée">/patch</button>
+        <button type="button" class="cmd-pill" data-cmd="/plan" title="Plan sans écriture">/plan</button>
+        <button type="button" class="cmd-pill" data-cmd="/eco" title="Profil Éco">/eco</button>
+        <button type="button" class="cmd-pill" data-cmd="/remember" title="Mémoriser une règle projet">/remember</button>
+      </div>
       <textarea id="task" placeholder="Ex : /patch ajoute un tri, /plan architecture, /eco fonction JS…"></textarea>
       <div class="tier-row" id="tierRow">
         <button class="chip on" data-choice="">
@@ -655,118 +769,140 @@
 
   <!-- TAB 4: RÉGLAGES -->
   <div id="tab-settings" class="view" hidden>
-    <div class="card">
-      <div class="settings-title">
-        <svg class="ico" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-        Connexion France Student
-      </div>
-      <div class="field">
-        <label>Clé API ou Jeton de session</label>
-        <div class="secret-control">
-          <input type="password" id="apiKeyInput" autocomplete="off" placeholder="Colle une clé pour la mémoriser" />
-          <button class="eye-btn" id="toggleKeyVisibility" type="button" aria-label="Afficher la clé enregistrée" title="Afficher la clé enregistrée">
-            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
-          </button>
-        </div>
-        <div class="f-help" id="keyStateHelp">Chargement…</div>
-      </div>
-      <div class="actions">
-        <button class="btn sm" id="saveKeyBtn">Enregistrer &amp; Tester</button>
-        <button class="btn danger sm" id="clearKeyBtn">Effacer</button>
-        <span class="toast" id="settingsToast"></span>
-      </div>
+    <div class="seg-3 settings-subseg" id="settingsSubSeg">
+      <button type="button" data-sub="essential" class="on">Essentiel</button>
+      <button type="button" data-sub="memory">Mémoire <span class="tab-badge" id="memCntBadge" hidden>0</span></button>
+      <button type="button" data-sub="advanced">Avancé</button>
     </div>
 
-    <div class="card">
-      <div class="settings-title">
-        <svg class="ico" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-        Comportement essentiel
-      </div>
-      <div class="field">
-        <label>Activation dans Antigravity</label>
-        <div class="seg" id="settingsAutoSeg">
-          <button type="button" data-auto="true" class="on">Automatique</button>
-          <button type="button" data-auto="false">Manuel</button>
+    <div id="settings-sub-essential">
+      <div class="card">
+        <div class="settings-title">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          Connexion France Student
+        </div>
+        <div class="field">
+          <label>Clé API ou Jeton de session</label>
+          <div class="secret-control">
+            <input type="password" id="apiKeyInput" autocomplete="off" placeholder="Colle une clé pour la mémoriser" />
+            <button class="eye-btn" id="toggleKeyVisibility" type="button" aria-label="Afficher la clé enregistrée" title="Afficher la clé enregistrée">
+              <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
+            </button>
+          </div>
+          <div class="f-help" id="keyStateHelp">Chargement…</div>
+        </div>
+        <div class="actions">
+          <button class="btn sm" id="saveKeyBtn">Enregistrer &amp; Tester</button>
+          <button class="btn danger sm" id="clearKeyBtn">Effacer</button>
+          <span class="toast" id="settingsToast"></span>
         </div>
       </div>
-      <div class="field">
-        <label>Profil de routage par défaut</label>
-        <select id="routingProfileInput" disabled>
-          <option value="quality">Qualité — Modèles forts (recommandé)</option>
-          <option value="eco">Éco — Modèles légers</option>
-          <option value="fast">Rapide — Latence minimale</option>
-          <option value="security">Sécurité — Modèles forts</option>
-          <option value="refactor">Refonte — Modèles forts</option>
-        </select>
-      </div>
-      <div class="grid-2">
+
+      <div class="card">
+        <div class="settings-title">
+          <svg class="ico" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          Comportement essentiel
+        </div>
         <div class="field">
-          <label>Exécution locale</label>
-          <div class="seg" id="mode">
-            <button type="button" data-mode="eco">Éco</button>
-            <button type="button" data-mode="fast">Rapide</button>
+          <label>Activation dans Antigravity</label>
+          <div class="seg" id="settingsAutoSeg">
+            <button type="button" data-auto="true" class="on">Automatique</button>
+            <button type="button" data-auto="false">Manuel</button>
           </div>
         </div>
         <div class="field">
-          <label>Coupe-circuit (%)</label>
-          <div style="display:flex;gap:5px;align-items:center">
-            <input type="number" id="cutoffInput" min="0" max="90" value="" placeholder="—" disabled />
-            <button type="button" class="btn ghost sm" id="useAllBtn" title="Désactiver la réserve (0 %)" disabled>0 %</button>
+          <label>Profil de routage par défaut</label>
+          <select id="routingProfileInput" disabled>
+            <option value="quality">Qualité — Modèles forts (recommandé)</option>
+            <option value="eco">Éco — Modèles légers</option>
+            <option value="fast">Rapide — Latence minimale</option>
+            <option value="security">Sécurité — Modèles forts</option>
+            <option value="refactor">Refonte — Modèles forts</option>
+          </select>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Exécution locale</label>
+            <div class="seg" id="mode">
+              <button type="button" data-mode="eco">Éco</button>
+              <button type="button" data-mode="fast">Rapide</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Coupe-circuit (%)</label>
+            <div style="display:flex;gap:5px;align-items:center">
+              <input type="number" id="cutoffInput" min="0" max="90" value="" placeholder="—" disabled />
+              <button type="button" class="btn ghost sm" id="useAllBtn" title="Désactiver la réserve (0 %)" disabled>0 %</button>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="field">
-        <div class="toggle-row">
-          <span>Conserver la session de chat (compaction auto)</span>
-          <label class="switch"><input type="checkbox" id="reuseChatInput" disabled /><span class="slider"></span></label>
+        <div class="field">
+          <div class="toggle-row">
+            <span>Conserver la session de chat (compaction auto)</span>
+            <label class="switch"><input type="checkbox" id="reuseChatInput" disabled /><span class="slider"></span></label>
+          </div>
         </div>
-      </div>
-      <div class="field">
-        <div class="toggle-row">
-          <span>Outils client natifs (écriture/lecture autonome)</span>
-          <label class="switch"><input type="checkbox" id="useClientToolsInput" disabled /><span class="slider"></span></label>
+        <div class="field">
+          <div class="toggle-row">
+            <span>Outils client natifs (écriture/lecture autonome)</span>
+            <label class="switch"><input type="checkbox" id="useClientToolsInput" disabled /><span class="slider"></span></label>
+          </div>
         </div>
-      </div>
-      <div class="field">
-        <div class="toggle-row">
-          <span>Résumé de raisonnement</span>
-          <label class="switch"><input type="checkbox" id="showReasoningInput" disabled /><span class="slider"></span></label>
+        <div class="field">
+          <div class="toggle-row">
+            <span>Résumé de raisonnement</span>
+            <label class="switch"><input type="checkbox" id="showReasoningInput" disabled /><span class="slider"></span></label>
+          </div>
         </div>
-      </div>
-      <div class="actions">
-        <button type="button" class="btn ghost sm" id="compactSessionBtn">Compacter la session</button>
-        <button type="button" class="btn sm" id="saveEssentialBtn" disabled>Enregistrer</button>
-        <span class="toast" id="essentialToast"></span>
+        <div class="actions">
+          <button type="button" class="btn ghost sm" id="compactSessionBtn">Compacter la session</button>
+          <button type="button" class="btn sm" id="saveEssentialBtn" disabled>Enregistrer</button>
+          <span class="toast" id="essentialToast"></span>
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="sec-head" style="margin-top:0"><span>Mémoire projet &amp; Pré-prompt</span><span id="memWsTag">—</span></div>
-      <div class="field">
-        <label>Pré-prompt persistant (injecté au 1ᵉʳ tour)</label>
-        <div style="display:flex;gap:6px">
-          <input type="text" id="prepromptInput" placeholder="Ex : Réponds en français, tests avec node --test…" disabled />
-          <button type="button" class="btn ghost sm" id="savePrepromptBtn" disabled>OK</button>
+    <div id="settings-sub-memory" hidden>
+      <div class="card">
+        <div class="settings-title" style="justify-content:space-between">
+          <span style="display:inline-flex;align-items:center;gap:7px">
+            <svg class="ico" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Mémoire projet &amp; Pré-prompt
+          </span>
+          <span class="hchip" id="memWsTag">—</span>
+        </div>
+        <div class="field">
+          <label>Pré-prompt persistant (injecté au 1ᵉʳ tour)</label>
+          <textarea id="prepromptInput" rows="3" style="min-height:66px;margin-bottom:6px" placeholder="Ex : Réponds en français, exécute node --test avant de conclure…" disabled></textarea>
+          <div class="actions">
+            <button type="button" class="btn sm" id="savePrepromptBtn" disabled>Enregistrer pré-prompt</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Notes projet (/remember)</label>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="memNoteInput" placeholder="Ajouter une note persistante…" disabled />
+            <button type="button" class="btn sm" id="addMemNoteBtn" disabled>+</button>
+          </div>
+          <div class="mem-list" id="memNotesList"></div>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn ghost sm" id="clearMemBtn" disabled>Vider mémoire</button>
+          <span class="toast" id="memToast"></span>
+        </div>
+        <div class="hist-sec">
+          <div class="hist-sec-lbl">Faits appris automatiquement</div>
+          <div id="memFactsList" class="fact-chips"><span class="empty-txt" style="padding:2px 0">Aucun fait appris</span></div>
         </div>
       </div>
-      <div class="field">
-        <label>Notes projet (/remember)</label>
-        <div style="display:flex;gap:6px">
-          <input type="text" id="memNoteInput" placeholder="Ajouter une note persistante…" disabled />
-          <button type="button" class="btn sm" id="addMemNoteBtn" disabled>+</button>
-        </div>
-        <div class="mem-list" id="memNotesList"></div>
-      </div>
-      <div class="actions">
-        <button type="button" class="btn ghost sm" id="clearMemBtn" disabled>Vider mémoire</button>
-        <span class="toast" id="memToast"></span>
-      </div>
-      <div class="ro-note" id="memFactsList">Faits appris : aucun</div>
     </div>
 
-    <details class="card settings-fold">
-      <summary>Avancé &amp; Diagnostic</summary>
-      <div class="settings-inner">
+    <div id="settings-sub-advanced" hidden>
+      <div class="card">
+        <div class="settings-title">
+          <svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v18"/><path d="M14 9h4"/><path d="M14 15h4"/></svg>
+          Orchestration &amp; Filtres
+        </div>
         <div class="grid-2">
           <div class="field">
             <label>Agents parallèles</label>
@@ -799,19 +935,23 @@
             <input type="text" id="blockedInput" placeholder="Ex: fable" disabled />
           </div>
         </div>
-        <div class="actions" style="margin-bottom:12px">
+        <div class="actions">
           <button class="btn sm" id="saveSettingsBtn" disabled>Appliquer</button>
           <span class="toast" id="orchToast"></span>
         </div>
-
-        <div style="border-top:1px solid var(--fs-line-soft);padding-top:10px">
-          <div class="actions">
-            <button class="btn ghost sm" id="diagnosticsBtn">Lancer le diagnostic</button>
-          </div>
-          <div class="diagnostic-body" id="diagnosticsBody">Vérifie le trousseau, l’API, les modèles et le quota. Utilise <code>/usage</code> dans Antigravity pour mesurer le quota Antigravity réel.</div>
-        </div>
       </div>
-    </details>
+
+      <div class="card">
+        <div class="settings-title">
+          <svg class="ico" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Diagnostic système
+        </div>
+        <div class="actions">
+          <button class="btn ghost sm" id="diagnosticsBtn">Lancer le diagnostic</button>
+        </div>
+        <div class="diagnostic-body" id="diagnosticsBody">Vérifie le trousseau, l’API, les modèles et le quota. Utilise <code>/usage</code> dans Antigravity pour mesurer le quota Antigravity réel.</div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -850,6 +990,7 @@
       const pct = Math.max(0, Math.min(90, Math.round(Number(val) || 0)));
       const gaugeEl = $('gauge');
       $('cutoffTick').style.left = pct + '%';
+      if ($('cutoffZone')) $('cutoffZone').style.width = pct + '%';
       $('cutoffNum').textContent = pct + '%';
       $('cutoff').textContent = pct + ' %';
       if (gaugeEl) {
@@ -936,12 +1077,17 @@
 
     function renderAutoDelegate() {
       const auto = S.autoDelegate !== false;
+      const perm = S.permissionMode || 'acceptEdits';
       document.querySelectorAll('#autoDelegateSeg button, #settingsAutoSeg button').forEach((b) => {
         b.classList.toggle('on', (b.dataset.auto === 'true') === auto);
       });
-      $('autoDelegateDesc').textContent = auto
-        ? 'Automatique : délègue plans, diagnostics, recherches et blocs ciblés pour économiser les tokens Antigravity.'
-        : 'Manuel : Antigravity n’utilise France Student que sur demande ou commande explicite.';
+      $('autoDelegateDesc').textContent = !auto
+        ? 'Manuel : Antigravity n’utilise France Student que sur demande ou commande explicite.'
+        : perm === 'plan'
+          ? 'Automatique (lecture seule) : délègue plans, revues et /patch sans écriture disque.'
+          : perm === 'full'
+            ? 'Automatique (Complet + Shell) : délègue écritures (/undo) et commandes bornées.'
+            : 'Automatique (Édition + Undo) : délègue modifications et /patch avec sauvegarde /undo.';
     }
 
     function renderTiers() {
@@ -1037,13 +1183,17 @@
         $('history').innerHTML = '<div class="empty-txt">Aucune génération récente</div>';
         return;
       }
+      const undoIds = new Set((Array.isArray(S.undoEntries) ? S.undoEntries : []).map((u) => u.id));
       $('history').innerHTML = '<div class="hist-list">' + S.history.slice(0, 10).map((j) => {
         const jId = j.jobId || j.id || '';
         const title = esc(String(j.title || '').replace(/^\[ATG\]\s*/, ''));
         const ico = j.status === 'done' ? ICO_CHECK : j.status === 'error' ? ICO_X : ICO_PAUSE;
         const respText = j.response || j.summary || j.error || '';
-        const fwCount = Array.isArray(j.filesWritten) ? j.filesWritten.length : 0;
-        const cmdCount = Array.isArray(j.commandsRun) ? j.commandsRun.length : 0;
+        const filesArr = Array.isArray(j.filesWritten) ? j.filesWritten : [];
+        const cmdsArr = Array.isArray(j.commandsRun) ? j.commandsRun : [];
+        const fwCount = filesArr.length;
+        const cmdCount = cmdsArr.length;
+        const savedTok = j.antigravitySavings?.totalTokensSavedEst;
         const badges = [
           fwCount ? `<span class="hchip">${fwCount} fichier(s)</span>` : '',
           cmdCount ? `<span class="hchip">${cmdCount} cmd</span>` : '',
@@ -1051,8 +1201,20 @@
         const sub = [
           shortModel(j.model) || 'Auto',
           j.error ? j.error : (respText ? respText.length + ' car.' : 'terminé'),
+          savedTok > 0 ? `~${fmtNum(savedTok)} tok` : '',
         ].filter(Boolean).join(' · ');
         const open = expandedHistory.has(jId);
+        const filesHtml = open && fwCount ? `<div class="hist-sec"><div class="hist-sec-lbl">Fichiers écrits</div>${filesArr.map((fw) => {
+          const p = fw.path || fw.rel || '';
+          const add = Number(fw.added || 0), del = Number(fw.removed || 0);
+          const canUndo = fw.undoId && undoIds.has(fw.undoId);
+          return `<div class="hist-row-det"><code title="${esc(p)}">${esc(p)}</code><span style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0"><span class="diff-stat"><span class="diff-add">+${add}</span> <span class="diff-del">-${del}</span></span>${canUndo ? `<button type="button" class="undo-mini" data-undo-id="${esc(fw.undoId)}">Annuler</button>` : ''}</span></div>`;
+        }).join('')}</div>` : '';
+        const cmdsHtml = open && cmdCount ? `<div class="hist-sec"><div class="hist-sec-lbl">Commandes exécutées</div>${cmdsArr.map((c) => {
+          const ok = Number(c.exitCode) === 0;
+          const ms = typeof c.durationMs === 'number' ? `${c.durationMs} ms` : '';
+          return `<div class="hist-row-det"><code title="${esc(c.command || '')}">$ ${esc(c.command || '')}</code><span style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0"><span class="${ok ? 'exit-ok' : 'exit-bad'}">exit ${esc(c.exitCode ?? '?')}</span>${ms ? `<span>${esc(ms)}</span>` : ''}</span></div>`;
+        }).join('')}</div>` : '';
         return `<div class="hist-item" data-hist="${esc(jId)}">
           <div class="hist-row">
             <div class="st-ico ${esc(j.status)}">${ico}</div>
@@ -1064,6 +1226,7 @@
           </div>
           ${open ? `<div class="hist-detail">
             <pre class="hist-pre">${esc(respText || 'Aucun contenu.')}</pre>
+            ${filesHtml}${cmdsHtml}
             <div class="hist-actions">
               ${respText && j.status === 'done' ? `<button type="button" class="btn sm" data-copy-resp="${esc(jId)}">Copier</button>` : ''}
               ${j.task ? `<button type="button" class="btn ghost sm" data-rerun-id="${esc(jId)}">Relancer</button>` : ''}
@@ -1212,6 +1375,13 @@
       $('connPill').className = 'status-pill' + (connected ? ' on' : '');
       $('connTxt').textContent = connected ? 'Connecté' : (S.hasKey ? 'Configuré' : 'Hors ligne');
 
+      const wsName = S.lastWorkspaceRoot ? S.lastWorkspaceRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] : '';
+      $('heroWsBadge').hidden = !wsName;
+      if (wsName) {
+        $('heroWsName').textContent = wsName;
+        $('heroWsBadge').title = S.lastWorkspaceRoot;
+      }
+
       const activeCutoff = draggingCutoff !== null ? draggingCutoff : cutoff;
       $('pct').textContent = q == null ? '—' : Math.round(q) + ' %';
       $('bar').style.width = (q == null ? 0 : q) + '%';
@@ -1238,8 +1408,18 @@
           ? 'Complet + Shell : lecture, écriture (/undo) et commandes bornées'
           : 'Édition + Undo : écriture directe avec sauvegarde /undo');
       const undoList = Array.isArray(S.undoEntries) ? S.undoEntries : [];
+      $('undoWrap').hidden = undoList.length === 0;
       $('undoQuickBtn').hidden = undoList.length === 0;
       $('undoQuickBtn').textContent = `Annuler (${undoList.length})`;
+      if (!undoList.length) $('undoPopover').hidden = true;
+      $('undoPopoverList').innerHTML = undoList.slice(0, 8).map((u) => `
+        <div class="undo-row">
+          <div class="undo-meta">
+            <span class="undo-path" title="${esc(u.rel || '')}">${esc(u.rel || '')}</span>
+            <span class="undo-sub">${u.action === 'create' ? 'Créé' : 'Modifié'}${u.at ? ' · ' + fmtAgo(u.at) : ''}</span>
+          </div>
+          <button type="button" class="undo-mini" data-undo-id="${esc(u.id)}">Annuler</button>
+        </div>`).join('');
       renderProjectMemory();
       renderAutoDelegate();
       renderTiers();
@@ -1274,6 +1454,7 @@
       const task = $('task').value.trim();
       if (!task) return;
       $('task').value = '';
+      syncCmdPills();
       hidePopover();
       try {
         await api('/api/delegate', { task, model: selectedChoice || undefined });
@@ -1390,6 +1571,18 @@
       renderModelsTab();
     });
 
+    function switchSettingsSubTab(sub) {
+      document.querySelectorAll('#settingsSubSeg button').forEach((b) => b.classList.toggle('on', b.dataset.sub === sub));
+      $('settings-sub-essential').hidden = sub !== 'essential';
+      $('settings-sub-memory').hidden = sub !== 'memory';
+      $('settings-sub-advanced').hidden = sub !== 'advanced';
+    }
+    function syncCmdPills() {
+      const m = $('task').value.trim().match(/^(\/\S+)/);
+      const cur = m ? m[1].toLowerCase() : '';
+      document.querySelectorAll('#cmdBar .cmd-pill').forEach((b) => b.classList.toggle('on', b.dataset.cmd === cur));
+    }
+
     function renderProjectMemory() {
       const mem = S.projectMemory;
       $('memWsTag').textContent = S.lastWorkspaceRoot ? S.lastWorkspaceRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] : 'Profil global';
@@ -1398,10 +1591,39 @@
         ? notes.map((n) => `<div class="mem-item"><span title="${esc(n.text)}">${esc(n.text)}</span><button type="button" class="mem-del" data-del-note="${esc(n.id)}" title="Supprimer">✕</button></div>`).join('')
         : '<div class="empty-txt" style="padding:4px 0">Aucune note mémorisée</div>';
       const facts = Array.isArray(mem?.facts) ? mem.facts : [];
-      $('memFactsList').textContent = facts.length
-        ? 'Faits appris : ' + facts.slice(0, 5).map((f) => `${f.text} (${f.weight})`).join(' · ')
-        : 'Faits appris : aucun';
+      $('memFactsList').innerHTML = facts.length
+        ? facts.slice(0, 8).map((f) => `<span class="fact-pill" title="Confiance ${esc(f.weight)}">${esc(f.text)} (${esc(f.weight)})</span>`).join('')
+        : '<span class="empty-txt" style="padding:2px 0">Aucun fait appris</span>';
+      const totalMem = notes.length + facts.length;
+      $('memCntBadge').textContent = String(totalMem);
+      $('memCntBadge').hidden = totalMem === 0;
     }
+
+    document.querySelectorAll('#settingsSubSeg button').forEach((b) => {
+      b.onclick = () => switchSettingsSubTab(b.dataset.sub);
+    });
+    document.querySelectorAll('#cmdBar .cmd-pill').forEach((b) => {
+      b.onclick = () => {
+        const cmd = b.dataset.cmd;
+        const raw = $('task').value;
+        const curMatch = raw.match(/^\s*(\/\S+)\s*/);
+        const rest = curMatch ? raw.slice(curMatch[0].length) : raw.replace(/^\s+/, '');
+        $('task').value = (curMatch && curMatch[1].toLowerCase() === cmd) ? rest : `${cmd} ${rest}`;
+        syncCmdPills();
+        $('task').focus();
+      };
+    });
+    $('task').addEventListener('input', syncCmdPills);
+    $('undoListBtn').onclick = (e) => {
+      e.stopPropagation();
+      $('undoPopover').hidden = !$('undoPopover').hidden;
+    };
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        $('undoPopover').hidden = true;
+        hidePopover();
+      }
+    });
 
     document.querySelectorAll('#autoDelegateSeg button, #settingsAutoSeg button').forEach((b) => {
       b.onclick = () => setAutoDelegate(b.dataset.auto === 'true');
@@ -1577,6 +1799,18 @@
     $('tierPopover').addEventListener('mouseleave', () => { popHideTimer = setTimeout(hidePopover, 160); });
 
     document.addEventListener('click', async (e) => {
+      if (!e.target.closest('.undo-wrap')) $('undoPopover').hidden = true;
+      const undoIdBtn = e.target.closest('[data-undo-id]');
+      if (undoIdBtn) {
+        try {
+          const res = await api('/api/undo', { undoId: undoIdBtn.dataset.undoId });
+          flash(res.ok ? `Annulé : ${res.undone.rel}` : (res.message || 'Rien à annuler'));
+          $('undoPopover').hidden = true;
+          await poll();
+        } catch (err) { flash(err.message, 'toast', true); }
+        return;
+      }
+
       const pick = e.target.closest('[data-pick]');
       if (pick && !pick.disabled) {
         selectedChoice = pick.dataset.pick;
