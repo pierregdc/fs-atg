@@ -27,6 +27,7 @@ import {
   getModelCooldown,
   globalSlotStatus,
   groupModelsByTier,
+  loadModelPoliciesFile,
   loadState,
   normalizeProviderTokenUsage,
   normalizeReasoningEffort,
@@ -37,6 +38,7 @@ import {
   removeApiKey,
   resolveApiKey,
   saveApiKey,
+  saveModelPoliciesFile,
   saveState,
   streamGenerationWithRefusalFallback,
   syncAgentsRule,
@@ -562,7 +564,7 @@ app.api('/api/state', async () => {
     contextMode: state.contextMode ?? 'minimal',
     session,
     slots: globalSlotStatus(state),
-    modelPolicies: state.modelPolicies || {},
+    modelPolicies: { ...loadModelPoliciesFile(), ...(state.modelPolicies || {}) },
     allowedModels: state.allowedModels,
     blockedModels: state.blockedModels,
     tiers: state.tiers,
@@ -706,21 +708,24 @@ app.api('/api/settings', (data) => {
   if (['minimal', 'targeted', 'smart'].includes(data.contextMode)) state.contextMode = data.contextMode;
   if (Array.isArray(data.allowedModels)) state.allowedModels = data.allowedModels.map((s) => String(s).trim()).filter(Boolean);
   if (Array.isArray(data.blockedModels)) state.blockedModels = data.blockedModels.map((s) => String(s).trim()).filter(Boolean);
-  if (data.modelPolicy && typeof data.modelPolicy === 'object') {
-    const id = String(data.modelPolicy.id || '').trim();
-    const policy = String(data.modelPolicy.policy || '').trim();
-    if (id && MODEL_POLICIES.includes(policy)) {
-      state.modelPolicies = { ...(state.modelPolicies || {}), [id]: policy };
-      logEvent('info', 'panel', 'settings.model_policy', `Politique modèle ${id} → ${policy}.`, { id, policy });
-    }
-  }
   if (data.modelPolicies && typeof data.modelPolicies === 'object') {
     const clean = {};
     for (const [k, v] of Object.entries(data.modelPolicies)) {
       const id = String(k).trim();
       if (id && MODEL_POLICIES.includes(v)) clean[id] = v;
     }
-    state.modelPolicies = clean;
+    state.modelPolicies = { ...loadModelPoliciesFile(), ...(state.modelPolicies || {}), ...clean };
+  }
+  if (data.modelPolicy && typeof data.modelPolicy === 'object') {
+    const id = String(data.modelPolicy.id || '').trim();
+    const policy = String(data.modelPolicy.policy || '').trim();
+    if (id && MODEL_POLICIES.includes(policy)) {
+      state.modelPolicies = { ...loadModelPoliciesFile(), ...(state.modelPolicies || {}), [id]: policy };
+      logEvent('info', 'panel', 'settings.model_policy', `Politique modèle ${id} → ${policy}.`, { id, policy });
+    }
+  }
+  if (state.modelPolicies && Object.keys(state.modelPolicies).length > 0) {
+    saveModelPoliciesFile(state.modelPolicies);
   }
   if (data.tiers && typeof data.tiers === 'object') {
     const cleanArr = (a) => (Array.isArray(a) ? a.map((s) => String(s).trim()).filter(Boolean) : []);

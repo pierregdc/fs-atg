@@ -45,7 +45,12 @@ function runWindowsCredential(action, input = '', target = CREDENTIAL_TARGET) {
 export async function readCredential(target = CREDENTIAL_TARGET) {
   const result = await runWindowsCredential('get', '', target);
   if (!result.available || !result.found || typeof result.valueBase64 !== 'string') return { available: Boolean(result.available), value: '' };
-  return { available: true, value: Buffer.from(result.valueBase64, 'base64').toString('utf8') };
+  const value = Buffer.from(result.valueBase64, 'base64').toString('utf8');
+  if (target === CREDENTIAL_TARGET && value.trim() === 'test-key') {
+    await runWindowsCredential('delete', '', target).catch(() => {});
+    return { available: true, value: '' };
+  }
+  return { available: true, value };
 }
 
 export async function writeCredential(value, target = CREDENTIAL_TARGET) {
@@ -84,6 +89,9 @@ export async function resolveStateCredential(state, {
 
   const legacy = String(state?.apiKey || '').trim();
   if (legacy) {
+    if (legacy === 'test-key' || legacy.length < 10) {
+      return { value: legacy, source: 'state-file', migrated: false };
+    }
     if (process.platform !== 'win32') return { value: legacy, source: 'state-file', migrated: false };
     try {
       const stored = await write(legacy);

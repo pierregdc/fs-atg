@@ -24,7 +24,7 @@ if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertif
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
-export const CONNECTOR_VERSION = '2.1.0';
+export const CONNECTOR_VERSION = '2.1.2';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const OFFICIAL_WEB_ORIGIN = 'https://ia.francestudent.org';
 export const SESSION_COOKIE_NAMES = Object.freeze(['__Secure-next-auth.session-token', 'next-auth.session-token']);
@@ -229,6 +229,7 @@ export const ANTIGRAVITY_QUOTA_VISIBILITY = Object.freeze({
   message: 'Le connecteur ne peut pas lire le quota du compte Antigravity. Mesurez-le avec /usage avant et après une même tâche.',
 });
 export const STATE_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_state.json');
+export const POLICIES_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_model_policies.json');
 export const LIVE_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_live.json');
 export const SLOT_DIR = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_slots');
 export const LIVE_JOB_TTL_MS = 30_000;
@@ -312,15 +313,70 @@ export const DEFAULT_STATE = {
   history: [],
 };
 
+export function loadModelPoliciesFile(filePath = POLICIES_PATH) {
+  try {
+    if (existsSync(filePath)) {
+      const raw = readFileSync(filePath, 'utf-8').replace(/^\uFEFF/, '');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const out = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          const id = String(k).trim();
+          if (id && MODEL_POLICIES.includes(v)) out[id] = v;
+        }
+        return out;
+      }
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+export function saveModelPoliciesFile(policies, filePath = POLICIES_PATH) {
+  if (!policies || typeof policies !== 'object' || Array.isArray(policies)) return false;
+  const merged = { ...loadModelPoliciesFile(filePath) };
+  for (const [k, v] of Object.entries(policies)) {
+    const id = String(k).trim();
+    if (id && MODEL_POLICIES.includes(v)) merged[id] = v;
+  }
+  const payload = JSON.stringify(merged, null, 2);
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  try {
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(tmp, payload, 'utf-8');
+    try {
+      renameSync(tmp, filePath);
+    } catch {
+      try { unlinkSync(tmp); } catch { /* ignore */ }
+      writeFileSync(filePath, payload, 'utf-8');
+    }
+    return true;
+  } catch {
+    try { unlinkSync(tmp); } catch { /* ignore */ }
+  }
+  return false;
+}
+
 export function loadState() {
+  const filePolicies = loadModelPoliciesFile();
   try {
     if (existsSync(STATE_PATH)) {
       const raw = readFileSync(STATE_PATH, 'utf-8').replace(/^\uFEFF/, '');
       const parsed = JSON.parse(raw);
       const merged = { ...DEFAULT_STATE, ...parsed };
-      merged.modelPolicies = (parsed.modelPolicies && typeof parsed.modelPolicies === 'object' && !Array.isArray(parsed.modelPolicies))
+      const statePolicies = (parsed.modelPolicies && typeof parsed.modelPolicies === 'object' && !Array.isArray(parsed.modelPolicies))
         ? { ...parsed.modelPolicies }
         : {};
+      merged.modelPolicies = { ...statePolicies, ...filePolicies };
+      for (const entry of merged.blockedModels || []) {
+        const str = String(entry || '').trim();
+        if (str.toLowerCase().startsWith('ask:')) {
+          const id = str.slice(4).trim();
+          if (id && !merged.modelPolicies[id]) merged.modelPolicies[id] = 'ask';
+        }
+      }
+      if (Object.keys(merged.modelPolicies).length > 0 && Object.keys(filePolicies).length === 0) {
+        saveModelPoliciesFile(merged.modelPolicies);
+      }
       if (!parsed.stateVersion || Number(parsed.stateVersion) < 2) {
         merged.stateVersion = 2;
         merged.useClientTools = true;
@@ -330,11 +386,20 @@ export function loadState() {
       return merged;
     }
   } catch { /* ignore */ }
-  return { ...DEFAULT_STATE, modelPolicies: {} };
+  return { ...DEFAULT_STATE, modelPolicies: filePolicies };
 }
 
 export function saveState(st) {
-  const payload = JSON.stringify(st, null, 2);
+  const incomingPolicies = (st?.modelPolicies && typeof st.modelPolicies === 'object' && !Array.isArray(st.modelPolicies))
+    ? st.modelPolicies
+    : {};
+  if (Object.keys(incomingPolicies).length > 0) {
+    saveModelPoliciesFile(incomingPolicies);
+  }
+  const diskPolicies = loadModelPoliciesFile();
+  const mergedPolicies = { ...diskPolicies, ...incomingPolicies };
+  if (st && typeof st === 'object') st.modelPolicies = mergedPolicies;
+  const payload = JSON.stringify(st && typeof st === 'object' ? { ...st, modelPolicies: mergedPolicies } : st, null, 2);
   const tmp = `${STATE_PATH}.${process.pid}.tmp`;
   try {
     mkdirSync(dirname(STATE_PATH), { recursive: true });
@@ -676,16 +741,45 @@ export async function apiCredentialStatus(state) {
   };
 }
 
-/** Stores a new user-entered key without ever persisting it in Windows JSON state. */
+/** Stores a new user-entered key (or upgrades a pasted next-auth session cookie) without ever persisting secrets in Windows JSON state. */
 export async function saveApiKey(state, value) {
-  const result = await saveStateCredential(state, value);
+  let cleaned = String(value || '').trim().replace(/^["']+|["']+$/g, '').trim();
+  cleaned = cleaned.replace(/^Bearer\s+/i, '').trim();
+  const cookieMatch = /(?:^|;\s*)(?:__Secure-)?next-auth\.session-token=([^;\s]+)/i.exec(cleaned);
+  if (cookieMatch) cleaned = cookieMatch[1].trim();
+  if (!cleaned) throw new Error('La clé ou le jeton est vide.');
+
+  if (!cleaned.startsWith('sk-') && cleaned.length >= 20) {
+    for (const cookieName of ['next-auth.session-token', '__Secure-next-auth.session-token']) {
+      try {
+        const tok = await fetchAccessTokenFromWebSession({
+          sessionToken: cleaned,
+          cookieName,
+        });
+        const sessionRes = await saveWebSessionAndPrime(
+          state,
+          {
+            sessionToken: tok.renewedCookie || cleaned,
+            cookieName: tok.renewedCookieName || cookieName,
+            deviceId: randomUUID(),
+            updatedAt: Date.now(),
+          },
+          tok.accessToken,
+          tok.expiresAtMs
+        );
+        return { ...sessionRes, mode: 'web-session' };
+      } catch { /* fallback to standard API key if not a valid web session cookie */ }
+    }
+  }
+
+  const result = await saveStateCredential(state, cleaned);
   await clearWebSession(state).catch(() => {});
   clearWebAccessCache();
   state.credentialVersion = randomUUID();
   if (!saveState(state)) {
     throw new Error('La clé est protégée, mais l’état local n’a pas pu être mis à jour. Réessaie avant de fermer Antigravity.');
   }
-  credentialCache = String(value || '').trim();
+  credentialCache = cleaned;
   credentialCacheLoaded = true;
   credentialCacheVersion = String(state.credentialVersion);
   return result;

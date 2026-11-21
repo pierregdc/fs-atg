@@ -683,7 +683,7 @@
         <div class="brand">
           <img class="brand-logo" alt="France Student" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASzSURBVGhD7VhbjF1jFP6m1dZdoo2G0NaYurTSqHPO3mudkRiioWlKCEGlLuGJEiIRlxeJNwkRqTQVjBAVE52aObP/9Z/21GSIoYJU6INbiw6pUGXKVMt0ZK2953bOmenLXM7D/pL1cvbeZ3/f/r/1r7V+IEWKFClSpEhRBcuKJyGI1iDouAncfUL55VpFnZFldzlI3gfLf2B/BCwlUDFEU+fxdk9NQskF0fmg6HWQ/AWWgZi8CRgAu16E7kVkO+qx0s0pf3z6sKRlNoLiuWB5DOT2xWTlX7DrActrYNkElp/j1bBre0HRQ8i0L0Bm46zyv5tCDMxAxp8J9reD5bOYtBwFy+9gvwWhv8LygP3p4ML1IBGQ/DG0MiQ7EMotCNvmA0/OKP/3yUQdQncqAr8K7Apg+dOIkxwGy3sgdxsyhXnAgN53Nsg9AXIbQO2XIpC7Qe4jsKitjoLdAZBsRhitQGPbKeUvmnjokoeyDOReActPZgty/SD3NUL/IEgW2crYvYV5YFkPloNg+Qfk3kTQOhfc1oBQHgXJbrD028qR/AjyG0DbLkJT53Hlr50YZD6ZhdDfB3J7jBB7/eq/gqIXwIUL0eDmgPzjCISNfChPJ6ujvtck7gNFz5qtNOFzfinYvRxbzmx1CCzfguSOyRHBLbo9qmWUkL5su3k451bbFqlJyfJ5ksiaE38Pkx+KPrDvQl5ythpqG9tyXWf8USyHNqGpWbfbCYYK0ESMiXSD/FUJURXTl2ydgzuNEiknPxj9thr6tdlfg6A0F2FhMVg+teskbyX1YoIxSoDvQrZUH3tcyfjxCI8XmgMlBFEWLDumVkBYmm8FKV+8ESzfH+OrjxW9yMu9aDT7TYOAQZBcm1ipnOAxwv2ArFuO3DvnTK+AzLbTwO6LSoJjhe1gWtQ2WqGbdgEKcivNEhVkq4ZW4qdMuKImBOhL456nnGxlkOsFddyAJV/OtmdrQkC4dTHIWoRKwpWhK7DTeilFbQjwa6sQHS9+Q7Z4sT1bEwLYvVqF5FihSbzLqrFi2gUsalb/f1OF6Hjxi80RiqkXIN1o3LZgqI8P/XXDU1jV0CKnVXfEb9rcyTPxFtzWMDWtBEcdCYFDIO9AUWjdpSYjyUvW38eDzUjy2krvAkkrSHrATps8/W0f2K9D4K4Eu+1DHa41c5MhQNtpcveDZQ/IHR5up+V5ZOUCE6K1gNzbcaNmheoIyG81q2iLvHzzwuQ/1iNw65K5Yv+QUHbfIfR3TU47rVARuegSkCVsPOfGA81XIHkA+WihtcIZdx4ougfsnrP+XlfP0DITl5XqQe4RULQblAw0OidrVc61L5088sOoM9+SWw0WtVQ8UsZfsAuB3Gotsh2faI5oDNQh33oGSO4EuQ+HR0p/AOy2IJCrp2akHIWWmWhsOysmJTtHDPX7ze86qGQKJ5q1wuIKkA5DSljtYkctH4OjNfFuNrVD/WgMHqvo8M5eE1NF6Jy7FyTNIPdGYrfB5O5B6B42u03vsUoZ1OeazEqYhsbJEQdbchChzsBtDZMzMk4M6sw2eiZE8kEyYupqvItcRz5J5ho9WixHU+fJCKO1IHeziUqRIkWKFClSVOJ/3Vji70GskJcAAAAASUVORK5CYII=" />
           <div class="brand-txt">
-            <h1>France Student <span class="badge">ATG</span> <span class="ver-badge">v2.1</span></h1>
+            <h1>France Student <span class="badge">ATG</span> <span class="ver-badge">v2.1.2</span></h1>
             <div class="ws-line" id="heroWsBadge" hidden>
               <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
               <span id="heroWsName"></span>
@@ -1101,6 +1101,30 @@
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 
+    const LS_POLICIES_KEY = 'fs_atg_model_policies_v1';
+    function loadLocalPolicies() {
+      try {
+        const raw = localStorage.getItem(LS_POLICIES_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const out = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (k && ['allow', 'ask', 'deny'].includes(v)) out[k] = v;
+          }
+          return out;
+        }
+      } catch {}
+      return {};
+    }
+    function saveLocalPolicies(policies) {
+      try {
+        if (!policies || typeof policies !== 'object') return;
+        const merged = { ...loadLocalPolicies(), ...policies };
+        localStorage.setItem(LS_POLICIES_KEY, JSON.stringify(merged));
+      } catch {}
+    }
+
     let S = {
       active: null,
       history: null,
@@ -1108,7 +1132,7 @@
       modelCatalog: [],
       tierModels: { light: [], medium: [], heavy: [] },
       tiers: { light: [], medium: [], heavy: [] },
-      modelPolicies: {},
+      modelPolicies: loadLocalPolicies(),
       allowedModels: [],
       blockedModels: [],
       autoDelegate: true,
@@ -1119,6 +1143,7 @@
     let selectedChoice = '';
     let pendingApproval = null;
     let settingsLoaded = false;
+    let localPolicySyncedToServer = false;
     let pollTimer = null;
     let loginPollTimer = null;
     let settingsSaveInFlight = 0;
@@ -1218,7 +1243,7 @@
     }
     function policyOf(m) {
       if (!m || !m.id) return 'allow';
-      const explicit = S.modelPolicies?.[m.id];
+      const explicit = S.modelPolicies?.[m.id] ?? loadLocalPolicies()[m.id];
       if (['allow', 'ask', 'deny'].includes(explicit)) return explicit;
       const blocked = (S.blockedModels || []).map((x) => String(x).toLowerCase());
       const low = String(m.id).toLowerCase();
@@ -1621,10 +1646,17 @@
         $('quickCancelLoginBtn').hidden = !inProgress;
       }
       if ($('nokeyTitle') && $('nokeySub')) {
-        $('nokeyTitle').textContent = inProgress ? 'Connexion France Student en cours…' : 'Non connecté à France Student';
+        $('nokeyTitle').textContent = inProgress
+          ? 'Connexion France Student en cours…'
+          : (authState === 'error' ? 'Échec de connexion navigateur' : 'Non connecté à France Student');
         $('nokeySub').textContent = inProgress
           ? (S.authLogin?.message || 'Connecte-toi dans la fenêtre ouverte…')
-          : 'Connecte-toi via la page France Student pour une session longue durée.';
+          : (authState === 'error'
+            ? `${S.authLogin?.error || S.authLogin?.message || 'Connexion impossible.'} — Utilise « Clé manuelle » ci-dessous si besoin.`
+            : 'Connecte-toi via la page France Student pour une session longue durée.');
+      }
+      if (authState === 'error' && $('sessionStatusLine') && !S.hasKey) {
+        $('sessionStatusLine').textContent = S.authLogin?.error || S.authLogin?.message || 'Connexion navigateur impossible — essaie la connexion manuelle.';
       }
     }
 
@@ -1722,11 +1754,23 @@
       const seq = settingsSaveSeq;
       try {
         const nextState = await api('/api/state');
+        const localPol = loadLocalPolicies();
+        const serverPol = (nextState.modelPolicies && typeof nextState.modelPolicies === 'object' && !Array.isArray(nextState.modelPolicies))
+          ? nextState.modelPolicies
+          : {};
         if (settingsSaveInFlight > 0 || seq !== settingsSaveSeq) {
-          nextState.modelPolicies = S.modelPolicies || nextState.modelPolicies || {};
+          nextState.modelPolicies = { ...localPol, ...serverPol, ...(S.modelPolicies || {}) };
           nextState.blockedModels = S.blockedModels || nextState.blockedModels || [];
-        } else if (nextState.modelPolicies === undefined) {
-          nextState.modelPolicies = S.modelPolicies || {};
+        } else {
+          nextState.modelPolicies = { ...localPol, ...serverPol };
+        }
+        saveLocalPolicies(nextState.modelPolicies);
+        const missingOnServer = Object.keys(localPol).some((k) => serverPol[k] !== localPol[k]);
+        if (!localPolicySyncedToServer && missingOnServer && settingsSaveInFlight === 0 && seq === settingsSaveSeq) {
+          localPolicySyncedToServer = true;
+          void api('/api/settings', { modelPolicies: nextState.modelPolicies }).catch(() => { localPolicySyncedToServer = false; });
+        } else if (!missingOnServer) {
+          localPolicySyncedToServer = true;
         }
         S = nextState;
         stateLoad = 'ready';
@@ -2300,6 +2344,7 @@
         clearTimeout(pollTimer);
         settingsSaveSeq += 1;
         S.modelPolicies = { ...(S.modelPolicies || {}), [id]: policy };
+        saveLocalPolicies(S.modelPolicies);
         const baseBlocked = (S.blockedModels || []).filter((b) => {
           const bLow = String(b).toLowerCase();
           if (bLow === idLow || bLow === 'ask:' + idLow) return false;
@@ -2324,7 +2369,7 @@
         renderTiers();
         settingsSaveInFlight += 1;
         try {
-          await api('/api/settings', { modelPolicy: { id, policy }, blockedModels: baseBlocked });
+          await api('/api/settings', { modelPolicy: { id, policy }, modelPolicies: S.modelPolicies, blockedModels: baseBlocked });
           const msg = policy === 'allow'
             ? 'Modèle autorisé (Oui)'
             : policy === 'ask'

@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -6,10 +9,12 @@ import {
   enrichModelsCatalog,
   getModelPolicy,
   groupModelsByTier,
+  loadModelPoliciesFile,
   MODEL_POLICIES,
   modelIsAllowed,
   pickModel,
   rankModelsBestToWorst,
+  saveModelPoliciesFile,
 } from '../plugin/fs_core.mjs';
 
 const AVAILABLE = [
@@ -192,4 +197,30 @@ test('pickModel distingue routingProfile auto, quality (Priorité Fort) et eco',
   const overrideAuto = pickModel('/auto corrige typo readme', AVAILABLE, qualityState);
   assert.equal(overrideAuto.profile, 'auto');
   assert.equal(overrideAuto.model, 'claude-haiku-5-5');
+});
+
+test('saveModelPoliciesFile et loadModelPoliciesFile persistent localement et fusionnent proprement', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'fs-atg-policies-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const filePath = join(dir, '.fsatg_model_policies.json');
+
+  assert.deepEqual(loadModelPoliciesFile(filePath), {});
+
+  assert.equal(saveModelPoliciesFile({
+    'claude-opus-5-5': 'ask',
+    'gpt-6.2-astra': 'deny',
+    'invalid-entry': 'bogus',
+  }, filePath), true);
+
+  assert.deepEqual(loadModelPoliciesFile(filePath), {
+    'claude-opus-5-5': 'ask',
+    'gpt-6.2-astra': 'deny',
+  });
+
+  // Mise à jour d'un modèle sans écraser les autres choix déjà enregistrés
+  assert.equal(saveModelPoliciesFile({ 'claude-opus-5-5': 'allow' }, filePath), true);
+  assert.deepEqual(loadModelPoliciesFile(filePath), {
+    'claude-opus-5-5': 'allow',
+    'gpt-6.2-astra': 'deny',
+  });
 });

@@ -2,7 +2,7 @@
   "name": "fs-atg",
   "displayName": "France Student [ATG]",
   "description": "Orchestrateur France Student v2.1 pour Antigravity : exécution autonome avec permissions (lecture seule / édition atomique + /undo / shell sécurisé), contrôle par modèle (Oui / À demander / Non), mémoire projet (/remember, FRST.md), 8 commandes slash, jauge unique et journal de bord.",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "logo": "assets/logo.png",
   "suggestedPrompts": [
     "Utilise /fs pour créer ou modifier directement ce module avec France Student",

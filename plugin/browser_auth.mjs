@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   fetchAccessTokenFromWebSession,
   loadState,
@@ -12,6 +13,9 @@ import {
   SESSION_COOKIE_NAMES,
 } from './fs_core.mjs';
 import { logEvent } from './logger.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+export const PERSISTENT_PROFILE_DIR = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_chrome_profile');
 
 const LOGIN_POLL_INTERVAL_MS = 1000;
 const LOGIN_MAX_WAIT_MS = 5 * 60_000;
@@ -153,7 +157,7 @@ function cleanupSession(session) {
       session.child.kill();
     }
   } catch { /* ignore */ }
-  removeUserDataDirBestEffort(session.userDataDir);
+  if (session.isTempProfile) removeUserDataDirBestEffort(session.userDataDir);
   if (activeSession === session) activeSession = null;
 }
 
@@ -254,29 +258,53 @@ async function openCdpClient(wsUrl) {
   });
 }
 
+async function withFirstPageCdp(port, fn) {
+  const listRes = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1500) });
+  if (!listRes.ok) return null;
+  const pages = await listRes.json();
+  const firstWs = Array.isArray(pages) ? pages.find((p) => p?.webSocketDebuggerUrl)?.webSocketDebuggerUrl : null;
+  if (!firstWs) return null;
+  const pageCdp = await openCdpClient(firstWs);
+  try {
+    return await fn(pageCdp);
+  } finally {
+    pageCdp.close();
+  }
+}
+
 async function readAllBrowserCookies(cdp, port) {
+  let storageCookies = [];
   try {
     const res = await cdp.call('Storage.getCookies');
-    if (Array.isArray(res?.cookies) && res.cookies.length) return res.cookies;
+    if (Array.isArray(res?.cookies)) {
+      storageCookies = res.cookies;
+      if (extractSessionCookieFromCdpCookies(storageCookies)?.sessionToken) {
+        return storageCookies;
+      }
+    }
   } catch { /* fallback to first page target */ }
 
   try {
-    const listRes = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1500) });
-    if (listRes.ok) {
-      const pages = await listRes.json();
-      const firstWs = Array.isArray(pages) ? pages.find((p) => p?.webSocketDebuggerUrl)?.webSocketDebuggerUrl : null;
-      if (firstWs) {
-        const pageCdp = await openCdpClient(firstWs);
-        try {
-          const res = await pageCdp.call('Network.getAllCookies');
-          if (Array.isArray(res?.cookies)) return res.cookies;
-        } finally {
-          pageCdp.close();
-        }
-      }
+    const pageCookies = await withFirstPageCdp(port, async (pageCdp) => {
+      const res = await pageCdp.call('Network.getAllCookies');
+      return Array.isArray(res?.cookies) ? res.cookies : [];
+    });
+    if (Array.isArray(pageCookies) && pageCookies.length) {
+      return [...storageCookies, ...pageCookies];
     }
   } catch { /* ignore fallback errors */ }
-  return [];
+  return storageCookies;
+}
+
+async function deleteExpiredSessionCookie(port, cookieName) {
+  if (!cookieName) return;
+  try {
+    await withFirstPageCdp(port, async (pageCdp) => {
+      for (const domain of ['ia.francestudent.org', '.ia.francestudent.org', '.francestudent.org']) {
+        await pageCdp.call('Network.deleteCookies', { name: cookieName, domain }).catch(() => {});
+      }
+    });
+  } catch { /* ignore */ }
 }
 
 async function runBrowserLoginLoop(session, port, onComplete) {
@@ -301,18 +329,20 @@ async function runBrowserLoginLoop(session, port, onComplete) {
 
     cdp = await openCdpClient(wsUrl);
     session.ws = cdp.ws;
+    const waitingMsg = `Connecte-toi sur France Student dans la fenêtre ${session.browserName} ouverte…`;
     setStatus({
       state: 'waiting_login',
-      message: `Connecte-toi sur France Student dans la fenêtre ${session.browserName} ouverte…`,
+      message: waitingMsg,
       error: null,
     });
 
     const deadline = Date.now() + LOGIN_MAX_WAIT_MS;
-    let verifyFailures = 0;
+    const loopStartedAt = Date.now();
+    const failedTokens = new Set();
     while (Date.now() < deadline && !session.cancelled && !session.exited) {
       const cookies = await readAllBrowserCookies(cdp, port);
       const found = extractSessionCookieFromCdpCookies(cookies);
-      if (found?.sessionToken) {
+      if (found?.sessionToken && !failedTokens.has(found.sessionToken)) {
         setStatus({ state: 'verifying', message: 'Vérification de la session France Student…', error: null });
         const deviceId = found.deviceId || randomUUID();
         try {
@@ -343,19 +373,14 @@ async function runBrowserLoginLoop(session, port, onComplete) {
           if (typeof onComplete === 'function') await onComplete();
           return;
         } catch (err) {
-          verifyFailures += 1;
-          if (verifyFailures >= 3) {
-            setStatus({
-              state: 'error',
-              error: err?.message || 'Session refusée par France Student.',
-              message: 'Échec de vérification de la session.',
-            });
-            logEvent('error', 'auth', 'auth.browser_login.verify_failed', err?.message || 'Erreur api-token');
-            return;
+          failedTokens.add(found.sessionToken);
+          logEvent('warn', 'auth', 'auth.browser_login.stale_cookie', `Cookie expiré ou incomplet ignoré (${err?.message || 'attente login'}).`);
+          if (Date.now() - loopStartedAt < 5000) {
+            await deleteExpiredSessionCookie(port, found.cookieName);
           }
           setStatus({
             state: 'waiting_login',
-            message: `Finalisation de la connexion dans ${session.browserName}…`,
+            message: waitingMsg,
             error: null,
           });
         }
@@ -403,9 +428,16 @@ export async function startBrowserLogin({ onComplete } = {}) {
   }
 
   const port = await getFreePort();
-  const userDataDir = join(tmpdir(), `fs-atg-login-${randomUUID()}`);
+  let userDataDir = PERSISTENT_PROFILE_DIR;
+  let isTempProfile = false;
+  try {
+    mkdirSync(userDataDir, { recursive: true });
+  } catch {
+    userDataDir = join(tmpdir(), `fs-atg-login-${randomUUID()}`);
+    isTempProfile = true;
+  }
   const args = [
-    `--app=${OFFICIAL_WEB_ORIGIN}`,
+    `--app=${OFFICIAL_WEB_ORIGIN}/login`,
     `--user-data-dir=${userDataDir}`,
     `--remote-debugging-port=${port}`,
     '--window-size=520,760',
@@ -424,6 +456,7 @@ export async function startBrowserLogin({ onComplete } = {}) {
     child,
     ws: null,
     userDataDir,
+    isTempProfile,
     browserName: browser.name,
     cancelled: false,
     exited: false,
