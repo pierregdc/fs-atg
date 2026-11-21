@@ -1230,7 +1230,7 @@ function providerFailure(event, fallback, details = {}) {
   return error;
 }
 
-export const ROUTING_PROFILES = Object.freeze(['eco', 'fast', 'quality', 'security', 'refactor']);
+export const ROUTING_PROFILES = Object.freeze(['auto', 'eco', 'fast', 'quality', 'security', 'refactor']);
 
 const PROFILE_ALIASES = {
   eco: 'eco', economie: 'eco', economical: 'eco',
@@ -1302,7 +1302,7 @@ export function parseTaskDirectives(raw) {
     }
     const profileValue = normalizeRoutingProfile(command);
     if (profileValue) { profile = profileValue; prompt = next; continue; }
-    if (command === 'auto') { requested = { kind: 'auto', value: 'auto' }; prompt = next; continue; }
+    if (command === 'auto') { requested = { kind: 'auto', value: 'auto' }; profile = 'auto'; prompt = next; continue; }
     if (TIER_ALIASES[command]) { requested = { kind: 'tier', value: TIER_ALIASES[command] }; prompt = next; continue; }
     if (MODEL_ALIASES[command]) { requested = { kind: 'model', value: MODEL_ALIASES[command] }; prompt = next; continue; }
     break;
@@ -1341,7 +1341,7 @@ export function pickModel(raw, available, state, explicit, { approvedModel = nul
   const wanted = requested?.kind === 'auto' ? undefined : (requested?.value || explicit || directives.tagModel);
   const wantedNorm = wanted ? normalizedDirective(wanted).replace(/^tier:/, '') : '';
   const forcedTier = requested?.kind === 'tier' ? requested.value : TIER_ALIASES[wantedNorm];
-  const profile = directives.profile || normalizeRoutingProfile(state?.routingProfile) || 'auto';
+  const profile = directives.profile || (state?.routingProfile === 'auto' ? 'auto' : normalizeRoutingProfile(state?.routingProfile)) || 'auto';
 
   const finalize = (result) => {
     const policy = getModelPolicy(result.model, state);

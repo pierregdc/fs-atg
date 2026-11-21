@@ -84,7 +84,7 @@ const PANEL_PLAN_INSTRUCTIONS = `Propose un plan clair, concret et concis : éta
 const PANEL_PATCH_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Ne réécris JAMAIS le fichier complet : formate CHAQUE modification exactement avec TARGET: suivi d'un bloc de code et REPLACE: suivi d'un bloc de code.`;
 
 const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'patch', 'dry-run']);
-const ROUTING_PROFILES = new Set(['eco', 'fast', 'quality', 'security', 'refactor']);
+const ROUTING_PROFILES = new Set(['auto', 'eco', 'fast', 'quality', 'security', 'refactor']);
 
 function profileState(st, profile) {
   const routingProfile = ROUTING_PROFILES.has(profile) ? profile

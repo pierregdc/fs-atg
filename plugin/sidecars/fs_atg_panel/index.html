@@ -727,13 +727,11 @@
 
       <div class="hero-pills">
         <div class="synth-pill" id="profilePill">
-          <span>Profil :</span>
-          <select id="heroProfileSelect" class="pill-select" title="Changer de profil directement">
-            <option value="quality">Qualité ★</option>
-            <option value="eco">Éco</option>
-            <option value="fast">Rapide</option>
-            <option value="security">Sécurité ★</option>
-            <option value="refactor">Refonte ★</option>
+          <span>Routage :</span>
+          <select id="heroProfileSelect" class="pill-select" title="Choisir le mode de sélection du modèle">
+            <option value="quality">Priorité Fort</option>
+            <option value="auto">Automatique</option>
+            <option value="eco">Éco (léger)</option>
           </select>
         </div>
         <div class="synth-pill" id="savingsPill">Éco. ATG : <strong>0 tok</strong></div>
@@ -940,21 +938,19 @@
           </div>
         </div>
         <div class="field">
-          <label>Profil de routage par défaut</label>
+          <label>Choix automatique du modèle</label>
           <select id="routingProfileInput" disabled>
-            <option value="quality">Qualité — Modèles forts (recommandé)</option>
-            <option value="eco">Éco — Modèles légers</option>
-            <option value="fast">Rapide — Latence minimale</option>
-            <option value="security">Sécurité — Modèles forts</option>
-            <option value="refactor">Refonte — Modèles forts</option>
+            <option value="quality">Priorité Fort — Meilleurs modèles (recommandé)</option>
+            <option value="auto">Automatique — Adapté à la complexité de la tâche</option>
+            <option value="eco">Éco — Modèles légers et rapides (économie de quota)</option>
           </select>
         </div>
         <div class="grid-2">
           <div class="field">
-            <label>Exécution locale</label>
+            <label>Tâches simultanées</label>
             <div class="seg" id="mode">
-              <button type="button" data-mode="eco">Éco</button>
-              <button type="button" data-mode="fast">Rapide</button>
+              <button type="button" data-mode="eco">1 à la fois</button>
+              <button type="button" data-mode="fast">Parallèle</button>
             </div>
           </div>
           <div class="field">
@@ -1213,6 +1209,11 @@
       if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k';
       return String(n);
     }
+    function normalizeUiProfile(p) {
+      if (p === 'auto') return 'auto';
+      if (p === 'eco' || p === 'fast') return 'eco';
+      return 'quality';
+    }
     function shortModel(id) { return String(id || '').replace(/^cb\//, ''); }
 
     function switchTab(tab) {
@@ -1275,7 +1276,7 @@
     function showTierPopover(tier, anchorEl) {
       const tm = S.tierModels || { light: [], medium: [], heavy: [] };
       const list = tm[tier] || [];
-      const titles = { light: 'Modèles légers', medium: 'Modèles équilibrés', heavy: 'Modèles forts ★' };
+      const titles = { light: 'Modèles légers', medium: 'Modèles équilibrés', heavy: 'Modèles forts' };
       $('popTitle').textContent = titles[tier] || 'Modèles';
       const modelsAvailable = S.modelAvailability?.available === true;
       $('popList').innerHTML = list.length
@@ -1527,7 +1528,7 @@
       $('useClientToolsInput').checked = S.useClientTools !== false;
       $('prepromptInput').value = S.projectMemory?.preprompt || '';
       $('contextCompactInput').value = S.contextCompactPercent ?? 80;
-      $('routingProfileInput').value = S.routingProfile || 'quality';
+      $('routingProfileInput').value = normalizeUiProfile(S.routingProfile);
       $('tierLightInput').value = (S.tiers?.light || []).join(', ');
       $('tierMediumInput').value = (S.tiers?.medium || []).join(', ');
       $('tierHeavyInput').value = (S.tiers?.heavy || []).join(', ');
@@ -1648,7 +1649,7 @@
       if (qObj?.resetAt) metaParts.push('Reset ' + new Date(qObj.resetAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
       $('qtxt').textContent = metaParts.join(' · ') || 'Quota France Student';
 
-      $('heroProfileSelect').value = S.routingProfile || 'quality';
+      $('heroProfileSelect').value = normalizeUiProfile(S.routingProfile);
       const sav = S.antigravitySavings;
       $('savingsPill').innerHTML = sav?.jobsOffloaded
         ? `Éco. ATG : <strong>~${fmtNum(sav.totalTokensSavedEst)} tok</strong>`
@@ -1924,7 +1925,7 @@
     $('heroProfileSelect').addEventListener('change', async (e) => {
       try {
         await api('/api/settings', { routingProfile: e.target.value });
-        flash('Profil mis à jour');
+        flash('Routage mis à jour');
         await poll();
       } catch (err) { flash(err.message, 'toast', true); }
     });
@@ -2067,7 +2068,7 @@
     });
     document.querySelectorAll('#mode button').forEach((b) => {
       b.onclick = async () => {
-        try { await api('/api/settings', { mode: b.dataset.mode }); await poll(); flash(`Exécution : ${b.dataset.mode === 'eco' ? 'Éco' : 'Rapide'}`, 'essentialToast'); }
+        try { await api('/api/settings', { mode: b.dataset.mode }); await poll(); flash(`Tâches simultanées : ${b.dataset.mode === 'eco' ? '1 à la fois' : 'Parallèle'}`, 'essentialToast'); }
         catch (e) { flash(e.message, 'essentialToast', true); }
       };
     });

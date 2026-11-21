@@ -83,7 +83,7 @@ const PLAN_B_PART_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / 
 
 const FINAL = new Set(['done', 'error', 'cancelled', 'needs_approval']);
 const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'patch', 'dry-run']);
-const ROUTING_PROFILES = new Set(['eco', 'fast', 'quality', 'security', 'refactor']);
+const ROUTING_PROFILES = new Set(['auto', 'eco', 'fast', 'quality', 'security', 'refactor']);
 const jobs = new Map();
 const running = new Map();
 const queue = [];
@@ -737,7 +737,7 @@ server.registerTool('fs_delegate', {
     executionMode: z.enum(['generate', 'apply', 'plan', 'patch', 'dry-run']).optional().describe('apply/generate autorisent les outils selon permissionMode ; plan/patch/dry-run restent en lecture seule.'),
     permissionMode: z.enum(['plan', 'acceptEdits', 'full']).optional().describe('Surcharge ponctuelle : plan (lecture seule), acceptEdits (lecture + écriture/édition avec /undo), full (+ run_command sécurisé).'),
     reasoningEffort: z.enum(['standard', 'deep', 'max']).optional().describe('Niveau de raisonnement : standard, deep (approfondi, défaut), ou max (raisonnement maximal + priorité modèles forts).'),
-    routingProfile: z.enum(['eco', 'fast', 'quality', 'security', 'refactor']).optional(),
+    routingProfile: z.enum(['auto', 'eco', 'fast', 'quality', 'security', 'refactor']).optional(),
     planB: z.boolean().optional().describe('Active le Plan B (chat neuf isolé ou découpage via parts) en cas d’échec du Plan A.'),
     parts: z.array(z.string().min(3)).max(6).optional().describe('Plan B : 2 à 6 petites sous-demandes simples générées séparément.'),
     waitSeconds: z.number().min(0).max(45).optional().describe('Attente intégrée (défaut 45s) pour répondre en 1 appel.'),

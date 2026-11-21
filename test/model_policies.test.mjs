@@ -171,3 +171,24 @@ test('enrichModelsCatalog et groupModelsByTier renseignent policy et blocked', (
   assert.equal(gAstra.policy, 'deny');
   assert.equal(gAstra.blocked, true);
 });
+
+test('pickModel distingue routingProfile auto, quality (Priorité Fort) et eco', () => {
+  const autoState = makeState({ routingProfile: 'auto' });
+  const simpleAuto = pickModel('corrige typo readme', AVAILABLE, autoState);
+  assert.equal(simpleAuto.profile, 'auto');
+  assert.equal(simpleAuto.model, 'claude-haiku-5-5');
+
+  const complexAuto = pickModel('refactor architecture concurrency', AVAILABLE, autoState);
+  assert.equal(complexAuto.profile, 'auto');
+  assert.equal(complexAuto.model, 'claude-opus-5-5');
+
+  const qualityState = makeState({ routingProfile: 'quality' });
+  const simpleQuality = pickModel('corrige typo readme', AVAILABLE, qualityState);
+  assert.equal(simpleQuality.profile, 'quality');
+  assert.equal(simpleQuality.model, 'claude-opus-5-5');
+
+  // /auto force la sélection heuristique même si le profil global est quality
+  const overrideAuto = pickModel('/auto corrige typo readme', AVAILABLE, qualityState);
+  assert.equal(overrideAuto.profile, 'auto');
+  assert.equal(overrideAuto.model, 'claude-haiku-5-5');
+});
