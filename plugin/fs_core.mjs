@@ -523,6 +523,11 @@ export function primeWebAccessCache(token, expiresAtMs, version = '') {
     : { token: '', expiresAtMs: 0, version: '' };
 }
 
+/** Remaining lifetime (ms) of the cached web access token; 0 when none is cached. */
+export function webAccessExpiresInMs() {
+  return webAccessCache.token ? Math.max(0, webAccessCache.expiresAtMs - Date.now()) : 0;
+}
+
 export function clearWebAccessCache() {
   webAccessCache = { token: '', expiresAtMs: 0, version: '' };
   webRefreshPromise = null;

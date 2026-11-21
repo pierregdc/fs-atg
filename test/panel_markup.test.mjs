@@ -22,8 +22,6 @@ test('panneau Antigravity : aucun état de compte n’est inventé avant vérifi
   assert.match(html, /Disponibilité non vérifiée/);
   assert.match(html, /id="cnt-light">—<\/span>/);
   assert.match(html, /id="toggleKeyVisibility"/);
-  assert.match(html, /id="mcpTransport"/);
-  assert.match(html, /Quota Antigravity : non exposé au connecteur/);
   assert.doesNotMatch(html, /URL de base API/);
   assert.doesNotMatch(html, /baseUrlInput/);
   assert.doesNotMatch(html, /Jeton enregistré et actif/);

@@ -39,9 +39,11 @@ import {
   resolveApiKey,
   saveApiKey,
   saveModelPoliciesFile,
+  resolveAuthToken,
   saveState,
   streamGenerationWithRefusalFallback,
   syncAgentsRule,
+  webAccessExpiresInMs,
 } from '../../fs_core.mjs';
 import { clearLogs, countRecentErrors, logEvent, readLogs } from '../../logger.mjs';
 import {
@@ -847,6 +849,17 @@ app.api('/api/cancel', (data) => {
   }
   return { ok: true };
 });
+
+// Proactive web-session refresh: renew the short-lived access token ~2 min before
+// expiry so the next prompt never pays the refresh latency.
+setInterval(async () => {
+  try {
+    const st = loadState();
+    if (!st.webSessionConfigured) return;
+    if (webAccessExpiresInMs() > 120_000) return;
+    await resolveAuthToken(st, { forceRefresh: true });
+  } catch { /* surfaced on next real request */ }
+}, 45_000).unref?.();
 
 logEvent('info', 'panel', 'panel.started', `Panneau latéral France Student [ATG] v${CONNECTOR_VERSION} démarré.`);
 app.run();
