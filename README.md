@@ -38,6 +38,7 @@ L'interface du panneau latéral adopte un thème monochrome/slate et bleu unifi�
 
 ## Nouveautés v2.1
 
+- **Connexion navigateur en 1 clic (session longue durée)** : depuis l'accueil ou **Réglages -> Essentiel**, clique sur *Se connecter avec France Student* pour ouvrir la page officielle de connexion, te connecter avec tes identifiants habituels, puis laisser l'extension chiffrer la session dans le **Trousseau Windows** (`Windows Credential Manager`) et renouveler automatiquement tes jetons d'accès (`/api/auth/api-token`) avant expiration ou sur HTTP 401. Une option repliable *Connexion manuelle* reste disponible.
 - **Contrôle individuel par modèle (`Oui` / `À demander` / `Non`)** : autorise, bloque ou exige une confirmation utilisateur explicite avant qu'Antigravity ou le panneau n'utilise un modèle.
 - **Interface unifiée en 3 onglets** :
   - **Accueil** : jauge unique interactive (budget chat restant + coupe-circuit réglable de 0 % à 90 %), sélecteurs compacts *Délégation* et *Permissions PC*, barre de commandes rapides (`/fs`, `/max`, `/patch`, `/plan`, `/eco`, `/remember`), sélecteur de raisonnement à 3 niveaux (*Standard*, *Approfondi*, *Maximum*) et historique détaillé avec `/undo`.
@@ -109,5 +110,5 @@ node install.mjs
 ```
 
 1. Rechargez Antigravity puis activez l'extension **France Student [ATG]**.
-2. Ouvrez le panneau latéral et renseignez votre clé API ou jeton de session dans **Réglages -> Essentiel**.
+2. Ouvrez le panneau latéral et cliquez sur **Se connecter** (ou dans **Réglages -> Essentiel -> Se connecter avec France Student**) pour connecter votre compte en 1 clic et activer le renouvellement automatique de session.
 3. Ajustez vos permissions et le contrôle **Oui / À demander / Non** de chaque modèle dans l'onglet **Modèles**.

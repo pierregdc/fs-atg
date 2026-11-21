@@ -5,8 +5,11 @@ import { dirname, extname, isAbsolute, join, normalize, relative, resolve } from
 import { fileURLToPath } from 'node:url';
 import {
   clearStateCredential,
+  clearWebSession,
+  readWebSession,
   resolveStateCredential,
   saveStateCredential,
+  saveWebSession,
   stateCredentialStatus,
 } from './credential_store.mjs';
 import { logEvent } from './logger.mjs';
@@ -23,6 +26,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
 export const CONNECTOR_VERSION = '2.1.0';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
+export const OFFICIAL_WEB_ORIGIN = 'https://ia.francestudent.org';
+export const SESSION_COOKIE_NAMES = Object.freeze(['__Secure-next-auth.session-token', 'next-auth.session-token']);
+const TOKEN_REFRESH_MARGIN_MS = 60_000;
 export const RULES_PATH = join(__dirname, 'rules', 'AGENTS.md');
 export const RECENT_MODEL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 export const HEAVY_PRIORITY = Object.freeze(['opus', 'gpt-6.2-astra', 'gpt-6.2-sol', 'astra', 'gpt-6.1-sol', 'gpt-6-sol', 'fable', 'kimi-k3']);
@@ -410,6 +416,7 @@ function restoreCredentialFields(state, previous) {
 export async function resolveApiKey(state) {
   const environment = String(process.env.FS_ATG_API_KEY || '').trim();
   if (environment) return environment;
+  if (state?._ephemeral === true) return String(state?.apiKey || '').trim();
 
   const legacy = String(state?.apiKey || '').trim();
   const version = String(state?.credentialVersion || '');
@@ -439,25 +446,239 @@ export async function resolveApiKey(state) {
   return result.value;
 }
 
+let webAccessCache = { token: '', expiresAtMs: 0, version: '' };
+let webRefreshPromise = null;
+
+export function primeWebAccessCache(token, expiresAtMs, version = '') {
+  const clean = String(token || '').trim();
+  webAccessCache = clean
+    ? { token: clean, expiresAtMs: Number(expiresAtMs) || (Date.now() + 300_000), version: String(version || '') }
+    : { token: '', expiresAtMs: 0, version: '' };
+}
+
+export function clearWebAccessCache() {
+  webAccessCache = { token: '', expiresAtMs: 0, version: '' };
+  webRefreshPromise = null;
+}
+
+export function parseApiTokenResponse(data, nowMs = Date.now()) {
+  const accessToken = String(data?.accessToken ?? '').trim();
+  if (!accessToken) return null;
+  const rawExpAt = Number(data?.expiresAt);
+  let expiresAtMs = (Number.isFinite(rawExpAt) && rawExpAt > 0)
+    ? (rawExpAt < 1_000_000_000_000 ? rawExpAt * 1000 : rawExpAt)
+    : 0;
+  if (!(expiresAtMs > nowMs)) {
+    const rawExpIn = Number(data?.expiresIn);
+    expiresAtMs = nowMs + (Number.isFinite(rawExpIn) && rawExpIn > 0 ? rawExpIn * 1000 : 300_000);
+  }
+  return { accessToken, expiresAtMs };
+}
+
+export function extractSetCookieValue(headers, names = SESSION_COOKIE_NAMES) {
+  let rawList = [];
+  if (typeof headers?.getSetCookie === 'function') {
+    rawList = headers.getSetCookie();
+  } else {
+    const headerVal = typeof headers?.get === 'function' ? headers.get('set-cookie') : headers?.['set-cookie'];
+    if (Array.isArray(headerVal)) rawList = headerVal;
+    else if (typeof headerVal === 'string' && headerVal.trim()) {
+      rawList = headerVal.split(/,(?=\s*[^;,\s=]+=)/);
+    }
+  }
+  const found = new Map();
+  for (const raw of rawList) {
+    const parts = String(raw || '').split(';');
+    const pair = parts[0] || '';
+    const eq = pair.indexOf('=');
+    if (eq <= 0) continue;
+    const name = pair.slice(0, eq).trim();
+    if (!names.includes(name)) continue;
+    const value = pair.slice(eq + 1).trim();
+    const attrs = parts.slice(1).map((a) => a.trim());
+    const maxAge = attrs.find((a) => /^max-age=/i.test(a));
+    const expires = attrs.find((a) => /^expires=/i.test(a));
+    const dead = !value
+      || (maxAge && Number(maxAge.split('=')[1]) <= 0)
+      || (expires && Date.parse(expires.slice(expires.indexOf('=') + 1)) <= Date.now());
+    if (dead) found.delete(name);
+    else found.set(name, value);
+  }
+  for (const name of names) {
+    if (found.has(name)) return { name, value: found.get(name) };
+  }
+  return null;
+}
+
+export async function fetchAccessTokenFromWebSession(session, { fetchImpl = fetch } = {}) {
+  const sessionToken = String(session?.sessionToken ?? '').trim();
+  if (!sessionToken) {
+    const err = new Error('Session France Student manquante.');
+    err.status = 401;
+    err.sessionExpired = true;
+    throw err;
+  }
+  const cookieName = String(session?.cookieName || 'next-auth.session-token').trim() || 'next-auth.session-token';
+  const deviceId = String(session?.deviceId || '').trim() || randomUUID();
+  const cookieStr = `${cookieName}=${sessionToken}; francestudent-device-id=${deviceId}`;
+  const res = await fetchImpl(`${OFFICIAL_WEB_ORIGIN}/api/auth/api-token`, {
+    method: 'GET',
+    redirect: 'manual',
+    signal: AbortSignal.timeout(30_000),
+    headers: {
+      Cookie: cookieStr,
+      Accept: '*/*',
+      Origin: OFFICIAL_WEB_ORIGIN,
+      Referer: `${OFFICIAL_WEB_ORIGIN}/`,
+      'francestudent-client-platform': 'web_fs_ai',
+      'francestudent-client-version': '4005601',
+      'francestudent-device-id': deviceId,
+    },
+  });
+  if (res.status === 401 || res.status === 403 || (res.status >= 300 && res.status < 400)) {
+    const err = new Error('Session France Student expirée ou refusée — reconnecte-toi dans Réglages.');
+    err.status = 401;
+    err.sessionExpired = true;
+    throw err;
+  }
+  if (!res.ok) {
+    const err = new Error(`api-token HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    const err = new Error('Réponse api-token illisible (JSON attendu).');
+    err.status = 401;
+    err.sessionExpired = true;
+    throw err;
+  }
+  const parsed = parseApiTokenResponse(data);
+  if (!parsed) {
+    const err = new Error('Session France Student invalide (aucun accessToken reçu).');
+    err.status = 401;
+    err.sessionExpired = true;
+    throw err;
+  }
+  const renewed = extractSetCookieValue(res.headers);
+  return {
+    accessToken: parsed.accessToken,
+    expiresAtMs: parsed.expiresAtMs,
+    renewedCookie: renewed?.value ?? null,
+    renewedCookieName: renewed?.name ?? null,
+  };
+}
+
+export async function saveWebSessionAndPrime(state, session, accessToken, expiresAtMs) {
+  const result = await saveWebSession(state, session);
+  await clearStateCredential(state).catch(() => {});
+  state.credentialVersion = randomUUID();
+  if (!saveState(state)) {
+    throw new Error('La session est enregistrée, mais l’état local n’a pas pu être mis à jour.');
+  }
+  credentialCache = '';
+  credentialCacheLoaded = false;
+  credentialCacheVersion = '';
+  primeWebAccessCache(accessToken, expiresAtMs, state.credentialVersion);
+  logEvent('info', 'core', 'auth.web_session_saved', 'Session France Student longue durée enregistrée.');
+  return result;
+}
+
+export async function resolveAuthToken(state, { forceRefresh = false, fetchImpl = fetch, persist = true } = {}) {
+  const environment = String(process.env.FS_ATG_API_KEY || '').trim();
+  if (environment) return environment;
+
+  const hasWebHint = Boolean(state?.webSessionConfigured || state?.webSession?.sessionToken);
+  const version = String(state?.credentialVersion || '');
+  if (
+    !forceRefresh &&
+    hasWebHint &&
+    webAccessCache.token &&
+    webAccessCache.version === version &&
+    webAccessCache.expiresAtMs - Date.now() > TOKEN_REFRESH_MARGIN_MS
+  ) {
+    return webAccessCache.token;
+  }
+
+  let session = null;
+  if (hasWebHint || (!state?.apiKey && !state?.credentialStorage)) {
+    session = await readWebSession(state);
+  }
+  if (session?.sessionToken) {
+    const runRefresh = async () => {
+      const fresh = await fetchAccessTokenFromWebSession(session, { fetchImpl });
+      if (fresh.renewedCookie && fresh.renewedCookie !== session.sessionToken) {
+        const updatedSession = {
+          ...session,
+          sessionToken: fresh.renewedCookie,
+          cookieName: fresh.renewedCookieName || session.cookieName,
+          updatedAt: Date.now(),
+        };
+        if (persist && state && state._ephemeral !== true) {
+          await saveWebSession(state, updatedSession).catch(() => {});
+          state.credentialVersion = randomUUID();
+          saveState(state);
+        } else if (state && typeof state === 'object') {
+          state.webSession = updatedSession;
+          state.webSessionUpdatedAt = updatedSession.updatedAt;
+        }
+      }
+      primeWebAccessCache(fresh.accessToken, fresh.expiresAtMs, String(state?.credentialVersion || ''));
+      return fresh.accessToken;
+    };
+    webRefreshPromise ??= runRefresh().finally(() => {
+      webRefreshPromise = null;
+    });
+    return await webRefreshPromise;
+  }
+
+  return await resolveApiKey(state);
+}
+
 /** A status-only representation suitable for the panel and MCP diagnostics. */
 export async function apiCredentialStatus(state) {
-  const value = await resolveApiKey(state);
   if (String(process.env.FS_ATG_API_KEY || '').trim()) {
-    return { configured: true, storage: 'environment' };
+    return { configured: true, mode: 'environment', storage: 'environment', sessionActive: false };
   }
+  const hasWebHint = Boolean(state?.webSessionConfigured || state?.webSession?.sessionToken);
+  const webSession = hasWebHint
+    ? await readWebSession(state)
+    : ((!state?.apiKey && !state?.credentialStorage) ? await readWebSession(state) : null);
+  if (webSession?.sessionToken) {
+    return {
+      configured: true,
+      mode: 'web-session',
+      storage: state?.webSessionStorage || (process.platform === 'win32' ? 'windows-credential-manager' : 'state-file'),
+      sessionActive: true,
+      sessionUpdatedAt: state?.webSessionUpdatedAt || webSession.updatedAt || null,
+    };
+  }
+  const value = await resolveApiKey(state);
   if (value) {
     return {
       configured: true,
+      mode: 'api-key',
       storage: state?.apiKey ? 'state-file' : 'windows-credential-manager',
+      sessionActive: false,
     };
   }
   const status = await stateCredentialStatus(state);
-  return { configured: Boolean(status.configured), storage: status.storage };
+  const configured = Boolean(status.configured);
+  return {
+    configured,
+    mode: configured ? 'api-key' : 'none',
+    storage: status.storage,
+    sessionActive: false,
+  };
 }
 
 /** Stores a new user-entered key without ever persisting it in Windows JSON state. */
 export async function saveApiKey(state, value) {
   const result = await saveStateCredential(state, value);
+  await clearWebSession(state).catch(() => {});
+  clearWebAccessCache();
   state.credentialVersion = randomUUID();
   if (!saveState(state)) {
     throw new Error('La clé est protégée, mais l’état local n’a pas pu être mis à jour. Réessaie avant de fermer Antigravity.');
@@ -468,9 +689,11 @@ export async function saveApiKey(state, value) {
   return result;
 }
 
-/** Removes only the locally managed credential; an environment variable remains untouched. */
+/** Removes locally managed credentials (manual key and web session); an environment variable remains untouched. */
 export async function removeApiKey(state) {
   await clearStateCredential(state);
+  await clearWebSession(state);
+  clearWebAccessCache();
   state.credentialVersion = randomUUID();
   if (!saveState(state)) {
     throw new Error('La clé a été retirée du trousseau, mais l’état local n’a pas pu être mis à jour. Réessaie avant de fermer Antigravity.');
@@ -603,18 +826,24 @@ export function remainingPercents(obj, out = [], depth = 0) {
 }
 
 export async function fsJson(state, method, path, body, signal) {
-  const apiKey = await resolveApiKey(state);
-  if (!apiKey) throw new Error('Aucune clé API / sessionToken enregistré.');
+  let apiKey = await resolveAuthToken(state);
+  if (!apiKey) throw new Error('Aucune clé API / session France Student enregistrée.');
   const base = OFFICIAL_API_BASE_URL;
-  const res = await fetch(base + path, {
+  const doRequest = (token) => fetch(base + path, {
     method,
     signal,
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${token}`,
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  let res = await doRequest(apiKey);
+  if (res.status === 401 && state?.webSessionConfigured) {
+    await res.text().catch(() => {});
+    apiKey = await resolveAuthToken(state, { forceRefresh: true });
+    res = await doRequest(apiKey);
+  }
   if (!res.ok) {
     const txt = (await res.text().catch(() => '')).slice(0, 220);
     throw new Error(`HTTP ${res.status}${txt ? ' — ' + txt : ''}`);
@@ -1198,18 +1427,24 @@ export async function* readSse(stream) {
 
 /** Reattach to a chat stream after a transport interruption, when the API supplied an SSE id. */
 export async function resumeChatStream(state, chatId, lastEventId, signal) {
-  const apiKey = await resolveApiKey(state);
+  let apiKey = await resolveAuthToken(state);
   if (!apiKey || !chatId || !lastEventId) return null;
   const base = OFFICIAL_API_BASE_URL;
-  const res = await fetch(`${base}/chats/${encodeURIComponent(chatId)}/stream`, {
+  const doFetch = (token) => fetch(`${base}/chats/${encodeURIComponent(chatId)}/stream`, {
     method: 'GET',
     signal,
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${token}`,
       Accept: 'text/event-stream',
       'Last-Event-ID': String(lastEventId),
     },
   });
+  let res = await doFetch(apiKey);
+  if (res.status === 401 && state?.webSessionConfigured) {
+    await res.body?.cancel?.().catch(() => {});
+    apiKey = await resolveAuthToken(state, { forceRefresh: true });
+    res = await doFetch(apiKey);
+  }
   if (!res.ok || !res.body) {
     const txt = (await res.text().catch(() => '')).slice(0, 220);
     const error = new Error(`HTTP ${res.status}${txt ? ' — ' + txt : ''}`);
@@ -1553,8 +1788,8 @@ export async function streamGeneration({
   onToolCall,
 }) {
   const base = OFFICIAL_API_BASE_URL;
-  const apiKey = await resolveApiKey(state);
-  if (!apiKey) throw new Error('Aucune clé API / sessionToken enregistré.');
+  let apiKey = await resolveAuthToken(state);
+  if (!apiKey) throw new Error('Aucune clé API / session France Student enregistrée.');
   const agentId = agentMap?.get(model);
   const localPromptEstimateTokens = estimateTokens(prompt);
   let activeChatId = existingChatId ?? null;
@@ -1589,16 +1824,22 @@ export async function streamGeneration({
       input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
     };
     if (state.showReasoning !== false) body.reasoning = { effort: apiEffort, summary: 'auto' };
-    const res = await fetch(base + '/v1/responses', {
+    const doResponses = (token) => fetch(base + '/v1/responses', {
       method: 'POST',
       signal: effectiveSignal,
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
       },
       body: JSON.stringify(body),
     });
+    let res = await doResponses(apiKey);
+    if (res.status === 401 && state?.webSessionConfigured) {
+      await res.body?.cancel?.().catch(() => {});
+      apiKey = await resolveAuthToken(state, { forceRefresh: true });
+      res = await doResponses(apiKey);
+    }
     if (!res.ok || !res.body) {
       const txt = (await res.text().catch(() => '')).slice(0, 220);
       throw providerFailure({ message: txt }, `HTTP ${res.status}${txt ? ' — ' + txt : ''}`, { status: res.status });
@@ -1785,12 +2026,28 @@ export async function streamGeneration({
         ...(toolsList.length ? { clientTools: toolsList } : {}),
       };
 
-    let turn = await consumeTurn(await fetch(base + (continuing ? `/chats/${chatId}` : '/chats/stream'), {
-      method: 'POST',
-      signal: effectiveSignal,
-      headers,
-      body: JSON.stringify(firstPayload),
-    }));
+    const postChat = async (url, payload) => {
+      let res = await fetch(url, {
+        method: 'POST',
+        signal: effectiveSignal,
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (res.status === 401 && state?.webSessionConfigured) {
+        await res.body?.cancel?.().catch(() => {});
+        apiKey = await resolveAuthToken(state, { forceRefresh: true });
+        headers.Authorization = `Bearer ${apiKey}`;
+        res = await fetch(url, {
+          method: 'POST',
+          signal: effectiveSignal,
+          headers,
+          body: JSON.stringify(payload),
+        });
+      }
+      return res;
+    };
+
+    let turn = await consumeTurn(await postChat(base + (continuing ? `/chats/${chatId}` : '/chats/stream'), firstPayload));
 
     while (turn.toolCalls?.length && toolsList.length && toolTurns < maxToolTurns && !effectiveSignal.aborted) {
       toolTurns += 1;
@@ -1807,12 +2064,7 @@ export async function streamGeneration({
       }
       if (!rawResults.length || !chatId) break;
       const toolResults = fitToolOutputs(rawResults);
-      turn = await consumeTurn(await fetch(`${base}/chats/${encodeURIComponent(chatId)}`, {
-        method: 'POST',
-        signal: effectiveSignal,
-        headers,
-        body: JSON.stringify({ toolResults, clientTools: toolsList }),
-      }));
+      turn = await consumeTurn(await postChat(`${base}/chats/${encodeURIComponent(chatId)}`, { toolResults, clientTools: toolsList }));
     }
 
     const finalText = toolTurns > 0 ? (lastNonEmptyTurnText || combinedText) : combinedText;

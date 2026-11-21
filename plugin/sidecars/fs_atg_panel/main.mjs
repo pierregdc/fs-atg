@@ -43,6 +43,11 @@ import {
 } from '../../fs_core.mjs';
 import { clearLogs, countRecentErrors, logEvent, readLogs } from '../../logger.mjs';
 import {
+  cancelBrowserLogin,
+  getBrowserLoginStatus,
+  startBrowserLogin,
+} from '../../browser_auth.mjs';
+import {
   addProjectNote,
   buildTurn1Annex,
   clearProjectMemory,
@@ -537,6 +542,7 @@ app.api('/api/state', async () => {
   return {
     hasKey: credential.configured === true,
     credential,
+    authLogin: getBrowserLoginStatus(),
     quota: quotaCache,
     cooldown: getGlobalCooldown(state),
     cutoff: state.cutoffPercent,
@@ -615,8 +621,17 @@ app.api('/api/refresh', async () => {
 app.api('/api/key', async (data) => {
   state = loadState();
   if (data.action === 'reveal') {
+    const credential = await apiCredentialStatus(state);
+    if (credential.mode === 'web-session') {
+      return {
+        ok: true,
+        hasKey: true,
+        apiKey: '',
+        credential,
+        message: 'Session navigateur active (cookie protégé non affiché).',
+      };
+    }
     const apiKey = await resolveApiKey(state);
-    const credential = await apiCredentialStatus(loadState());
     return { ok: true, hasKey: Boolean(apiKey), apiKey, credential };
   }
   const apiKey = String(data.apiKey ?? '').trim();
@@ -644,6 +659,26 @@ app.api('/api/key', async (data) => {
     modelAvailability: { available: Boolean(modelsBundle.available), source: modelsBundle.source ?? 'unavailable' },
   };
 });
+
+app.api('/api/auth/login-start', async () => {
+  const authLogin = await startBrowserLogin({
+    onComplete: async () => {
+      quotaCache = null;
+      modelCache = null;
+      catalogCache = null;
+      await Promise.all([
+        fetchQuota(true).catch(() => null),
+        fetchModels(true).catch(() => null),
+        fetchRawCatalog(true).catch(() => null),
+      ]);
+    },
+  });
+  return { ok: true, authLogin };
+});
+
+app.api('/api/auth/login-status', () => ({ ok: true, authLogin: getBrowserLoginStatus() }), 'GET');
+
+app.api('/api/auth/login-cancel', () => ({ ok: true, authLogin: cancelBrowserLogin() }));
 
 app.api('/api/settings', (data) => {
   state = loadState();

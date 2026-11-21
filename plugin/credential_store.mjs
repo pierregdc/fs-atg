@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HELPER_PATH = join(__dirname, 'windows_credential_store.ps1');
 export const CREDENTIAL_TARGET = 'FranceStudent.ATG.ApiKey.v1';
+export const SESSION_CREDENTIAL_TARGET = 'FranceStudent.ATG.WebSession.v1';
+const WIN_CRED_MAX_BYTES = 2400;
 
 function parseResult(stdout) {
   const line = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).at(-1);
@@ -158,4 +160,138 @@ export async function stateCredentialStatus(state, {
     storage: status.configured ? 'windows-credential-manager' : (status.available ? 'windows-credential-manager' : 'unavailable'),
     migrated: false,
   };
+}
+
+function splitUtf8Chunks(value, maxBytes = WIN_CRED_MAX_BYTES) {
+  const chunks = [];
+  let current = '';
+  let currentBytes = 0;
+  for (const ch of String(value ?? '')) {
+    const chBytes = Buffer.byteLength(ch, 'utf8');
+    if (current && currentBytes + chBytes > maxBytes) {
+      chunks.push(current);
+      current = ch;
+      currentBytes = chBytes;
+    } else {
+      current += ch;
+      currentBytes += chBytes;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+async function readChunkedCredential(target = SESSION_CREDENTIAL_TARGET) {
+  const head = await readCredential(target);
+  if (!head.available || !head.value) return { available: Boolean(head.available), value: '' };
+  try {
+    const parsed = JSON.parse(head.value);
+    if (parsed && typeof parsed === 'object' && Number.isInteger(parsed.__chunks) && parsed.__chunks > 0) {
+      const parts = [];
+      for (let i = 0; i < parsed.__chunks; i += 1) {
+        const part = await readCredential(`${target}.${i}`);
+        if (!part.available || !part.value) return { available: Boolean(part.available), value: '' };
+        parts.push(part.value);
+      }
+      return { available: true, value: parts.join('') };
+    }
+  } catch { /* direct JSON or non-manifest value */ }
+  return { available: true, value: head.value };
+}
+
+async function writeChunkedCredential(value, target = SESSION_CREDENTIAL_TARGET) {
+  const raw = String(value ?? '');
+  if (!raw) throw new Error('Le secret de session est vide.');
+  if (Buffer.byteLength(raw, 'utf8') <= WIN_CRED_MAX_BYTES) {
+    const written = await writeCredential(raw, target);
+    for (let i = 0; i < 8; i += 1) {
+      await deleteCredential(`${target}.${i}`).catch(() => {});
+    }
+    return written;
+  }
+  const chunks = splitUtf8Chunks(raw, WIN_CRED_MAX_BYTES);
+  for (let i = 0; i < chunks.length; i += 1) {
+    const res = await writeCredential(chunks[i], `${target}.${i}`);
+    if (!res?.available) return res;
+  }
+  for (let i = chunks.length; i < chunks.length + 8; i += 1) {
+    await deleteCredential(`${target}.${i}`).catch(() => {});
+  }
+  return await writeCredential(JSON.stringify({ __chunks: chunks.length }), target);
+}
+
+async function deleteChunkedCredential(target = SESSION_CREDENTIAL_TARGET) {
+  let chunkCount = 8;
+  try {
+    const head = await readCredential(target);
+    if (head.value) {
+      const parsed = JSON.parse(head.value);
+      if (Number.isInteger(parsed?.__chunks) && parsed.__chunks > 0) chunkCount = Math.max(8, parsed.__chunks);
+    }
+  } catch { /* ignore */ }
+  for (let i = 0; i < chunkCount; i += 1) {
+    await deleteCredential(`${target}.${i}`).catch(() => {});
+  }
+  return await deleteCredential(target);
+}
+
+function normalizeWebSession(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const sessionToken = String(raw.sessionToken || '').trim();
+  if (!sessionToken) return null;
+  return {
+    sessionToken,
+    cookieName: String(raw.cookieName || 'next-auth.session-token').trim() || 'next-auth.session-token',
+    deviceId: String(raw.deviceId || '').trim(),
+    updatedAt: Number(raw.updatedAt) || Date.now(),
+  };
+}
+
+export async function readWebSession(state) {
+  if (process.platform !== 'win32' || state?._ephemeral === true) {
+    return normalizeWebSession(state?.webSession);
+  }
+  try {
+    const stored = await readChunkedCredential(SESSION_CREDENTIAL_TARGET);
+    if (!stored.available || !stored.value) return null;
+    return normalizeWebSession(JSON.parse(stored.value));
+  } catch {
+    return null;
+  }
+}
+
+export async function saveWebSession(state, session) {
+  const payload = normalizeWebSession(session);
+  if (!payload) throw new Error('Jeton de session France Student vide ou invalide.');
+  if (process.platform !== 'win32' || state?._ephemeral) {
+    state.webSession = payload;
+    state.webSessionConfigured = true;
+    state.webSessionStorage = state?._ephemeral ? 'memory' : 'state-file';
+    state.webSessionUpdatedAt = payload.updatedAt;
+    return { storage: state.webSessionStorage };
+  }
+  const serialized = JSON.stringify(payload);
+  const stored = await writeChunkedCredential(serialized, SESSION_CREDENTIAL_TARGET);
+  if (!stored?.available) throw new Error('Le trousseau Windows est indisponible pour enregistrer la session.');
+  const verified = await readChunkedCredential(SESSION_CREDENTIAL_TARGET);
+  if (!verified?.available || verified.value !== serialized) {
+    throw new Error('Vérification de la session dans le trousseau Windows impossible.');
+  }
+  delete state.webSession;
+  state.webSessionConfigured = true;
+  state.webSessionStorage = 'windows-credential-manager';
+  state.webSessionUpdatedAt = payload.updatedAt;
+  return { storage: 'windows-credential-manager' };
+}
+
+export async function clearWebSession(state) {
+  if (process.platform === 'win32') {
+    await deleteChunkedCredential(SESSION_CREDENTIAL_TARGET);
+  }
+  if (state && typeof state === 'object') {
+    delete state.webSession;
+    delete state.webSessionConfigured;
+    delete state.webSessionStorage;
+    delete state.webSessionUpdatedAt;
+  }
 }

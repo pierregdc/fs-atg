@@ -98,6 +98,35 @@
     }
     .warn-title { font-weight: 650; font-size: 12px; }
     .warn-sub { font-size: 10.5px; color: var(--fs-muted); }
+    .warn-actions { display: flex; gap: 5px; flex-shrink: 0; flex-wrap: wrap; }
+    .auth-card-box {
+      background: var(--fs-input); border: 1px solid var(--fs-line);
+      border-radius: 10px; padding: 10px 11px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .auth-session-status {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11px; color: var(--fs-muted); line-height: 1.35;
+    }
+    .auth-session-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--fs-faint); flex-shrink: 0;
+    }
+    .auth-session-dot.on { background: var(--fs-ok); }
+    .auth-session-dot.key { background: var(--fs-accent); }
+    .auth-progress {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 8px 10px; border-radius: 8px;
+      background: color-mix(in srgb, var(--fs-accent) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--fs-accent) 32%, transparent);
+      font-size: 10.5px; color: var(--fs-fg);
+    }
+    .auth-progress[hidden] { display: none; }
+    .auth-progress-left { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .auth-pulse {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--fs-accent); flex-shrink: 0;
+      animation: authPulse 1.2s ease-in-out infinite;
+    }
+    @keyframes authPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
     /* Cards */
     .card {
@@ -625,11 +654,15 @@
           <svg class="ico" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
         </div>
         <div>
-          <div class="warn-title">Aucun identifiant API configuré</div>
-          <div class="warn-sub">Configure ton jeton France Student dans Réglages.</div>
+          <div class="warn-title" id="nokeyTitle">Non connecté à France Student</div>
+          <div class="warn-sub" id="nokeySub">Connecte-toi via la page France Student pour une session longue durée.</div>
         </div>
       </div>
-      <button class="btn sm" id="openCfg">Configurer</button>
+      <div class="warn-actions">
+        <button type="button" class="btn sm" id="quickBrowserLoginBtn">Se connecter</button>
+        <button type="button" class="btn ghost sm" id="quickCancelLoginBtn" hidden>Annuler</button>
+        <button type="button" class="btn ghost sm" id="openCfg">Clé manuelle</button>
+      </div>
     </div>
 
     <div id="cooldownBox" class="warnbox" hidden>
@@ -854,21 +887,44 @@
           <svg class="ico" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
           Connexion France Student
         </div>
-        <div class="field">
-          <label>Clé API ou Jeton de session</label>
-          <div class="secret-control">
-            <input type="password" id="apiKeyInput" autocomplete="off" placeholder="Colle une clé pour la mémoriser" />
-            <button class="eye-btn" id="toggleKeyVisibility" type="button" aria-label="Afficher la clé enregistrée" title="Afficher la clé enregistrée">
-              <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
-            </button>
+        <div class="auth-card-box">
+          <div class="auth-session-status">
+            <span class="auth-session-dot" id="sessionStatusDot"></span>
+            <span id="sessionStatusLine">Chargement…</span>
           </div>
-          <div class="f-help" id="keyStateHelp">Chargement…</div>
+          <div class="actions">
+            <button type="button" class="btn sm" id="browserLoginBtn">Se connecter avec France Student</button>
+            <button type="button" class="btn danger sm" id="disconnectBtn" hidden>Déconnecter</button>
+          </div>
+          <div id="browserLoginBox" class="auth-progress" hidden>
+            <div class="auth-progress-left">
+              <span class="auth-pulse"></span>
+              <span id="browserLoginMsg">Ouverture de la fenêtre France Student…</span>
+            </div>
+            <button type="button" class="btn ghost sm" id="cancelBrowserLoginBtn">Annuler</button>
+          </div>
+          <span class="toast" id="browserAuthToast"></span>
         </div>
-        <div class="actions">
-          <button class="btn sm" id="saveKeyBtn">Enregistrer &amp; Tester</button>
-          <button class="btn danger sm" id="clearKeyBtn">Effacer</button>
-          <span class="toast" id="settingsToast"></span>
-        </div>
+        <details class="settings-fold" id="manualKeyFold" style="margin-top:10px;border:1px solid var(--fs-line);border-radius:10px">
+          <summary>Connexion manuelle (clé API / jeton)</summary>
+          <div class="settings-inner">
+            <div class="field">
+              <label>Clé API ou Jeton de session</label>
+              <div class="secret-control">
+                <input type="password" id="apiKeyInput" autocomplete="off" placeholder="Colle une clé pour la mémoriser" />
+                <button class="eye-btn" id="toggleKeyVisibility" type="button" aria-label="Afficher la clé enregistrée" title="Afficher la clé enregistrée">
+                  <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                </button>
+              </div>
+              <div class="f-help" id="keyStateHelp">Chargement…</div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn sm" id="saveKeyBtn">Enregistrer &amp; Tester</button>
+              <button type="button" class="btn danger sm" id="clearKeyBtn">Effacer</button>
+              <span class="toast" id="settingsToast"></span>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="card">
@@ -1061,12 +1117,14 @@
       blockedModels: [],
       autoDelegate: true,
       recentErrors: 0,
+      authLogin: { state: 'idle' },
     };
     let stateLoad = 'loading';
     let selectedChoice = '';
     let pendingApproval = null;
     let settingsLoaded = false;
     let pollTimer = null;
+    let loginPollTimer = null;
     let hoverTimer = null;
     let popHideTimer = null;
     let activeTab = 'dash';
@@ -1475,26 +1533,87 @@
       $('tierHeavyInput').value = (S.tiers?.heavy || []).join(', ');
       $('allowedInput').value = (S.allowedModels || []).join(', ');
       $('blockedInput').value = (S.blockedModels || []).join(', ');
+      const credMode = S.credential?.mode || (S.hasKey ? 'api-key' : 'none');
       const storage = S.credential?.storage;
       const keyInput = $('apiKeyInput');
-      if (S.hasKey && !keyIsVisible) {
+      if (credMode === 'web-session') {
+        keyInput.type = 'password';
+        keyInput.value = '';
+        keyIsMask = false;
+        keyIsVisible = false;
+        $('toggleKeyVisibility').disabled = true;
+        $('keyStateHelp').textContent = 'Mode actuel : session navigateur active. Saisir une clé ici remplacera la session.';
+      } else if (S.hasKey && !keyIsVisible) {
         keyInput.type = 'password';
         keyInput.value = KEY_MASK;
         keyIsMask = true;
+        $('toggleKeyVisibility').disabled = false;
+        $('keyStateHelp').textContent = `Identifiant configuré${storage ? ` (${storage})` : ''}, mémorisé localement.`;
       } else if (!S.hasKey) {
         keyInput.type = 'password';
         keyInput.value = '';
         keyIsMask = false;
         keyIsVisible = false;
+        $('toggleKeyVisibility').disabled = true;
+        $('keyStateHelp').textContent = 'Aucun identifiant configuré.';
+      } else {
+        $('toggleKeyVisibility').disabled = false;
+        $('keyStateHelp').textContent = `Identifiant configuré${storage ? ` (${storage})` : ''}, mémorisé localement.`;
       }
-      $('toggleKeyVisibility').disabled = !S.hasKey;
-      $('keyStateHelp').textContent = S.hasKey
-        ? `Identifiant configuré${storage ? ` (${storage})` : ''}, mémorisé localement.`
-        : 'Aucun identifiant configuré.';
+      renderAuthUi();
+    }
+
+    function renderAuthUi() {
+      const credMode = S.credential?.mode || (S.hasKey ? 'api-key' : 'none');
+      const storageLabel = S.credential?.storage === 'windows-credential-manager'
+        ? 'Trousseau Windows'
+        : (S.credential?.storage || 'local');
+      const authState = S.authLogin?.state || 'idle';
+      const inProgress = ['opening', 'waiting_login', 'verifying'].includes(authState);
+
+      if ($('sessionStatusDot') && $('sessionStatusLine')) {
+        $('sessionStatusDot').className = 'auth-session-dot' + (credMode === 'web-session' ? ' on' : (S.hasKey ? ' key' : ''));
+        if (credMode === 'web-session') {
+          $('sessionStatusLine').textContent = `Session France Student active (renouvellement automatique · ${storageLabel})`;
+        } else if (credMode === 'environment') {
+          $('sessionStatusLine').textContent = 'Clé fournie via variable d’environnement FS_ATG_API_KEY.';
+        } else if (S.hasKey) {
+          $('sessionStatusLine').textContent = `Connecté par clé manuelle (${storageLabel}).`;
+        } else {
+          $('sessionStatusLine').textContent = 'Aucune session active — connecte-toi avec ton compte France Student.';
+        }
+      }
+      if ($('browserLoginBtn')) {
+        $('browserLoginBtn').disabled = inProgress;
+        $('browserLoginBtn').textContent = S.hasKey ? 'Reconnecter avec France Student' : 'Se connecter avec France Student';
+      }
+      if ($('disconnectBtn')) {
+        $('disconnectBtn').hidden = !S.hasKey || credMode === 'environment';
+      }
+      if ($('browserLoginBox')) {
+        $('browserLoginBox').hidden = !inProgress;
+        if (inProgress && $('browserLoginMsg')) {
+          $('browserLoginMsg').textContent = S.authLogin?.message || 'Connexion en cours dans le navigateur…';
+        }
+      }
+      if ($('quickBrowserLoginBtn')) {
+        $('quickBrowserLoginBtn').disabled = inProgress;
+        $('quickBrowserLoginBtn').textContent = inProgress ? 'Connexion…' : 'Se connecter';
+      }
+      if ($('quickCancelLoginBtn')) {
+        $('quickCancelLoginBtn').hidden = !inProgress;
+      }
+      if ($('nokeyTitle') && $('nokeySub')) {
+        $('nokeyTitle').textContent = inProgress ? 'Connexion France Student en cours…' : 'Non connecté à France Student';
+        $('nokeySub').textContent = inProgress
+          ? (S.authLogin?.message || 'Connecte-toi dans la fenêtre ouverte…')
+          : 'Connecte-toi via la page France Student pour une session longue durée.';
+      }
     }
 
     function render() {
       $('nokey').hidden = !!S.hasKey;
+      renderAuthUi();
       const cd = S.cooldown && S.cooldown.active ? S.cooldown : null;
       $('cooldownBox').hidden = !cd;
       if (cd) {
@@ -1664,7 +1783,78 @@
     }
 
     document.querySelectorAll('.tab-btn').forEach((b) => { b.onclick = () => switchTab(b.dataset.tab); });
-    $('openCfg').onclick = () => switchTab('settings');
+    $('openCfg').onclick = () => {
+      switchTab('settings');
+      switchSettingsSubTab('essential');
+      if ($('manualKeyFold')) $('manualKeyFold').open = true;
+    };
+    async function pollBrowserLoginLoop() {
+      clearTimeout(loginPollTimer);
+      try {
+        const res = await api('/api/auth/login-status');
+        S.authLogin = res.authLogin || { state: 'idle' };
+        renderAuthUi();
+        const st = S.authLogin.state;
+        if (['opening', 'waiting_login', 'verifying'].includes(st)) {
+          loginPollTimer = setTimeout(pollBrowserLoginLoop, 1000);
+          return;
+        }
+        if (st === 'done') {
+          flash('Connecté à France Student (session longue durée)');
+          flash('Connecté à France Student (session longue durée)', 'browserAuthToast');
+          await poll();
+          syncSettingsForm();
+        } else if (st === 'error') {
+          const msg = S.authLogin.error || S.authLogin.message || 'Erreur de connexion.';
+          flash(msg, 'toast', true);
+          flash(msg, 'browserAuthToast', true);
+        } else if (st === 'cancelled') {
+          flash('Connexion annulée', 'browserAuthToast');
+        }
+      } catch {
+        loginPollTimer = setTimeout(pollBrowserLoginLoop, 1500);
+      }
+    }
+    async function startBrowserLoginFlow() {
+      try {
+        const res = await api('/api/auth/login-start', {});
+        S.authLogin = res.authLogin || { state: 'opening' };
+        renderAuthUi();
+        clearTimeout(loginPollTimer);
+        loginPollTimer = setTimeout(pollBrowserLoginLoop, 800);
+      } catch (e) {
+        S.authLogin = { state: 'error', error: e.message, message: e.message };
+        renderAuthUi();
+        flash(e.message, 'toast', true);
+        flash(e.message, 'browserAuthToast', true);
+      }
+    }
+    async function cancelBrowserLoginFlow() {
+      clearTimeout(loginPollTimer);
+      try {
+        const res = await api('/api/auth/login-cancel', {});
+        S.authLogin = res.authLogin || { state: 'cancelled' };
+        renderAuthUi();
+        flash('Connexion annulée', 'browserAuthToast');
+      } catch (e) { flash(e.message, 'browserAuthToast', true); }
+    }
+    async function disconnectAccount() {
+      try {
+        const res = await api('/api/key', { action: 'clear' });
+        const msg = res.hasKey ? 'Session locale retirée (env. active)' : 'Déconnecté de France Student';
+        flash(msg, 'browserAuthToast');
+        flash(msg, 'settingsToast');
+        await poll(); syncSettingsForm();
+      } catch (e) {
+        flash(e.message, 'browserAuthToast', true);
+        flash(e.message, 'settingsToast', true);
+      }
+    }
+    $('browserLoginBtn').onclick = startBrowserLoginFlow;
+    $('quickBrowserLoginBtn').onclick = startBrowserLoginFlow;
+    $('cancelBrowserLoginBtn').onclick = cancelBrowserLoginFlow;
+    $('quickCancelLoginBtn').onclick = cancelBrowserLoginFlow;
+    $('disconnectBtn').onclick = disconnectAccount;
     $('go').onclick = () => send();
     $('task').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); });
 
