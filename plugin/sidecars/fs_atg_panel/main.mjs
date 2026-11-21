@@ -732,7 +732,13 @@ app.api('/api/settings', (data) => {
   }
   saveState(state);
   pump();
-  return { ok: true, autoDelegate: state.autoDelegate !== false, permissionMode: state.permissionMode || 'acceptEdits' };
+  return {
+    ok: true,
+    autoDelegate: state.autoDelegate !== false,
+    permissionMode: state.permissionMode || 'acceptEdits',
+    modelPolicies: state.modelPolicies || {},
+    blockedModels: state.blockedModels || [],
+  };
 });
 
 app.api('/api/undo', (data) => {

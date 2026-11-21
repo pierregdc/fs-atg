@@ -43,8 +43,9 @@ test('getModelPolicy gère allow par défaut, ask, deny et rétrocompatibilité 
   assert.equal(getModelPolicy('gpt-6.2-astra', s1), 'deny');
 
   // Rétrocompatibilité avec blockedModels / allowedModels sans modelPolicies explicite
-  const sLegacyBlocked = makeState({ blockedModels: ['haiku'] });
+  const sLegacyBlocked = makeState({ blockedModels: ['haiku', 'ask:claude-opus-5-5'] });
   assert.equal(getModelPolicy('claude-haiku-5-5', sLegacyBlocked), 'deny');
+  assert.equal(getModelPolicy('claude-opus-5-5', sLegacyBlocked), 'ask');
   assert.equal(getModelPolicy('claude-sonnet-5-5', sLegacyBlocked), 'allow');
 
   // modelPolicies explicite prend le pas sur l'ancien filtre

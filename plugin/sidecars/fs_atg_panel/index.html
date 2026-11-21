@@ -1121,6 +1121,8 @@
     let settingsLoaded = false;
     let pollTimer = null;
     let loginPollTimer = null;
+    let settingsSaveInFlight = 0;
+    let settingsSaveSeq = 0;
     let hoverTimer = null;
     let popHideTimer = null;
     let activeTab = 'dash';
@@ -1214,6 +1216,17 @@
       if (p === 'eco' || p === 'fast') return 'eco';
       return 'quality';
     }
+    function policyOf(m) {
+      if (!m || !m.id) return 'allow';
+      const explicit = S.modelPolicies?.[m.id];
+      if (['allow', 'ask', 'deny'].includes(explicit)) return explicit;
+      const blocked = (S.blockedModels || []).map((x) => String(x).toLowerCase());
+      const low = String(m.id).toLowerCase();
+      if (blocked.includes('ask:' + low)) return 'ask';
+      if (blocked.some((b) => !b.startsWith('ask:') && low.includes(b))) return 'deny';
+      if (['allow', 'ask', 'deny'].includes(m.policy)) return m.policy;
+      return m.blocked ? 'deny' : 'allow';
+    }
     function shortModel(id) { return String(id || '').replace(/^cb\//, ''); }
 
     function switchTab(tab) {
@@ -1280,10 +1293,14 @@
       $('popTitle').textContent = titles[tier] || 'Modèles';
       const modelsAvailable = S.modelAvailability?.available === true;
       $('popList').innerHTML = list.length
-        ? list.map((m) => `<button class="pop-item ${m.blocked ? 'blocked' : ''}" data-pick="${esc(m.id)}" ${m.blocked ? 'disabled' : ''}>
-            <span>${esc(m.name)}${m.policy === 'ask' ? '<span class="pop-ask">À demander</span>' : ''}</span>
+        ? list.map((m) => {
+          const p = policyOf(m);
+          const isDeny = p === 'deny';
+          return `<button class="pop-item ${isDeny ? 'blocked' : ''}" data-pick="${esc(m.id)}" ${isDeny ? 'disabled' : ''}>
+            <span>${esc(m.name)}${p === 'ask' ? '<span class="pop-ask">À demander</span>' : ''}</span>
             <span class="pop-prov">${esc(m.provider)}</span>
-          </button>`).join('')
+          </button>`;
+        }).join('')
         : `<div class="empty-txt">${modelsAvailable ? 'Aucun modèle détecté' : 'Disponibilité non vérifiée'}</div>`;
 
       const rect = anchorEl.getBoundingClientRect();
@@ -1403,7 +1420,6 @@
 
     function renderModelsTab() {
       const catalog = Array.isArray(S.modelCatalog) ? S.modelCatalog : [];
-      const policyOf = (m) => m.policy || S.modelPolicies?.[m.id] || (m.blocked ? 'deny' : 'allow');
       const newCount = catalog.filter((m) => m.isNew).length;
       const askCount = catalog.filter((m) => policyOf(m) === 'ask').length;
       const denyCount = catalog.filter((m) => policyOf(m) === 'deny').length;
@@ -1533,7 +1549,7 @@
       $('tierMediumInput').value = (S.tiers?.medium || []).join(', ');
       $('tierHeavyInput').value = (S.tiers?.heavy || []).join(', ');
       $('allowedInput').value = (S.allowedModels || []).join(', ');
-      $('blockedInput').value = (S.blockedModels || []).join(', ');
+      $('blockedInput').value = (S.blockedModels || []).filter((x) => !String(x).toLowerCase().startsWith('ask:')).join(', ');
       const credMode = S.credential?.mode || (S.hasKey ? 'api-key' : 'none');
       const storage = S.credential?.storage;
       const keyInput = $('apiKeyInput');
@@ -1703,8 +1719,16 @@
     }
 
     async function poll() {
+      const seq = settingsSaveSeq;
       try {
-        S = await api('/api/state');
+        const nextState = await api('/api/state');
+        if (settingsSaveInFlight > 0 || seq !== settingsSaveSeq) {
+          nextState.modelPolicies = S.modelPolicies || nextState.modelPolicies || {};
+          nextState.blockedModels = S.blockedModels || nextState.blockedModels || [];
+        } else if (nextState.modelPolicies === undefined) {
+          nextState.modelPolicies = S.modelPolicies || {};
+        }
+        S = nextState;
         stateLoad = 'ready';
         render();
       } catch {
@@ -1737,10 +1761,27 @@
       const task = String(extra.task ?? $('task').value).trim();
       if (!task) return;
       hidePopover();
+      const targetModel = extra.model !== undefined ? extra.model : (selectedChoice || undefined);
+      if (!extra.approveModel && targetModel && !String(targetModel).startsWith('tier:')) {
+        const catItem = (S.modelCatalog || []).find((m) => m.id === targetModel);
+        if (catItem && policyOf(catItem) === 'ask') {
+          const alts = (S.modelCatalog || []).filter((m) => policyOf(m) === 'allow').map((m) => m.id).slice(0, 3);
+          pendingApproval = {
+            task,
+            model: targetModel,
+            recommended: targetModel,
+            reason: `forcé : ${targetModel}`,
+            alternatives: alts,
+          };
+          renderApprovalBox();
+          flash(`Confirmation requise pour ${shortModel(targetModel)}`);
+          return;
+        }
+      }
       try {
         const res = await api('/api/delegate', {
           task,
-          model: extra.model !== undefined ? extra.model : (selectedChoice || undefined),
+          model: targetModel,
           approveModel: extra.approveModel || undefined,
         });
         if (res?.needsApproval) {
@@ -2119,6 +2160,7 @@
     $('saveSettingsBtn').onclick = async () => {
       try {
         const split = (v) => v.split(',').map((s) => s.trim()).filter(Boolean);
+        const askTags = (S.blockedModels || []).filter((x) => String(x).toLowerCase().startsWith('ask:'));
         await api('/api/settings', {
           maxParallel: Number($('maxParallelInput').value),
           contextCompactPercent: Number($('contextCompactInput').value),
@@ -2128,7 +2170,7 @@
             heavy: split($('tierHeavyInput').value),
           },
           allowedModels: split($('allowedInput').value),
-          blockedModels: split($('blockedInput').value),
+          blockedModels: [...split($('blockedInput').value), ...askTags],
         });
         flash('Paramètres avancés appliqués', 'orchToast');
         await poll();
@@ -2254,7 +2296,19 @@
       if (policyBtn) {
         const id = policyBtn.dataset.policyId;
         const policy = policyBtn.dataset.policyVal;
+        const idLow = String(id).toLowerCase();
+        clearTimeout(pollTimer);
+        settingsSaveSeq += 1;
         S.modelPolicies = { ...(S.modelPolicies || {}), [id]: policy };
+        const baseBlocked = (S.blockedModels || []).filter((b) => {
+          const bLow = String(b).toLowerCase();
+          if (bLow === idLow || bLow === 'ask:' + idLow) return false;
+          if (!bLow.startsWith('ask:') && idLow.includes(bLow)) return false;
+          return true;
+        });
+        if (policy === 'deny') baseBlocked.push(id);
+        else if (policy === 'ask') baseBlocked.push('ask:' + id);
+        S.blockedModels = baseBlocked;
         if (Array.isArray(S.modelCatalog)) {
           S.modelCatalog = S.modelCatalog.map((m) => (m.id === id ? { ...m, policy, blocked: policy === 'deny' } : m));
         }
@@ -2268,19 +2322,21 @@
         if (policy === 'deny' && selectedChoice === id) selectedChoice = '';
         renderModelsTab();
         renderTiers();
+        settingsSaveInFlight += 1;
         try {
-          await api('/api/settings', { modelPolicy: { id, policy } });
+          await api('/api/settings', { modelPolicy: { id, policy }, blockedModels: baseBlocked });
           const msg = policy === 'allow'
             ? 'Modèle autorisé (Oui)'
             : policy === 'ask'
               ? 'Modèle réglé sur « À demander »'
               : 'Modèle désactivé (Non)';
           flash(msg, 'modelsToast');
-          await poll();
         } catch (err) {
           flash(err.message, 'modelsToast', true);
-          await poll();
+        } finally {
+          settingsSaveInFlight = Math.max(0, settingsSaveInFlight - 1);
         }
+        await poll();
         return;
       }
       const copyRespBtn = e.target.closest('[data-copy-resp]');

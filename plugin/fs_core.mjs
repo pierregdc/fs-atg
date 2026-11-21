@@ -151,7 +151,9 @@ export function getModelPolicy(id, state) {
   const low = String(id).toLowerCase();
   const allowed = (state?.allowedModels || []).map((value) => String(value).toLowerCase()).filter(Boolean);
   const blocked = (state?.blockedModels || []).map((value) => String(value).toLowerCase()).filter(Boolean);
-  if ((allowed.length && !allowed.some((value) => low.includes(value))) || blocked.some((value) => low.includes(value))) {
+  if (blocked.includes(`ask:${low}`)) return 'ask';
+  const denyBlocked = blocked.filter((value) => !value.startsWith('ask:'));
+  if ((allowed.length && !allowed.some((value) => low.includes(value))) || denyBlocked.some((value) => low.includes(value))) {
     return 'deny';
   }
   return 'allow';
