@@ -386,6 +386,7 @@
     .pop-item:hover { background: color-mix(in srgb, var(--fs-fg) 6%, transparent); }
     .pop-item.blocked { opacity: .45; text-decoration: line-through; cursor: not-allowed; }
     .pop-prov { font-size: 9.5px; color: var(--fs-muted); background: color-mix(in srgb, var(--fs-fg) 7%, transparent); padding: 1px 6px; border-radius: var(--fs-pill); text-transform: capitalize; }
+    .pop-ask { font-size: 9px; color: #fbbf24; font-weight: 600; margin-left: 6px; }
 
     .actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .spacer { flex: 1; }
@@ -484,7 +485,37 @@
       border: 1px solid var(--fs-line); border-radius: var(--fs-r-sm); padding: 9px 10px;
     }
     .model-card.is-new { border-color: rgba(16, 185, 129, .28); }
-    .model-card.blocked { opacity: .55; }
+    .model-card.policy-ask { border-color: rgba(245, 158, 11, .30); }
+    .model-card.blocked, .model-card.policy-deny { border-color: var(--fs-line-soft); }
+    .model-card.policy-deny .mc-top, .model-card.policy-deny .mc-id-row { opacity: .52; }
+    .mc-policy-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--fs-line-soft);
+    }
+    .mc-policy-lbl { font-size: 10px; color: var(--fs-muted); font-weight: 500; }
+    .policy-seg {
+      display: inline-grid; grid-template-columns: repeat(3, auto); gap: 2px;
+      background: color-mix(in srgb, var(--fs-bg) 78%, #000);
+      border: 1px solid var(--fs-line); border-radius: 7px; padding: 2px;
+    }
+    .policy-btn {
+      border: 1px solid transparent; background: transparent; color: var(--fs-muted);
+      padding: 3px 8px; border-radius: 5px; cursor: pointer; font-size: 10px; font-weight: 600;
+      transition: background .15s, color .15s, border-color .15s; white-space: nowrap;
+    }
+    .policy-btn:hover { color: var(--fs-fg); background: rgba(255, 255, 255, .05); }
+    .policy-btn.on.allow { background: rgba(16, 185, 129, .14); border-color: rgba(16, 185, 129, .36); color: #34d399; }
+    .policy-btn.on.ask { background: rgba(245, 158, 11, .14); border-color: rgba(245, 158, 11, .36); color: #fbbf24; }
+    .policy-btn.on.deny { background: rgba(239, 68, 68, .14); border-color: rgba(239, 68, 68, .36); color: #f87171; }
+    .approval-box {
+      margin-top: 8px; padding: 9px 10px; border-radius: 9px;
+      background: rgba(245, 158, 11, .08); border: 1px solid rgba(245, 158, 11, .30);
+      display: flex; flex-direction: column; gap: 7px;
+    }
+    .approval-box[hidden] { display: none; }
+    .approval-title { font-size: 11px; font-weight: 650; color: #fbbf24; }
+    .approval-sub { font-size: 10.5px; color: var(--fs-muted); line-height: 1.4; }
+    .approval-actions { display: flex; flex-wrap: wrap; gap: 5px; }
     .mc-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .mc-name { font-weight: 650; font-size: 12px; color: var(--fs-fg); }
     .tier-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 5px; text-transform: uppercase; letter-spacing: .04em; }
@@ -761,6 +792,7 @@
           </button>
         </div>
       </div>
+      <div id="approvalBox" class="approval-box" hidden></div>
       <div class="actions" style="margin-top:9px">
         <button class="btn" id="go">
           Envoyer
@@ -804,6 +836,7 @@
       <div class="sec-title">Modèles disponibles <span class="cnt" id="modelsTotalCnt">0</span></div>
       <span style="font-size:10px;color:var(--fs-faint)" id="modelsNewCnt"></span>
     </div>
+    <div class="toast" id="modelsToast" style="margin:2px 0 4px"></div>
     <div id="modelList" class="model-list"></div>
   </div>
 
@@ -1023,6 +1056,7 @@
       modelCatalog: [],
       tierModels: { light: [], medium: [], heavy: [] },
       tiers: { light: [], medium: [], heavy: [] },
+      modelPolicies: {},
       allowedModels: [],
       blockedModels: [],
       autoDelegate: true,
@@ -1030,6 +1064,7 @@
     };
     let stateLoad = 'loading';
     let selectedChoice = '';
+    let pendingApproval = null;
     let settingsLoaded = false;
     let pollTimer = null;
     let hoverTimer = null;
@@ -1187,7 +1222,7 @@
       const modelsAvailable = S.modelAvailability?.available === true;
       $('popList').innerHTML = list.length
         ? list.map((m) => `<button class="pop-item ${m.blocked ? 'blocked' : ''}" data-pick="${esc(m.id)}" ${m.blocked ? 'disabled' : ''}>
-            <span>${esc(m.name)}</span>
+            <span>${esc(m.name)}${m.policy === 'ask' ? '<span class="pop-ask">À demander</span>' : ''}</span>
             <span class="pop-prov">${esc(m.provider)}</span>
           </button>`).join('')
         : `<div class="empty-txt">${modelsAvailable ? 'Aucun modèle détecté' : 'Disponibilité non vérifiée'}</div>`;
@@ -1309,11 +1344,18 @@
 
     function renderModelsTab() {
       const catalog = Array.isArray(S.modelCatalog) ? S.modelCatalog : [];
+      const policyOf = (m) => m.policy || S.modelPolicies?.[m.id] || (m.blocked ? 'deny' : 'allow');
       const newCount = catalog.filter((m) => m.isNew).length;
+      const askCount = catalog.filter((m) => policyOf(m) === 'ask').length;
+      const denyCount = catalog.filter((m) => policyOf(m) === 'deny').length;
       $('tabModelsCnt').textContent = catalog.length ? String(catalog.length) : '—';
       $('tabModelsNew').hidden = newCount === 0;
       $('modelsTotalCnt').textContent = catalog.length;
-      $('modelsNewCnt').textContent = newCount ? `${newCount} nouveau(x) (< 14 j)` : '';
+      const statsParts = [];
+      if (newCount) statsParts.push(`${newCount} nouveau(x) (< 14 j)`);
+      if (askCount) statsParts.push(`${askCount} à demander`);
+      if (denyCount) statsParts.push(`${denyCount} désactivé(s)`);
+      $('modelsNewCnt').textContent = statsParts.join(' · ');
 
       const q = modelQuery.trim().toLowerCase();
       const filtered = q
@@ -1326,12 +1368,16 @@
       }
       const tierLabels = { heavy: 'Fort', medium: 'Équilibré', light: 'Léger' };
       $('modelList').innerHTML = filtered.map((m) => {
+        const policy = policyOf(m);
         let dateTxt = 'Déjà présent (date non fournie par l’API)';
         if (m.addedSource === 'api' && m.addedAt) dateTxt = `Ajouté le ${fmtDate(m.addedAt)}`;
         else if (m.addedSource === 'detected' && m.addedAt) dateTxt = `${m.isNew ? 'Nouveau · d' : 'D'}étecté le ${fmtDate(m.addedAt)}`;
         const ctx = m.contextWindow ? `${Math.round(m.contextWindow / 1000)}k ctx` : '';
         const cd = m.cooldown && m.cooldown.remainingSec > 0 ? m.cooldown : null;
-        return `<div class="model-card ${m.isNew ? 'is-new' : ''} ${m.blocked ? 'blocked' : ''}">
+        const policyMeta = policy === 'ask'
+          ? '<span>Demande confirmation avant usage</span>'
+          : (policy === 'deny' ? '<span>Désactivé pour Antigravity</span>' : '');
+        return `<div class="model-card ${m.isNew ? 'is-new' : ''} policy-${esc(policy)}">
           <div class="mc-top">
             <span class="mc-name">${esc(m.name)}</span>
             <span class="tier-badge ${esc(m.tier)}"><span class="tier-dot ${esc(m.tier)}"></span>${tierLabels[m.tier] || m.tier}</span>
@@ -1344,10 +1390,18 @@
             <span class="mc-id" title="${esc(m.id)}">${esc(m.id)}</span>
             <div style="display:flex;gap:4px">
               <button type="button" class="btn ghost sm" data-copy-id="${esc(m.id)}">Copier ID</button>
-              ${m.blocked ? '' : `<button type="button" class="btn sm" data-use-model="${esc(m.id)}">Utiliser</button>`}
+              ${policy === 'deny' ? '' : `<button type="button" class="btn sm" data-use-model="${esc(m.id)}">Utiliser</button>`}
             </div>
           </div>
-          <div class="mc-meta"><span>${esc(dateTxt)}</span>${m.blocked ? '<span>Bloqué dans Réglages</span>' : ''}</div>
+          <div class="mc-policy-row">
+            <span class="mc-policy-lbl">Utilisable par Antigravity</span>
+            <div class="policy-seg" role="group" aria-label="Autorisation pour ${esc(m.name)}">
+              <button type="button" class="policy-btn allow ${policy === 'allow' ? 'on' : ''}" data-policy-id="${esc(m.id)}" data-policy-val="allow">Oui</button>
+              <button type="button" class="policy-btn ask ${policy === 'ask' ? 'on' : ''}" data-policy-id="${esc(m.id)}" data-policy-val="ask">À demander</button>
+              <button type="button" class="policy-btn deny ${policy === 'deny' ? 'on' : ''}" data-policy-id="${esc(m.id)}" data-policy-val="deny">Non</button>
+            </div>
+          </div>
+          <div class="mc-meta"><span>${esc(dateTxt)}</span>${policyMeta}</div>
         </div>`;
       }).join('');
     }
@@ -1539,14 +1593,52 @@
       schedulePoll();
     }
 
-    async function send() {
-      const task = $('task').value.trim();
+    function renderApprovalBox() {
+      const box = $('approvalBox');
+      if (!box) return;
+      if (!pendingApproval) {
+        box.hidden = true;
+        box.innerHTML = '';
+        return;
+      }
+      const alt = pendingApproval.alternatives?.[0];
+      box.hidden = false;
+      box.innerHTML = `
+        <div class="approval-title">Modèle recommandé : ${esc(shortModel(pendingApproval.recommended))} (« À demander »)</div>
+        <div class="approval-sub">Motif : ${esc(pendingApproval.reason || 'routage France Student')}. Confirmer son utilisation ?</div>
+        <div class="approval-actions">
+          <button type="button" class="btn sm" data-approve-model="${esc(pendingApproval.recommended)}">Utiliser ${esc(shortModel(pendingApproval.recommended))}</button>
+          ${alt ? `<button type="button" class="btn ghost sm" data-approve-alt="${esc(alt)}">Utiliser ${esc(shortModel(alt))}</button>` : ''}
+          <button type="button" class="btn ghost sm" id="approveCancelBtn">Annuler</button>
+        </div>`;
+    }
+
+    async function send(extra = {}) {
+      const task = String(extra.task ?? $('task').value).trim();
       if (!task) return;
-      $('task').value = '';
-      syncCmdPills();
       hidePopover();
       try {
-        await api('/api/delegate', { task, model: selectedChoice || undefined });
+        const res = await api('/api/delegate', {
+          task,
+          model: extra.model !== undefined ? extra.model : (selectedChoice || undefined),
+          approveModel: extra.approveModel || undefined,
+        });
+        if (res?.needsApproval) {
+          pendingApproval = {
+            task,
+            model: extra.model !== undefined ? extra.model : (selectedChoice || undefined),
+            recommended: res.model,
+            reason: res.reason,
+            alternatives: res.alternatives || [],
+          };
+          renderApprovalBox();
+          flash(`Confirmation requise pour ${shortModel(res.model)}`);
+          return;
+        }
+        pendingApproval = null;
+        renderApprovalBox();
+        $('task').value = '';
+        syncCmdPills();
         flash('Envoyé');
         await poll();
       } catch (e) { flash(e.message, 'toast', true); }
@@ -1573,7 +1665,7 @@
 
     document.querySelectorAll('.tab-btn').forEach((b) => { b.onclick = () => switchTab(b.dataset.tab); });
     $('openCfg').onclick = () => switchTab('settings');
-    $('go').onclick = send;
+    $('go').onclick = () => send();
     $('task').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); });
 
     $('newSessionQuickBtn').onclick = async () => {
@@ -1942,6 +2034,62 @@
         switchTab('dash');
         renderTiers();
         flash('Modèle sélectionné : ' + shortModel(selectedChoice));
+        return;
+      }
+      const approveBtn = e.target.closest('[data-approve-model]');
+      if (approveBtn && pendingApproval) {
+        const targetModel = approveBtn.dataset.approveModel;
+        const savedTask = pendingApproval.task;
+        await send({ task: savedTask, model: targetModel, approveModel: targetModel });
+        return;
+      }
+      const approveAltBtn = e.target.closest('[data-approve-alt]');
+      if (approveAltBtn && pendingApproval) {
+        const altModel = approveAltBtn.dataset.approveAlt;
+        const savedTask = pendingApproval.task;
+        await send({ task: savedTask, model: altModel });
+        return;
+      }
+      if (e.target.closest('#approveCancelBtn')) {
+        if (pendingApproval && !$('task').value.trim()) {
+          $('task').value = pendingApproval.task;
+          syncCmdPills();
+        }
+        pendingApproval = null;
+        renderApprovalBox();
+        return;
+      }
+      const policyBtn = e.target.closest('[data-policy-id][data-policy-val]');
+      if (policyBtn) {
+        const id = policyBtn.dataset.policyId;
+        const policy = policyBtn.dataset.policyVal;
+        S.modelPolicies = { ...(S.modelPolicies || {}), [id]: policy };
+        if (Array.isArray(S.modelCatalog)) {
+          S.modelCatalog = S.modelCatalog.map((m) => (m.id === id ? { ...m, policy, blocked: policy === 'deny' } : m));
+        }
+        if (S.tierModels) {
+          for (const t of ['light', 'medium', 'heavy']) {
+            if (Array.isArray(S.tierModels[t])) {
+              S.tierModels[t] = S.tierModels[t].map((m) => (m.id === id ? { ...m, policy, blocked: policy === 'deny' } : m));
+            }
+          }
+        }
+        if (policy === 'deny' && selectedChoice === id) selectedChoice = '';
+        renderModelsTab();
+        renderTiers();
+        try {
+          await api('/api/settings', { modelPolicy: { id, policy } });
+          const msg = policy === 'allow'
+            ? 'Modèle autorisé (Oui)'
+            : policy === 'ask'
+              ? 'Modèle réglé sur « À demander »'
+              : 'Modèle désactivé (Non)';
+          flash(msg, 'modelsToast');
+          await poll();
+        } catch (err) {
+          flash(err.message, 'modelsToast', true);
+          await poll();
+        }
         return;
       }
       const copyRespBtn = e.target.closest('[data-copy-resp]');

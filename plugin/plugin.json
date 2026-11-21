@@ -1,15 +1,16 @@
 {
   "name": "fs-atg",
   "displayName": "France Student [ATG]",
-  "description": "Orchestrateur France Student v2.0 pour Antigravity : exécution autonome avec permissions (lecture seule / édition atomique + /undo / shell sécurisé), mémoire projet (/remember, FRST.md), routage rapide sans artefact (Plan A/B), jauge unique et journal de bord.",
+  "description": "Orchestrateur France Student v2.1 pour Antigravity : exécution autonome avec permissions (lecture seule / édition atomique + /undo / shell sécurisé), contrôle par modèle (Oui / À demander / Non), mémoire projet (/remember, FRST.md), 8 commandes slash, jauge unique et journal de bord.",
   "version": "2.1.0",
   "logo": "assets/logo.png",
   "suggestedPrompts": [
-    "Utilise /send pour créer ou modifier directement ce module avec France Student",
+    "Utilise /fs pour créer ou modifier directement ce module avec France Student",
+    "Utilise /max pour activer le raisonnement maximum avec un modèle Fort",
     "Utilise /patch pour recevoir uniquement un diff ciblé en lecture seule",
+    "Utilise /plan pour obtenir un plan compact sans écriture disque",
     "Utilise /undo pour annuler la dernière modification France Student",
     "Utilise /remember pour mémoriser une règle persistante sur ce projet",
-    "Utilise /plan pour obtenir un plan compact en ≤ 15 lignes",
-    "Consulte /logs pour analyser la dernière erreur France Student"
+    "Utilise /quota pour vérifier le quota, les modèles et le diagnostic"
   ]
 }

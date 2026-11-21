@@ -81,7 +81,7 @@ nouveau code exact
 
 const PLAN_B_PART_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Donne uniquement le bloc de code ou patch demandé pour cette partie, complet, compact, sans commentaires superflus ni texte autour.`;
 
-const FINAL = new Set(['done', 'error', 'cancelled']);
+const FINAL = new Set(['done', 'error', 'cancelled', 'needs_approval']);
 const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'patch', 'dry-run']);
 const ROUTING_PROFILES = new Set(['eco', 'fast', 'quality', 'security', 'refactor']);
 const jobs = new Map();
@@ -329,6 +329,17 @@ function publicView(j) {
 }
 
 function mcpCompactView(j, verbose = false) {
+  if (j.status === 'needs_approval') {
+    return {
+      jobId: j.id ?? j.jobId,
+      status: 'needs_approval',
+      model: j.model,
+      policy: 'ask',
+      reason: j.routeReason,
+      alternatives: j.alternatives ?? [],
+      message: j.approvalMessage,
+    };
+  }
   if (verbose) return publicView(j);
   const responseText = String(j.response ?? '').trim() || String(j.summary ?? '').trim();
   const filesWritten = Array.isArray(j.filesWritten) && j.filesWritten.length
@@ -381,6 +392,8 @@ function finishJob(job, status) {
     });
   } else if (status === 'cancelled') {
     logEvent('warn', 'mcp', 'job.cancelled', `Job ${job.id} annulé.`, { jobId: job.id, model: job.model });
+  } else if (status === 'needs_approval') {
+    logEvent('info', 'mcp', 'job.needs_approval', `Job ${job.id} en attente de confirmation utilisateur (${job.model}).`, { jobId: job.id, model: job.model });
   }
   const stored = {
     ...job,
@@ -420,7 +433,7 @@ async function runJob(job) {
     const { ids, agentMap } = await fetchAgentsAndModels(st);
     const effectiveEffort = normalizeReasoningEffort(job.reasoningEffort || st.reasoningEffort, 'deep');
     st.reasoningEffort = effectiveEffort;
-    const route = pickModel(job.rawTask ?? job.task, ids, st, job.explicitModel);
+    const route = pickModel(job.rawTask ?? job.task, ids, st, job.explicitModel, { approvedModel: job.approveModel || null });
     job.model = route.model;
     job.routeReason = route.reason;
     job.routingProfile = route.profile === 'auto' ? null : route.profile;
@@ -428,6 +441,15 @@ async function runJob(job) {
     job.permissionMode = job.permissionMode ?? route.permissionMode ?? undefined;
     job.reasoningEffort = route.reasoningEffort ?? effectiveEffort;
     job.contextMode = contextModeOf(job, st);
+
+    if (route.needsApproval) {
+      job.needsApproval = true;
+      job.alternatives = route.alternatives || [];
+      job.approvalMessage = `Le modèle recommandé « ${route.model} » (${route.reason}) est réglé sur « À demander ». Demande confirmation à l’utilisateur avant de l’utiliser, puis relance fs_delegate avec approveModel="${route.model}"${job.alternatives.length ? ` (ou model="${job.alternatives[0]}" en alternative autorisée)` : ''}.`;
+      job.summary = job.approvalMessage;
+      finishJob(job, 'needs_approval');
+      return;
+    }
     notify();
 
     logEvent('info', 'mcp', 'job.start', `Démarrage job ${job.id} (${route.model}, ${route.reason}).`, {
@@ -495,6 +517,7 @@ async function runJob(job) {
             const partRes = await streamGenerationWithRefusalFallback({
               state: st,
               model: route.model,
+              approvedModel: job.approveModel || null,
               availableModels: ids,
               agentMap,
               instructions: PLAN_B_PART_INSTRUCTIONS,
@@ -586,6 +609,7 @@ async function runJob(job) {
         result = await streamGenerationWithRefusalFallback({
           state: st,
           model: route.model,
+          approvedModel: job.approveModel || null,
           availableModels: ids,
           agentMap,
           instructions,
@@ -615,6 +639,7 @@ async function runJob(job) {
         result = await streamGenerationWithRefusalFallback({
           state: st,
           model: route.model,
+          approvedModel: job.approveModel || null,
           availableModels: ids,
           agentMap,
           instructions: PLAN_B_PART_INSTRUCTIONS,
@@ -705,6 +730,7 @@ server.registerTool('fs_delegate', {
     workspaceRoot: z.string().optional().describe('Chemin absolu du workspace : active les outils locaux selon permissionMode (lecture/écriture/commandes bornées).'),
     files: z.array(z.string()).optional().describe('Chemins relatifs à joindre si besoin (hors mode outils autonomes).'),
     model: z.string().optional(),
+    approveModel: z.string().optional().describe('ID exact d’un modèle réglé sur « À demander », après confirmation explicite de l’utilisateur.'),
     priority: z.number().int().min(0).max(9).optional(),
     contextMode: z.enum(['minimal', 'targeted', 'smart']).optional().describe('minimal recommandé = phrase seule sans surcharger.'),
     parentJobId: z.string().optional().describe('Suite d’un job précédent.'),
@@ -738,6 +764,7 @@ server.registerTool('fs_delegate', {
     workspaceRoot: a.workspaceRoot || loadState().lastWorkspaceRoot || undefined,
     files: a.files ?? [],
     explicitModel: a.model,
+    approveModel: a.approveModel || undefined,
     parentId: a.parentJobId,
     priority: a.priority ?? 5,
     contextMode: a.contextMode,

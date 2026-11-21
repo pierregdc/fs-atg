@@ -1,84 +1,98 @@
 <p align="center">
-  <img src="media/icon.svg" width="96" height="96" alt="France Student ATG Logo">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/logo-light.svg">
+    <img src="docs/images/logo-light.svg" alt="France Student" width="380">
+  </picture>
 </p>
 
 <h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.1.0)</h1>
 
 <p align="center">
-  <strong>Orchestrateur France Student & intégration MCP native pour Antigravity</strong><br>
-  Exécution autonome sur disque, sauvegarde atomique <code>/undo</code>, raisonnement boosté et cascade de résilience 502/429.
+  <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> pour Antigravity</strong><br>
+  Exécution autonome sur le workspace, sauvegarde atomique <code>/undo</code>, contrôle par modèle (Oui / À demander / Non), raisonnement boosté et cascade de résilience 502/429.
 </p>
 
 <p align="center">
-  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.1.0-blue.svg" alt="Version 2.1.0"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="Licence"></a>
-  <a href="#commandes-slash-officielles-8-commandes"><img src="https://img.shields.io/badge/slash%20commands-8%20intégrées-007acc.svg" alt="8 Slash Commands"></a>
-  <a href="#sécurité-et-permissions-3-modes"><img src="https://img.shields.io/badge/permissions-3%20niveaux-orange.svg" alt="Permissions 3 niveaux"></a>
+  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.1.0-2563eb?style=flat-square" alt="Version 2.1.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-334155?style=flat-square" alt="Licence MIT"></a>
+  <a href="#commandes-slash-officielles"><img src="https://img.shields.io/badge/commandes-8%20slash-2563eb?style=flat-square" alt="8 commandes slash"></a>
+  <a href="#securite-et-permissions"><img src="https://img.shields.io/badge/permissions-3%20niveaux-475569?style=flat-square" alt="3 niveaux de permissions"></a>
 </p>
 
 ---
 
-## 📸 Interface v2.1 unifiée & épurée
+## Aperçu de l'interface
 
-L'interface du panneau latéral a été entièrement revue : design sobre et professionnel monochrome/bleu sans surcharge visuelle, structuration en **3 onglets principaux** et indicateurs visuels clarifiés (pastilles de gamme, badge vert émeraude *Nouveau* et barres d'intensité du raisonnement).
+L'interface du panneau latéral adopte un thème monochrome/slate et bleu unifié sans surcharge visuelle, structuré en **3 onglets principaux** (**Accueil**, **Modèles**, **Réglages**) avec indicateurs clarifiés : pastilles de gamme (`Fort`, `Équilibré`, `Léger`), badge émeraude `Nouveau` (< 14 jours), barres d'intensité du raisonnement et sélecteur d'autorisation par modèle.
 
-| 🏠 Accueil (Jauge unique, permissions & raisonnement) | 🤖 Modèles (14 modèles FS, dates & badges) |
+| Accueil (jauge unique, permissions &amp; raisonnement) | Modèles (contrôle Oui / À demander / Non &amp; badges) |
 | :---: | :---: |
 | ![Accueil](docs/images/screen-accueil.png) | ![Modèles](docs/images/screen-modeles.png) |
 
-| ⚙️ Réglages (Connexion & comportement) | 📋 Journal & Avancé (Logs & diagnostics) |
+| Réglages (connexion &amp; comportement) | Journal &amp; Avancé (logs &amp; diagnostics) |
 | :---: | :---: |
 | ![Réglages](docs/images/screen-reglages.png) | ![Journal](docs/images/screen-journal.png) |
 
 ---
 
-## ⚡ Nouveautés majeures `v2.1.0`
+## Nouveautés v2.1
 
-1. **Design unifié & 3 onglets fluides** :
-   - **Accueil** : Jauge unique interactive (budget + coupe-circuit), sélecteur compact *Délégation* / *Permissions*, sélecteur de raisonnement avec barres d'intensité (`Désactivé`, `Standard`, `Élevé`, `Max`), badges de commandes rapides (`/fs`, `/max`, `/patch`, etc.) et historique d'exécution.
-   - **Modèles** : Vue aérée avec filtrage instantané, pastilles de gamme sobres (*Fort*, *Équilibré*, *Léger*) et badge émeraude *Nouveau* pour les modèles de moins de 14 jours.
-   - **Réglages** : Organisation par sous-onglets (*Essentiel* et *Journal & Avancé*) avec pastille d'alerte en cas d'erreur.
-
-2. **Cascade de résilience 502/429 & Cooldown automatique** :
-   - En cas d'erreur réseau ou d'indisponibilité (HTTP 502, 503, 429), bascule intelligente en cascade du **meilleur au moins fort** (`heavy` ➔ `medium` ➔ `light`).
-   - Si aucun modèle ne répond : activation automatique d'un **cooldown de 10 minutes** avec comme motif clair : `IA non dispo`, permettant à Antigravity de continuer en natif sans bloquer l'utilisateur.
-
-3. **8 Commandes `/` officielles intégrées au chat Antigravity** :
-   - Commandes déclarées nativement dans `skills/` pour un accès immédiat depuis l'éditeur.
+- **Contrôle individuel par modèle (`Oui` / `À demander` / `Non`)** : autorise, bloque ou exige une confirmation utilisateur explicite avant qu'Antigravity ou le panneau n'utilise un modèle.
+- **Interface unifiée en 3 onglets** :
+  - **Accueil** : jauge unique interactive (budget chat restant + coupe-circuit réglable de 0 % à 90 %), sélecteurs compacts *Délégation* et *Permissions PC*, barre de commandes rapides (`/fs`, `/max`, `/patch`, `/plan`, `/eco`, `/remember`), sélecteur de raisonnement à 3 niveaux (*Standard*, *Approfondi*, *Maximum*) et historique détaillé avec `/undo`.
+  - **Modèles** : catalogue filtrable avec fournisseur, fenêtre de contexte, date de détection, badge `Nouveau` (< 14 jours) et contrôle 3 états sur chaque carte.
+  - **Réglages** : sous-onglets *Essentiel*, *Mémoire* (`FRST.md`, notes, pré-prompt) et *Journal &amp; Avancé* avec badge d'erreurs sur l'onglet.
+- **Cascade de résilience 502/429 &amp; Cooldown `IA non dispo`** : en cas d'erreur HTTP 502, 503, 504 ou 429, bascule automatique du meilleur modèle au moins fort (`heavy` -> `medium` -> `light`). Si aucun modèle autorisé ne répond, un **cooldown global de 10 minutes (`IA non dispo`)** est activé pour laisser Antigravity travailler en natif sans blocage.
+- **8 commandes slash officielles** déclarées dans `plugin/skills/` pour le chat Antigravity.
 
 ---
 
-## 💬 Commandes slash officielles (8 commandes)
+## Contrôle par modèle (Oui / À demander / Non)
 
-| Commande | Action / Rôle | Économie & Effet |
+Dans l'onglet **Modèles**, chaque modèle dispose d'un sélecteur persistant (`.fsatg_state.json`) qui gouverne à la fois le serveur MCP (`fs_delegate`) et les générations du panneau :
+
+| État | Valeur | Comportement sur le routage, `fs_delegate` et la cascade 502/429 |
 | :--- | :--- | :--- |
-| **`/fs`** | Délégation principale avec écriture directe dans `workspaceRoot` | Antigravity ne lit ni ne réécrit les fichiers modifiés (`filesWritten` court) |
-| **`/max`** | Mode raisonnement maximal (`reasoningEffort="max"`) | Pour les architectures complexes et les débogages pointus |
-| **`/patch`** | Patch ciblé en lecture seule | Génère un patch précis sans modifier le disque directement (**-94,9 %** de tokens) |
-| **`/plan`** | Plan d'action en lecture seule | Plan télégraphique structuré en 0 écriture disque |
-| **`/eco`** | Profil Éco ultra-rapide | Modèle léger prioritaire avec exécution en moins de 10 secondes |
-| **`/undo`** | Restauration atomique (`fs_undo`) | Annule instantanément la dernière modification de France Student |
-| **`/remember`** | Mémoire projet persistante (`fs_memory`) | Mémorise des consignes injectées automatiquement dès le premier tour |
-| **`/quota`** | Diagnostic et quota en temps réel | Affiche le solde restant, l'état du cooldown `IA non dispo` et la connectivité |
+| **Oui** | `allow` | Utilisable librement par le routeur et par les replis automatiques. |
+| **À demander** | `ask` | Si le modèle est choisi ou recommandé, `fs_delegate` retourne `status: "needs_approval"` avec jusqu'à 3 alternatives en `Oui` : Antigravity demande confirmation à l'utilisateur avant de relancer avec `approveModel`. Exclu des bascules silencieuses de la cascade 502/429. |
+| **Non** | `deny` | Totalement exclu du routage automatique, de la cascade de secours et des sélections explicites (`Utiliser` masqué, erreur explicite en cas d'appel direct). |
 
 ---
 
-## 🛡️ Sécurité et Permissions (3 modes)
+## Commandes slash officielles
 
-- **`plan` (Lecture seule)** : France Student inspecte le code sans jamais écrire sur le disque (`list_directory`, `read_file`, `search_files`).
-- **`acceptEdits` (Édition + Undo, défaut)** : Modifications et créations directes de fichiers avec sauvegarde atomique dans la pile `/undo`. Protection stricte des fichiers sensibles (`.env`, `.git`).
-- **`full` (Complet + Shell)** : Ajoute l'exécution sécurisée de commandes système (`run_command`, pas de shell arbitraire, filtrage des variables d'environnement).
-
----
-
-## 📊 Comparatifs de performance mesurés
-
-| Exemple de tâche | Mode & Modèle | Résultat mesuré |
+| Commande | Outil / Paramètre | Effet et économie de quota Antigravity |
 | :--- | :--- | :--- |
-| **Création & correction autonome** | `v2.1` `acceptEdits` (`claude-sonnet-5-5`) | 2 tours d'outils, résumé de **269 caractères** envoyé à Antigravity (**3 314 tokens** économisés) |
-| **Vérification shell directe** | `v2.1` `full` (`claude-sonnet-5-5`) | Exécution directe (`node --check`, 81 ms), réponse courte de **299 car.** |
-| **Patch chirurgical** | `/patch` (`claude-sonnet-5-5`) | **371 car.** au lieu de 7 273 (**-94,9 %** de volume transféré) |
-| **Génération rapide** | `/eco` (`claude-haiku-5-5`) | Réponse concise en **7,99 s** |
+| **`/fs`** | `fs_delegate` (`workspaceRoot`) | Délégation principale avec lecture/écriture directe sur disque et sauvegarde `/undo` ; seul un bilan court (`filesWritten`) revient à Antigravity. |
+| **`/max`** | `reasoningEffort="max"` | Active le protocole de raisonnement maximal et priorise les modèles `Fort`. |
+| **`/patch`** | `executionMode="patch"` | Mode lecture seule : renvoie uniquement les blocs `TARGET` / `REPLACE` à appliquer (**-94,9 %** mesurés). |
+| **`/plan`** | `executionMode="plan"` | Mode lecture seule : plan d'action télégraphique (<= 15 lignes), zéro écriture disque. |
+| **`/eco`** | `routingProfile="eco"` | Profil rapide économe : privilégie les modèles `Léger` (`< 10 s`). |
+| **`/undo`** | `fs_undo` | Restaure atomiquement la dernière écriture ou création de fichier de France Student. |
+| **`/remember`** | `fs_memory` | Enregistre une règle ou note persistante injectée automatiquement au 1er tour (`FRST.md` + mémoire projet). |
+| **`/quota`** | `fs_quota` + `fs_diagnostics` | Affiche le quota restant, l'état du cooldown `IA non dispo`, les modèles disponibles et le diagnostic API. |
+
+---
+
+## Sécurité et permissions
+
+Trois modes de permission PC encadrent les outils locaux de France Student :
+
+- **`plan` (Lecture seule)** : autorise uniquement `list_directory`, `read_file` et `search_files` (idéal pour `/plan` et `/patch`).
+- **`acceptEdits` (Édition + Undo, défaut)** : autorise `edit_file` et `write_file` atomiques avec contrôle de fraîcheur anti-écrasement, protection `.env` / `.git` / liens symboliques et pile de restauration `/undo` (jusqu'à 30 entrées par workspace).
+- **`full` (Complet + Shell)** : ajoute `run_command` sans interpréteur shell (`shell: false`), filtrage des variables d'environnement sensibles et blocage des commandes destructrices.
+
+---
+
+## Comparatifs mesurés
+
+| Exemple de tâche | Mode &amp; Modèle | Résultat mesuré |
+| :--- | :--- | :--- |
+| **Édition et création autonome (`math.mjs` + `greet.mjs`)** | `acceptEdits` (`claude-sonnet-5-5`) | 2 tours d'outils, bilan de **269 caractères** envoyé à Antigravity (**3 314 tokens** économisés). |
+| **Vérification syntaxique directe (`node --check`)** | `full` (`claude-sonnet-5-5`) | Exécution sans shell (`exit 0`, 81 ms), réponse de **299 caractères**. |
+| **Patch ciblé sans écriture (`calculator-3d`)** | `/patch` (`claude-sonnet-5-5`) | **371 caractères** transférés au lieu de 7 273 (**-94,9 %**). |
+| **Utilitaire court (`formatBytes`)** | `/eco` (`claude-haiku-5-5`) | **433 caractères** en **7,99 s**. |
 
 | Calculatrice 3D (Antigravity vs FS) | Jeu d'Échecs 2D (Antigravity vs FS) |
 | :---: | :---: |
@@ -86,7 +100,7 @@ L'interface du panneau latéral a été entièrement revue : design sobre et pro
 
 ---
 
-## 🚀 Installation & Utilisation
+## Installation
 
 ```bash
 git clone https://github.com/pierregdc/fs-atg.git
@@ -94,6 +108,6 @@ cd fs-atg
 node install.mjs
 ```
 
-1. Activez le plugin dans Antigravity.
-2. Ouvrez le panneau **France Student [ATG]** depuis la barre latérale.
-3. Renseignez votre clé API ou jeton dans l'onglet **Réglages**.
+1. Rechargez Antigravity puis activez l'extension **France Student [ATG]**.
+2. Ouvrez le panneau latéral et renseignez votre clé API ou jeton de session dans **Réglages -> Essentiel**.
+3. Ajustez vos permissions et le contrôle **Oui / À demander / Non** de chaque modèle dans l'onglet **Modèles**.

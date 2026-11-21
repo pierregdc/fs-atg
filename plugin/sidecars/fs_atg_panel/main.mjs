@@ -8,6 +8,7 @@ import {
   ANTIGRAVITY_QUOTA_VISIBILITY,
   CONNECTOR_VERSION,
   MCP_TOOL_CATALOG,
+  MODEL_POLICIES,
   REASONING_EFFORTS,
   acquireGlobalSlot,
   apiCredentialStatus,
@@ -340,7 +341,10 @@ async function runJob(job) {
     state = profileState(loadState(), job.routingProfile);
     const effectiveEffort = normalizeReasoningEffort(job.reasoningEffort || state.reasoningEffort, 'deep');
     state.reasoningEffort = effectiveEffort;
-    const route = pickModel(job.rawTask ?? job.task, ids, state, job.explicitModel);
+    const route = pickModel(job.rawTask ?? job.task, ids, state, job.explicitModel, { approvedModel: job.approveModel || null });
+    if (route.needsApproval) {
+      throw new Error(`Confirmation requise avant d'utiliser ${route.model} (« À demander »).`);
+    }
     job.model = route.model;
     job.routeReason = route.reason;
     job.routingProfile = route.profile === 'auto' ? null : route.profile;
@@ -392,6 +396,7 @@ async function runJob(job) {
         result = await streamGenerationWithRefusalFallback({
           state,
           model: route.model,
+          approvedModel: job.approveModel || null,
           availableModels: ids,
           agentMap,
           instructions: panelInstructions(job.executionMode, { useTools: clientTools.length > 0, reasoningEffort: job.reasoningEffort }),
@@ -430,6 +435,7 @@ async function runJob(job) {
           result = await streamGenerationWithRefusalFallback({
             state,
             model: route.model,
+            approvedModel: job.approveModel || null,
             availableModels: ids,
             agentMap,
             instructions: panelInstructions(job.executionMode, { useTools: false, reasoningEffort: job.reasoningEffort }),
@@ -550,6 +556,7 @@ app.api('/api/state', async () => {
     contextMode: state.contextMode ?? 'minimal',
     session,
     slots: globalSlotStatus(state),
+    modelPolicies: state.modelPolicies || {},
     allowedModels: state.allowedModels,
     blockedModels: state.blockedModels,
     tiers: state.tiers,
@@ -664,6 +671,22 @@ app.api('/api/settings', (data) => {
   if (['minimal', 'targeted', 'smart'].includes(data.contextMode)) state.contextMode = data.contextMode;
   if (Array.isArray(data.allowedModels)) state.allowedModels = data.allowedModels.map((s) => String(s).trim()).filter(Boolean);
   if (Array.isArray(data.blockedModels)) state.blockedModels = data.blockedModels.map((s) => String(s).trim()).filter(Boolean);
+  if (data.modelPolicy && typeof data.modelPolicy === 'object') {
+    const id = String(data.modelPolicy.id || '').trim();
+    const policy = String(data.modelPolicy.policy || '').trim();
+    if (id && MODEL_POLICIES.includes(policy)) {
+      state.modelPolicies = { ...(state.modelPolicies || {}), [id]: policy };
+      logEvent('info', 'panel', 'settings.model_policy', `Politique modèle ${id} → ${policy}.`, { id, policy });
+    }
+  }
+  if (data.modelPolicies && typeof data.modelPolicies === 'object') {
+    const clean = {};
+    for (const [k, v] of Object.entries(data.modelPolicies)) {
+      const id = String(k).trim();
+      if (id && MODEL_POLICIES.includes(v)) clean[id] = v;
+    }
+    state.modelPolicies = clean;
+  }
   if (data.tiers && typeof data.tiers === 'object') {
     const cleanArr = (a) => (Array.isArray(a) ? a.map((s) => String(s).trim()).filter(Boolean) : []);
     state.tiers = {
@@ -718,9 +741,24 @@ app.api('/api/logs/clear', () => {
   return { ok: true, entries: [], recentErrors: 0 };
 });
 
-app.api('/api/delegate', (data) => {
+app.api('/api/delegate', async (data) => {
   const delegation = normalizeDelegation(data.task, data.executionMode, data.routingProfile, data.permissionMode, data.reasoningEffort);
   if (!delegation.task) throw new Error('Tâche vide après les commandes locales.');
+  const st = profileState(loadState(), delegation.routingProfile);
+  st.reasoningEffort = normalizeReasoningEffort(delegation.reasoningEffort || st.reasoningEffort, 'deep');
+  const { ids } = await fetchModels().catch(() => ({ ids: [] }));
+  if (ids.length) {
+    const route = pickModel(delegation.rawTask, ids, st, data.model || undefined, { approvedModel: data.approveModel || null });
+    if (route.needsApproval) {
+      return {
+        ok: false,
+        needsApproval: true,
+        model: route.model,
+        reason: route.reason,
+        alternatives: route.alternatives,
+      };
+    }
+  }
   const firstLine = delegation.task.split('\n')[0];
   const job = {
     id: randomUUID().slice(0, 8),
@@ -729,6 +767,7 @@ app.api('/api/delegate', (data) => {
     rawTask: delegation.rawTask,
     workspaceRoot: data.workspaceRoot || loadState().lastWorkspaceRoot || undefined,
     explicitModel: data.model || undefined,
+    approveModel: data.approveModel || undefined,
     executionMode: delegation.executionMode,
     permissionMode: delegation.permissionMode,
     reasoningEffort: delegation.reasoningEffort,
@@ -743,7 +782,7 @@ app.api('/api/delegate', (data) => {
   jobs.set(job.id, job);
   queue.push(job);
   pump();
-  return { jobId: job.id };
+  return { ok: true, jobId: job.id };
 });
 
 app.api('/api/cancel', (data) => {

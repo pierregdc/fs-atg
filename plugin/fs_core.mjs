@@ -32,6 +32,7 @@ const TIER_PRIORITY = { heavy: HEAVY_PRIORITY, medium: MEDIUM_PRIORITY, light: L
 
 export const COOLDOWN_DURATION_MS = 10 * 60 * 1000;
 export const UNAVAILABLE_REASON = 'IA non dispo';
+export const MODEL_POLICIES = Object.freeze(['allow', 'ask', 'deny']);
 
 const modelCooldowns = new Map();
 let globalCooldownMemory = null;
@@ -138,8 +139,28 @@ export function getGlobalCooldown(state = null) {
   };
 }
 
-export function rankModelsBestToWorst(models = [], state = null) {
-  const unique = [...new Set(models || [])].filter((id) => modelIsAllowed(id, state));
+export function getModelPolicy(id, state) {
+  const explicit = state?.modelPolicies?.[id];
+  if (MODEL_POLICIES.includes(explicit)) return explicit;
+  const low = String(id).toLowerCase();
+  const allowed = (state?.allowedModels || []).map((value) => String(value).toLowerCase()).filter(Boolean);
+  const blocked = (state?.blockedModels || []).map((value) => String(value).toLowerCase()).filter(Boolean);
+  if ((allowed.length && !allowed.some((value) => low.includes(value))) || blocked.some((value) => low.includes(value))) {
+    return 'deny';
+  }
+  return 'allow';
+}
+
+export function modelIsAllowed(id, state, { allowAsk = false } = {}) {
+  const p = getModelPolicy(id, state);
+  return allowAsk ? p !== 'deny' : p === 'allow';
+}
+
+export function rankModelsBestToWorst(models = [], state = null, { includeAsk = false, approvedModel = null } = {}) {
+  const unique = [...new Set(models || [])].filter((id) => {
+    const p = getModelPolicy(id, state);
+    return p === 'allow' || (p === 'ask' && (includeAsk || approvedModel === id));
+  });
   const ordered = [];
   const seen = new Set();
   for (const tier of ['heavy', 'medium', 'light']) {
@@ -272,6 +293,7 @@ export const DEFAULT_STATE = {
   contextMode: 'minimal',
   directChats: {},
   knownModels: {},
+  modelPolicies: {},
   allowedModels: [],
   blockedModels: [],
   tiers: {
@@ -288,6 +310,9 @@ export function loadState() {
       const raw = readFileSync(STATE_PATH, 'utf-8').replace(/^\uFEFF/, '');
       const parsed = JSON.parse(raw);
       const merged = { ...DEFAULT_STATE, ...parsed };
+      merged.modelPolicies = (parsed.modelPolicies && typeof parsed.modelPolicies === 'object' && !Array.isArray(parsed.modelPolicies))
+        ? { ...parsed.modelPolicies }
+        : {};
       if (!parsed.stateVersion || Number(parsed.stateVersion) < 2) {
         merged.stateVersion = 2;
         merged.useClientTools = true;
@@ -297,7 +322,7 @@ export function loadState() {
       return merged;
     }
   } catch { /* ignore */ }
-  return { ...DEFAULT_STATE };
+  return { ...DEFAULT_STATE, modelPolicies: {} };
 }
 
 export function saveState(st) {
@@ -343,6 +368,7 @@ export function syncAgentsRule(autoDelegate = true, permissionMode = null) {
       : '- **Lecture seule (`plan`)** : passe `workspaceRoot` à `fs_delegate`, utilise `executionMode="patch"` ou `executionMode="plan"`, et applique uniquement les courts extraits retournés avec `edit_file`.',
     '- **Exceptions natives strictes** : garde en natif Antigravity **uniquement** : (1) micro-retouche triviale `< 5 lignes` déjà visible dans le message, (2) question purement conversationnelle sans accès au code, (3) recherche web externe (`search_web`) ou navigateur (`browser`).',
     '- **Raisonnement boosté & Mémoire** : utilise `reasoningEffort="max"` (ou `/max`) sur les tâches complexes ; `/remember` appelle `fs_memory` (`FRST.md` + notes + faits appris sont injectés automatiquement au 1er tour).',
+    '- **Contrôle par modèle (Oui / À demander / Non)** : si `fs_delegate` renvoie `status: "needs_approval"`, demande explicitement l’accord de l’utilisateur avant d’utiliser le modèle recommandé (ou propose une alternative autorisée), puis relance `fs_delegate` avec `approveModel="<modelId>"` (ou `model="<alternative>"`). N’utilise jamais un modèle réglé sur « Non ».',
     '- **Cascade 502/429 & Cooldown 10 min (`IA non dispo`)** : en cas d’erreur 502/503/429, France Student bascule automatiquement du meilleur modèle au moins fort (`heavy` → `medium` → `light`). Si aucun modèle ne répond, un cooldown de 10 min est activé avec le motif `IA non dispo` : pendant ce cooldown, exécute directement la tâche en natif sans rappeler `fs_delegate`.',
     '- **Plan B** : si Plan A échoue hors `IA non dispo`, relance en `planB: true` avec `parts` (2–4 petits blocs) ; n’exécute nativement qu’en tout dernier recours.',
     '- **Quota & état** : `/quota` → `fs_quota` (quota, cooldown `IA non dispo`) puis `fs_diagnostics` (connexion, modèles) ; `fs_logs` et `fs_session` restent disponibles comme outils. `/usage` mesure Antigravity.',
@@ -840,6 +866,7 @@ export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { pe
       changed = true;
     }
     const tier = classifyTier(id, state);
+    const policy = getModelPolicy(id, state);
     const addedAt = apiCreatedAt ?? rec.firstSeenAt ?? null;
     const addedSource = apiCreatedAt ? 'api' : (rec.firstSeenAt ? 'detected' : 'unknown');
     const isNew = apiCreatedAt
@@ -850,7 +877,8 @@ export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { pe
       name: meta?.name || id,
       provider: meta?.provider || raw?.owned_by || (id.startsWith('claude') ? 'anthropic' : 'openai'),
       tier,
-      blocked: !modelIsAllowed(id, state),
+      policy,
+      blocked: policy === 'deny',
       contextWindow: meta?.contextWindow ?? null,
       addedAt,
       addedSource,
@@ -887,21 +915,17 @@ export function classifyTier(id, state) {
 }
 
 export function groupModelsByTier(available, state, metaMap) {
-  const blocked = (state?.blockedModels || []).map((b) => b.toLowerCase());
-  const allowed = (state?.allowedModels || []).map((a) => a.toLowerCase());
-  const isOk = (id) => {
-    const low = id.toLowerCase();
-    return (!allowed.length || allowed.some((a) => low.includes(a))) && !blocked.some((b) => low.includes(b));
-  };
   const groups = { light: [], medium: [], heavy: [] };
   for (const id of available || []) {
     const t = classifyTier(id, state);
     const meta = metaMap?.get(id);
+    const policy = getModelPolicy(id, state);
     groups[t].push({
       id,
       name: meta?.name || id,
       provider: meta?.provider || (id.startsWith('claude') ? 'anthropic' : 'openai'),
-      blocked: !isOk(id),
+      policy,
+      blocked: policy === 'deny',
     });
   }
   return groups;
@@ -960,13 +984,6 @@ export function refusalReasonFromText(text) {
   }
   if (/```/.test(value)) return null;
   return REFUSAL_TEXT_AT_START.test(value) ? value : null;
-}
-
-function modelIsAllowed(id, state) {
-  const low = String(id).toLowerCase();
-  const allowed = (state?.allowedModels || []).map((value) => String(value).toLowerCase());
-  const blocked = (state?.blockedModels || []).map((value) => String(value).toLowerCase());
-  return (!allowed.length || allowed.some((value) => low.includes(value))) && !blocked.some((value) => low.includes(value));
 }
 
 /** Ordered fallbacks stay strictly in the original model's tier. */
@@ -1085,12 +1102,10 @@ function profileTier(profile, prompt) {
   }
 }
 
-export function pickModel(raw, available, state, explicit) {
+export function pickModel(raw, available, state, explicit, { approvedModel = null } = {}) {
   const has = (id, pats) => pats.some((p) => id.toLowerCase().includes(p.toLowerCase()));
-  const allowed = state.allowedModels || [];
-  const blocked = state.blockedModels || [];
-  const pool = available.filter((id) => (!allowed.length || has(id, allowed)) && !has(id, blocked));
-  if (!pool.length) throw new Error('Aucun modèle autorisé disponible.');
+  const pool = (available || []).filter((id) => getModelPolicy(id, state) !== 'deny');
+  if (!pool.length) throw new Error('Aucun modèle autorisé disponible (vérifie l’onglet Modèles).');
   const directives = parseTaskDirectives(raw);
   const prompt = directives.prompt;
   const requested = directives.requested;
@@ -1099,10 +1114,23 @@ export function pickModel(raw, available, state, explicit) {
   const forcedTier = requested?.kind === 'tier' ? requested.value : TIER_ALIASES[wantedNorm];
   const profile = directives.profile || normalizeRoutingProfile(state?.routingProfile) || 'auto';
 
+  const finalize = (result) => {
+    const policy = getModelPolicy(result.model, state);
+    const needsApproval = policy === 'ask' && approvedModel !== result.model;
+    const alternatives = needsApproval
+      ? rankModelsBestToWorst(pool, state, { includeAsk: false }).slice(0, 3)
+      : [];
+    return { ...result, policy, needsApproval, alternatives };
+  };
+
   const effectiveEffort = normalizeReasoningEffort(directives.reasoningEffort || state?.reasoningEffort, 'deep');
   if (wanted && !forcedTier) {
     const hit = pool.find((id) => has(id, [wanted]));
-    if (hit) return { model: hit, prompt, reason: `forcé : ${wanted}`, profile, executionMode: directives.executionMode, permissionMode: directives.permissionMode, reasoningEffort: effectiveEffort };
+    if (hit) return finalize({ model: hit, prompt, reason: `forcé : ${wanted}`, profile, executionMode: directives.executionMode, permissionMode: directives.permissionMode, reasoningEffort: effectiveEffort });
+    const rawHit = (available || []).find((id) => has(id, [wanted]));
+    if (rawHit && getModelPolicy(rawHit, state) === 'deny') {
+      throw new Error(`Modèle « ${wanted} » désactivé (Non) dans l’onglet Modèles.`);
+    }
     throw new Error(`Modèle « ${wanted} » indisponible ou bloqué.`);
   }
 
@@ -1115,7 +1143,7 @@ export function pickModel(raw, available, state, explicit) {
     const hit = pickTierCandidate(pool, t, state);
     if (hit) {
       const label = t === 'light' ? 'faible' : t === 'heavy' ? 'fort' : 'équilibré';
-      return {
+      return finalize({
         model: hit,
         prompt,
         reason: forcedTier ? `catégorie : ${label}`
@@ -1126,10 +1154,10 @@ export function pickModel(raw, available, state, explicit) {
         executionMode: directives.executionMode,
         permissionMode: directives.permissionMode,
         reasoningEffort: effectiveEffort,
-      };
+      });
     }
   }
-  return {
+  return finalize({
     model: pool[0],
     prompt,
     reason: profile === 'auto' ? 'auto : premier modèle autorisé' : `profil ${profile} : premier modèle autorisé`,
@@ -1137,7 +1165,7 @@ export function pickModel(raw, available, state, explicit) {
     executionMode: directives.executionMode,
     permissionMode: directives.permissionMode,
     reasoningEffort: effectiveEffort,
-  };
+  });
 }
 
 export async function* readSseFrames(stream) {
@@ -1843,7 +1871,7 @@ export async function streamGeneration({
  * cascading through available models from BEST to WORST (heavy -> medium -> light).
  * If no model succeeds, activates a 10-minute cooldown with motif "IA non dispo".
  */
-export async function streamGenerationWithRefusalFallback({ availableModels = [], onRetry, ...request }) {
+export async function streamGenerationWithRefusalFallback({ availableModels = [], approvedModel = null, onRetry, ...request }) {
   const gc = getGlobalCooldown(request.state);
   if (gc.active) {
     const mins = Math.max(1, Math.ceil(gc.remainingSec / 60));
@@ -1856,7 +1884,8 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
 
   const rankedAll = rankModelsBestToWorst(
     availableModels?.length ? availableModels : [request.model].filter(Boolean),
-    request.state
+    request.state,
+    { includeAsk: false, approvedModel }
   );
   const tried = new Set();
   const refusals = [];
