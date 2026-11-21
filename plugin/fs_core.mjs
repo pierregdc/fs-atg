@@ -331,20 +331,21 @@ export function syncAgentsRule(autoDelegate = true, permissionMode = null) {
     ? (writesDirectly
       ? `PRIORITÉ ABSOLUE — Mode Automatique actif (permission : \`${effectivePerm}\`) : pour **toute création de fichier, modification, refactorisation, débogage, exploration de code, planification${effectivePerm === 'full' ? ', exécution de tests/commandes' : ''} ou analyse technique**, appelle **IMMÉDIATEMENT EN PREMIER** \`fs_delegate\` avec \`workspaceRoot\` (chemin absolu du projet), \`contextMode="minimal"\` et \`waitSeconds=45\`. **INTERDICTION** de lire les fichiers (\`read_file\`, \`grep_search\`, \`find_by_name\`) ou de les éditer (\`edit_file\`, \`write_file\`) en natif avant d’appeler \`fs_delegate\` : France Student dispose de ses propres outils locaux (\`list_directory\`, \`search_files\`, \`read_file\`, \`edit_file\`, \`write_file\`${effectivePerm === 'full' ? ', \`run_command\`' : ''}) avec sauvegarde atomique \`/undo\`, agit directement sur le disque et te renvoie un bilan court (\`filesWritten\`, \`commandsRun\`).`
       : 'PRIORITÉ ABSOLUE — Mode Automatique actif (permission : `plan` — lecture seule) : délègue immédiatement en premier à `fs_delegate` (`workspaceRoot`, `contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers en natif avant** pour : **modifications (`executionMode="patch"`), plans (`executionMode="plan"`), exploration, revues/audits, debug et génération de code**.')
-    : 'Mode Manuel actif : n’appelle `fs_delegate`, `fs_undo`, `fs_memory`, `fs_session`, `fs_logs` ou `fs_diagnostics` **que** si l’utilisateur mentionne France Student, `@[plugin:fs-atg]` ou une commande (`/patch`, `/plan`, `/send`, `/eco`, `/fast`, `/high`, `/medium`, `/low`, `/think`, `/max`, `/dry-run`, `/undo`, `/memory`, `/remember`, `/mode`, `/compact`, `/new`, `/diagnostics`, `/logs`).';
+    : 'Mode Manuel actif : n’appelle `fs_delegate`, `fs_undo`, `fs_memory`, `fs_session`, `fs_logs`, `fs_quota` ou `fs_diagnostics` **que** si l’utilisateur mentionne France Student, `@[plugin:fs-atg]` ou une commande slash officielle (`/fs`, `/max`, `/patch`, `/plan`, `/eco`, `/undo`, `/remember`, `/quota`).';
   const content = [
     '# France Student [ATG]',
     '',
     header,
     '',
+    '- **Commandes slash officielles** (Mode Automatique et Mode Manuel) : `/fs` (déléguer, écriture directe `workspaceRoot` + `/undo`), `/max` (`reasoningEffort="max"` + modèle Fort), `/patch` (patch ciblé), `/plan` (plan en lecture seule), `/eco` (profil Éco), `/undo` → `fs_undo`, `/remember` → `fs_memory`, `/quota` → `fs_quota` + `fs_diagnostics`.',
     writesDirectly
       ? '- **Zéro gaspillage de quota Antigravity** : ne fais jamais d’exploration ou de réécriture native quand `fs_delegate` peut tout exécuter de bout en bout sur disque avec `workspaceRoot`. Une fois `fs_delegate` terminé (`status: "done"` avec `filesWritten`), présente directement le résultat à l’utilisateur sans relire ni rééditer les fichiers modifiés. Si besoin d’annuler : `/undo` → `fs_undo`.'
       : '- **Lecture seule (`plan`)** : passe `workspaceRoot` à `fs_delegate`, utilise `executionMode="patch"` ou `executionMode="plan"`, et applique uniquement les courts extraits retournés avec `edit_file`.',
     '- **Exceptions natives strictes** : garde en natif Antigravity **uniquement** : (1) micro-retouche triviale `< 5 lignes` déjà visible dans le message, (2) question purement conversationnelle sans accès au code, (3) recherche web externe (`search_web`) ou navigateur (`browser`).',
-    '- **Raisonnement boosté & Mémoire** : utilise `reasoningEffort="max"` (ou `/max`, `/think`) sur les tâches complexes ; `/remember` et `/memory` appellent `fs_memory` (`FRST.md` + notes + faits appris sont injectés automatiquement au 1er tour).',
+    '- **Raisonnement boosté & Mémoire** : utilise `reasoningEffort="max"` (ou `/max`) sur les tâches complexes ; `/remember` appelle `fs_memory` (`FRST.md` + notes + faits appris sont injectés automatiquement au 1er tour).',
     '- **Cascade 502/429 & Cooldown 10 min (`IA non dispo`)** : en cas d’erreur 502/503/429, France Student bascule automatiquement du meilleur modèle au moins fort (`heavy` → `medium` → `light`). Si aucun modèle ne répond, un cooldown de 10 min est activé avec le motif `IA non dispo` : pendant ce cooldown, exécute directement la tâche en natif sans rappeler `fs_delegate`.',
     '- **Plan B** : si Plan A échoue hors `IA non dispo`, relance en `planB: true` avec `parts` (2–4 petits blocs) ; n’exécute nativement qu’en tout dernier recours.',
-    '- **Journal & état** : `/logs` → `fs_logs`, `/diagnostics` → `fs_diagnostics`, `/new` ou `/compact` → `fs_session`. `/usage` mesure Antigravity.',
+    '- **Quota & état** : `/quota` → `fs_quota` (quota, cooldown `IA non dispo`) puis `fs_diagnostics` (connexion, modèles) ; `fs_logs` et `fs_session` restent disponibles comme outils. `/usage` mesure Antigravity.',
     '',
   ].join('\n');
   mkdirSync(dirname(RULES_PATH), { recursive: true });
@@ -1028,13 +1029,17 @@ export function parseTaskDirectives(raw) {
   let executionMode = 'apply';
   let permissionMode = null;
   let reasoningEffort = null;
+  let quotaQuery = false;
   // `/plan /security audit src/auth` is valid: all recognised directives are local.
   for (;;) {
     const slash = /^\s*\/([a-zA-ZÀ-ÿ0-9_-]+)(?:\s+|$)/.exec(prompt);
     if (!slash) break;
     const command = normalizedDirective(slash[1]);
     const next = prompt.slice(slash[0].length);
-    if (command === 'send') { prompt = next; continue; }
+    // `/fs` is the official alias of `/send` (plain delegation).
+    if (command === 'send' || command === 'fs') { prompt = next; continue; }
+    // `/quota` is a local query (fs_quota / fs_diagnostics): never sent in the prompt.
+    if (command === 'quota') { quotaQuery = true; prompt = next; continue; }
     if (command === 'plan') { executionMode = 'plan'; prompt = next; continue; }
     if (command === 'patch') { executionMode = 'patch'; prompt = next; continue; }
     if (command === 'dry-run' || command === 'dryrun' || command === 'preview') { executionMode = 'dry-run'; prompt = next; continue; }
@@ -1056,7 +1061,7 @@ export function parseTaskDirectives(raw) {
     if (MODEL_ALIASES[command]) { requested = { kind: 'model', value: MODEL_ALIASES[command] }; prompt = next; continue; }
     break;
   }
-  return { prompt: prompt.trim(), tagModel, requested, profile, executionMode, permissionMode, reasoningEffort };
+  return { prompt: prompt.trim(), tagModel, requested, profile, executionMode, permissionMode, reasoningEffort, quotaQuery };
 }
 
 /** Non-writing modes may discover local files but never edit or create them. */

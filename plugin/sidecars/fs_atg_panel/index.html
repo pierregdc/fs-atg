@@ -9,12 +9,13 @@
   <style>
     :root {
       color-scheme: dark;
-      --fs-bg: var(--background, #0b0e14);
-      --fs-card: var(--card, #11161f);
-      --fs-fg: var(--foreground, #f1f5f9);
+      --fs-bg: var(--background, #0e1116);
+      --fs-card: color-mix(in srgb, var(--foreground, #e6edf3) 3.5%, var(--background, #0e1116));
+      --fs-card-elev: color-mix(in srgb, var(--foreground, #e6edf3) 5.5%, var(--background, #0e1116));
+      --fs-fg: var(--foreground, #e6edf3);
       --fs-muted: #94a3b8;
       --fs-faint: #64748b;
-      --fs-line: rgba(255, 255, 255, .08);
+      --fs-line: color-mix(in srgb, var(--foreground, #e6edf3) 8.5%, transparent);
       --fs-line-soft: rgba(255, 255, 255, .05);
       --fs-input: #0d121a;
       --fs-accent: #3b82f6;
@@ -24,8 +25,8 @@
       --fs-ok: #10b981;
       --fs-warn: #d97706;
       --fs-bad: #ef4444;
-      --fs-r: 12px;
-      --fs-r-sm: 8px;
+      --fs-r: 10px;
+      --fs-r-sm: 7px;
       --fs-pill: 999px;
     }
     * { box-sizing: border-box; }
@@ -33,7 +34,7 @@
     body {
       padding: 11px;
       overflow-x: hidden;
-      background: var(--fs-bg) !important;
+      background: radial-gradient(120% 160px at 50% 0%, rgba(59, 130, 246, .06), transparent 70%), var(--fs-bg) !important;
       color: var(--fs-fg) !important;
       font-family: var(--font-family, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif);
       font-size: 12px;
@@ -53,8 +54,8 @@
     /* Navigation Tabs */
     .tabs {
       position: sticky; top: 0; z-index: 10;
-      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px;
-      background: color-mix(in srgb, var(--fs-card) 90%, #04070e);
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px;
+      background: var(--fs-card-elev);
       backdrop-filter: blur(14px);
       border: 1px solid var(--fs-line);
       border-radius: 12px;
@@ -318,6 +319,23 @@
     .seg button.on .ico { color: var(--fs-accent); }
     .auto-desc { margin-top: 4px; font-size: 10px; color: var(--fs-muted); }
 
+    /* Hero compact controls (Délégation + Permissions) */
+    .hero-controls {
+      margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--fs-line-soft);
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .hero-controls .ctl-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
+    .hero-controls .ctl-lbl {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+      color: var(--fs-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .hero-controls .seg-3 button { padding: 4px 6px; font-size: 10.5px; }
+
+    /* Composer reasoning block */
+    .reasoning-box { margin-top: 8px; }
+    .reasoning-box .perm-top { margin-bottom: 5px; }
+    .reasoning-box .seg-3 button { gap: 5px; }
+
     /* Composer */
     .cmd-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
     .cmd-pill {
@@ -351,7 +369,7 @@
 
     .popover {
       position: fixed; z-index: 999; width: 245px; max-width: calc(100vw - 24px);
-      background: var(--fs-card); border: 1px solid var(--fs-line); border-radius: 12px;
+      background: var(--fs-card-elev); border: 1px solid var(--fs-line); border-radius: 12px;
       padding: 7px; box-shadow: 0 16px 36px rgba(0, 0, 0, .45);
     }
     .popover[hidden] { display: none; }
@@ -417,7 +435,7 @@
     }
 
     /* Recent History */
-    .hist-list { background: color-mix(in srgb, var(--fs-card) 84%, #050811); border: 1px solid var(--fs-line); border-radius: var(--fs-r); overflow: hidden; }
+    .hist-list { background: var(--fs-card-elev); border: 1px solid var(--fs-line); border-radius: var(--fs-r); overflow: hidden; }
     .hist-item { padding: 9px 10px; border-bottom: 1px solid var(--fs-line-soft); cursor: pointer; }
     .hist-item:last-child { border-bottom: 0; }
     .hist-item:hover { background: color-mix(in srgb, var(--fs-fg) 3%, transparent); }
@@ -462,18 +480,27 @@
     .toolbar input { flex: 1; }
     .model-list { display: flex; flex-direction: column; gap: 7px; }
     .model-card {
-      background: color-mix(in srgb, var(--fs-card) 88%, #050811);
+      background: var(--fs-card);
       border: 1px solid var(--fs-line); border-radius: var(--fs-r-sm); padding: 9px 10px;
     }
-    .model-card.is-new { border-color: color-mix(in srgb, var(--fs-cyan) 42%, transparent); }
+    .model-card.is-new { border-color: rgba(16, 185, 129, .28); }
     .model-card.blocked { opacity: .55; }
     .mc-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .mc-name { font-weight: 650; font-size: 12px; color: var(--fs-fg); }
-    .tier-badge { font-size: 9px; font-weight: 650; padding: 1px 6px; border-radius: 5px; text-transform: uppercase; letter-spacing: .04em; }
+    .tier-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 5px; text-transform: uppercase; letter-spacing: .04em; }
+    .tier-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+    .tier-dot.heavy { background: #60a5fa; }
+    .tier-dot.medium { background: #94a3b8; }
+    .tier-dot.light { background: #64748b; }
+    .depth-bars { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 9px; flex-shrink: 0; }
+    .depth-bars i { display: block; width: 2px; border-radius: 1px; background: currentColor; opacity: .75; }
+    .depth-bars i:nth-child(1) { height: 4px; }
+    .depth-bars i:nth-child(2) { height: 6.5px; }
+    .depth-bars i:nth-child(3) { height: 9px; }
     .tier-badge.heavy { background: rgba(59, 130, 246, .14); color: var(--fs-fg); border: 1px solid rgba(59, 130, 246, .35); }
     .tier-badge.medium { background: rgba(255, 255, 255, .06); color: var(--fs-fg); border: 1px solid var(--fs-line); }
     .tier-badge.light { background: rgba(255, 255, 255, .03); color: var(--fs-muted); border: 1px solid var(--fs-line-soft); }
-    .new-badge { font-size: 9px; font-weight: 650; padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, .06); border: 1px solid var(--fs-line); color: var(--fs-fg); letter-spacing: .03em; }
+    .new-badge { font-size: 9px; font-weight: 600; padding: 1px 7px; border-radius: var(--fs-pill); background: rgba(16, 185, 129, .12); border: 1px solid rgba(16, 185, 129, .30); color: #34d399; letter-spacing: .03em; }
     .cd-badge { font-size: 9px; font-weight: 650; padding: 1px 6px; border-radius: 5px; background: rgba(217, 119, 6, .14); border: 1px solid rgba(217, 119, 6, .35); color: #fbbf24; }
     .thought-list { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; color: var(--fs-muted); display: flex; flex-direction: column; gap: 3px; }
     .thought-item { padding-left: 7px; border-left: 1.5px solid var(--fs-line); line-height: 1.4; }
@@ -487,8 +514,8 @@
     .seg-sm button.on { background: color-mix(in srgb, var(--fs-accent) 22%, transparent); color: var(--fs-fg); }
     .log-list { display: flex; flex-direction: column; gap: 6px; }
     .log-item {
-      background: color-mix(in srgb, var(--fs-card) 88%, #050811);
-      border: 1px solid var(--fs-line); border-radius: 10px; padding: 8px 9px;
+      background: var(--fs-card);
+      border: 1px solid var(--fs-line); border-radius: var(--fs-r-sm); padding: 8px 9px;
     }
     .log-head { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--fs-faint); margin-bottom: 4px; }
     .lvl { font-size: 8.5px; font-weight: 800; padding: 1px 5px; border-radius: 5px; text-transform: uppercase; }
@@ -552,14 +579,10 @@
       <span class="tab-badge" id="tabModelsCnt">—</span>
       <span class="tab-dot" id="tabModelsNew" hidden title="Nouveau modèle récent"></span>
     </button>
-    <button class="tab-btn" data-tab="logs">
-      <svg class="ico" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-      <span>Journal</span>
-      <span class="tab-badge err" id="tabErrBadge" hidden>0</span>
-    </button>
     <button class="tab-btn" data-tab="settings">
       <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.79 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       <span>Réglages</span>
+      <span class="tab-badge err" id="tabErrBadge" hidden>0</span>
     </button>
   </div>
 
@@ -652,10 +675,10 @@
         <div class="synth-pill" id="savingsPill">Éco. ATG : <strong>0 tok</strong></div>
       </div>
 
-      <div class="auto-box">
-        <div class="auto-row">
-          <span class="auto-lbl">Délégation</span>
-          <div class="seg seg-compact" id="autoDelegateSeg">
+      <div class="hero-controls">
+        <div class="ctl-row">
+          <span class="ctl-lbl">Délégation</span>
+          <div class="seg seg-compact" id="autoDelegateSeg" title="Automatique : France Student exécute en priorité · Manuel : sur commande uniquement">
             <button type="button" data-auto="true" class="on">
               <svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               Automatique
@@ -666,76 +689,79 @@
             </button>
           </div>
         </div>
-        <div class="auto-desc" id="autoDelegateDesc">Automatique : France Student gère plans, patchs et tâches ciblées pour économiser Antigravity.</div>
-      </div>
-
-      <div class="perm-box">
-        <div class="perm-top">
-          <span>Permissions PC</span>
-          <div class="undo-wrap" id="undoWrap" hidden>
-            <button type="button" class="undo-pill" id="undoQuickBtn" hidden title="Annuler la dernière écriture de France Student (/undo)">Annuler (0)</button>
-            <button type="button" class="undo-pill undo-drop" id="undoListBtn" aria-label="Voir la pile /undo" title="Voir les fichiers annulables">▾</button>
-            <div class="popover undo-popover" id="undoPopover" hidden>
-              <div class="pop-head"><span>Pile /undo</span><span>Clic pour restaurer</span></div>
-              <div id="undoPopoverList"></div>
+        <div>
+          <div class="ctl-row" style="margin-bottom:5px">
+            <span class="ctl-lbl">Permissions PC</span>
+            <div class="undo-wrap" id="undoWrap" hidden>
+              <button type="button" class="undo-pill" id="undoQuickBtn" hidden title="Annuler la dernière écriture de France Student (/undo)">Annuler (0)</button>
+              <button type="button" class="undo-pill undo-drop" id="undoListBtn" aria-label="Voir la pile /undo" title="Voir les fichiers annulables">▾</button>
+              <div class="popover undo-popover" id="undoPopover" hidden>
+                <div class="pop-head"><span>Pile /undo</span><span>Clic pour restaurer</span></div>
+                <div id="undoPopoverList"></div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="seg-3" id="permSeg">
-          <button type="button" data-perm="plan">
-            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span>Lecture seule</span>
-          </button>
-          <button type="button" data-perm="acceptEdits">
-            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            <span>Édition + Undo</span>
-          </button>
-          <button type="button" data-perm="full">
-            <svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-            <span>Complet + Shell</span>
-          </button>
-        </div>
-        <div class="ro-note" id="permDesc">Édition + Undo : écriture directe avec sauvegarde /undo</div>
-      </div>
-
-      <div class="perm-box">
-        <div class="perm-top">
-          <span>Raisonnement</span>
-          <span id="reasoningTag" style="font-size:9.5px;color:var(--fs-faint);text-transform:none;letter-spacing:0;font-weight:500">Approfondi actif</span>
-        </div>
-        <div class="seg-3" id="reasoningSeg">
-          <button type="button" data-effort="standard">Standard</button>
-          <button type="button" data-effort="deep" class="on">Approfondi</button>
-          <button type="button" data-effort="max">Maximum</button>
+          <div class="seg-3" id="permSeg">
+            <button type="button" data-perm="plan" title="Analyse, /plan et /patch sans écriture disque">
+              <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>Lecture</span>
+            </button>
+            <button type="button" data-perm="acceptEdits" title="Écriture directe sur disque avec sauvegarde /undo">
+              <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              <span>Édition + Undo</span>
+            </button>
+            <button type="button" data-perm="full" title="Lecture, écriture (/undo) et commandes terminal bornées">
+              <svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              <span>Complet + Shell</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="card">
       <div class="cmd-bar" id="cmdBar" aria-label="Commandes rapides">
+        <button type="button" class="cmd-pill" data-cmd="/fs" title="Déléguer à France Student (écriture directe + /undo)">/fs</button>
+        <button type="button" class="cmd-pill" data-cmd="/max" title="Raisonnement Maximum + modèle Fort">/max</button>
         <button type="button" class="cmd-pill" data-cmd="/patch" title="Modification ciblée">/patch</button>
         <button type="button" class="cmd-pill" data-cmd="/plan" title="Plan sans écriture">/plan</button>
         <button type="button" class="cmd-pill" data-cmd="/eco" title="Profil Éco">/eco</button>
-        <button type="button" class="cmd-pill" data-cmd="/max" title="Raisonnement Maximum + modèles forts">/max</button>
         <button type="button" class="cmd-pill" data-cmd="/remember" title="Mémoriser une règle projet">/remember</button>
       </div>
-      <textarea id="task" placeholder="Ex : /patch ajoute un tri, /plan architecture, /eco fonction JS…"></textarea>
+      <textarea id="task" placeholder="Ex : /fs ajoute les tests, /max corrige le bug, /patch trie les items…"></textarea>
       <div class="tier-row" id="tierRow">
         <button class="chip on" data-choice="">
           <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-          Auto (Fort ★)
+          Auto
         </button>
         <button class="chip" data-choice="tier:heavy" data-tier="heavy">
-          Fort <span class="chip-cnt" id="cnt-heavy">—</span>
+          <span class="tier-dot heavy"></span> Fort <span class="chip-cnt" id="cnt-heavy">—</span>
         </button>
         <button class="chip" data-choice="tier:medium" data-tier="medium">
-          Équilibré <span class="chip-cnt" id="cnt-medium">—</span>
+          <span class="tier-dot medium"></span> Équilibré <span class="chip-cnt" id="cnt-medium">—</span>
         </button>
         <button class="chip" data-choice="tier:light" data-tier="light">
-          Léger <span class="chip-cnt" id="cnt-light">—</span>
+          <span class="tier-dot light"></span> Léger <span class="chip-cnt" id="cnt-light">—</span>
         </button>
       </div>
-      <div class="actions">
+      <div class="reasoning-box">
+        <div class="perm-top">
+          <span>Raisonnement</span>
+          <span id="reasoningTag" style="font-size:9.5px;color:var(--fs-faint);text-transform:none;letter-spacing:0;font-weight:500">Approfondi</span>
+        </div>
+        <div class="seg-3" id="reasoningSeg">
+          <button type="button" data-effort="standard">
+            <span class="depth-bars"><i></i></span><span>Standard</span>
+          </button>
+          <button type="button" data-effort="deep" class="on">
+            <span class="depth-bars"><i></i><i></i></span><span>Approfondi</span>
+          </button>
+          <button type="button" data-effort="max">
+            <span class="depth-bars"><i></i><i></i><i></i></span><span>Maximum</span>
+          </button>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:9px">
         <button class="btn" id="go">
           Envoyer
           <svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
@@ -765,7 +791,7 @@
     </div>
     <div id="history"></div>
 
-    <div class="foot-note">Maintiens un niveau pour choisir un modèle · /logs en cas d’erreur</div>
+    <div class="foot-note">Maintiens un niveau pour choisir un modèle · /quota dans le chat</div>
   </div>
 
   <!-- TAB 2: MODÈLES -->
@@ -781,27 +807,12 @@
     <div id="modelList" class="model-list"></div>
   </div>
 
-  <!-- TAB 3: JOURNAL -->
-  <div id="tab-logs" class="view" hidden>
-    <div class="toolbar">
-      <div class="seg-sm" id="logFilterSeg">
-        <button type="button" data-level="all" class="on">Tout</button>
-        <button type="button" data-level="error">Erreurs</button>
-      </div>
-      <span class="spacer"></span>
-      <button class="btn ghost sm" id="refreshLogsBtn">Actualiser</button>
-      <button class="btn ghost sm" id="copyLogsBtn">Copier</button>
-      <button class="btn danger sm" id="clearLogsBtn">Vider</button>
-    </div>
-    <div id="logList" class="log-list"></div>
-  </div>
-
-  <!-- TAB 4: RÉGLAGES -->
+  <!-- TAB 3: RÉGLAGES -->
   <div id="tab-settings" class="view" hidden>
     <div class="seg-3 settings-subseg" id="settingsSubSeg">
       <button type="button" data-sub="essential" class="on">Essentiel</button>
       <button type="button" data-sub="memory">Mémoire <span class="tab-badge" id="memCntBadge" hidden>0</span></button>
-      <button type="button" data-sub="advanced">Avancé</button>
+      <button type="button" data-sub="advanced">Journal &amp; Avancé</button>
     </div>
 
     <div id="settings-sub-essential">
@@ -980,6 +991,24 @@
         </div>
         <div class="diagnostic-body" id="diagnosticsBody">Vérifie le trousseau, l’API, les modèles et le quota. Utilise <code>/usage</code> dans Antigravity pour mesurer le quota Antigravity réel.</div>
       </div>
+
+      <div class="card">
+        <div class="settings-title">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Journal de bord
+        </div>
+        <div class="toolbar">
+          <div class="seg-sm" id="logFilterSeg">
+            <button type="button" data-level="all" class="on">Tout</button>
+            <button type="button" data-level="error">Erreurs</button>
+          </div>
+          <span class="spacer"></span>
+          <button class="btn ghost sm" id="refreshLogsBtn">Actualiser</button>
+          <button class="btn ghost sm" id="copyLogsBtn">Copier</button>
+          <button class="btn danger sm" id="clearLogsBtn">Vider</button>
+        </div>
+        <div id="logList" class="log-list"></div>
+      </div>
     </div>
   </div>
 
@@ -1006,6 +1035,7 @@
     let hoverTimer = null;
     let popHideTimer = null;
     let activeTab = 'dash';
+    let settingsSubTab = 'essential';
     let logFilter = 'all';
     let logEntries = [];
     let modelQuery = '';
@@ -1093,15 +1123,21 @@
     function shortModel(id) { return String(id || '').replace(/^cb\//, ''); }
 
     function switchTab(tab) {
+      if (tab === 'logs') {
+        switchTab('settings');
+        switchSettingsSubTab('advanced');
+        return;
+      }
       activeTab = tab;
       document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
       $('tab-dash').hidden = tab !== 'dash';
       $('tab-models').hidden = tab !== 'models';
-      $('tab-logs').hidden = tab !== 'logs';
       $('tab-settings').hidden = tab !== 'settings';
-      if (tab === 'settings') syncSettingsForm();
+      if (tab === 'settings') {
+        syncSettingsForm();
+        if (settingsSubTab === 'advanced') void loadLogs();
+      }
       if (tab === 'models') renderModelsTab();
-      if (tab === 'logs') loadLogs();
     }
 
     function renderAutoDelegate() {
@@ -1110,13 +1146,15 @@
       document.querySelectorAll('#autoDelegateSeg button, #settingsAutoSeg button').forEach((b) => {
         b.classList.toggle('on', (b.dataset.auto === 'true') === auto);
       });
-      $('autoDelegateDesc').textContent = !auto
-        ? 'Manuel : Antigravity n’utilise France Student que sur demande ou commande explicite.'
-        : perm === 'plan'
-          ? 'Automatique (lecture seule) : délègue plans, revues et /patch sans écriture disque.'
-          : perm === 'full'
-            ? 'Automatique (Complet + Shell) : délègue écritures (/undo) et commandes bornées.'
-            : 'Automatique (Édition + Undo) : délègue modifications et /patch avec sauvegarde /undo.';
+      if ($('autoDelegateDesc')) {
+        $('autoDelegateDesc').textContent = !auto
+          ? 'Manuel : Antigravity n’utilise France Student que sur demande ou commande explicite.'
+          : perm === 'plan'
+            ? 'Automatique (lecture seule) : délègue plans, revues et /patch sans écriture disque.'
+            : perm === 'full'
+              ? 'Automatique (Complet + Shell) : délègue écritures (/undo) et commandes bornées.'
+              : 'Automatique (Édition + Undo) : délègue modifications et /patch avec sauvegarde /undo.';
+      }
     }
 
     function renderTiers() {
@@ -1286,7 +1324,7 @@
         $('modelList').innerHTML = `<div class="empty-txt">${S.hasKey ? 'Aucun modèle trouvé.' : 'Configure ta clé API pour charger la liste des modèles.'}</div>`;
         return;
       }
-      const tierLabels = { heavy: 'Fort ★', medium: 'Équilibré', light: 'Léger' };
+      const tierLabels = { heavy: 'Fort', medium: 'Équilibré', light: 'Léger' };
       $('modelList').innerHTML = filtered.map((m) => {
         let dateTxt = 'Déjà présent (date non fournie par l’API)';
         if (m.addedSource === 'api' && m.addedAt) dateTxt = `Ajouté le ${fmtDate(m.addedAt)}`;
@@ -1296,7 +1334,7 @@
         return `<div class="model-card ${m.isNew ? 'is-new' : ''} ${m.blocked ? 'blocked' : ''}">
           <div class="mc-top">
             <span class="mc-name">${esc(m.name)}</span>
-            <span class="tier-badge ${esc(m.tier)}">${tierLabels[m.tier] || m.tier}</span>
+            <span class="tier-badge ${esc(m.tier)}"><span class="tier-dot ${esc(m.tier)}"></span>${tierLabels[m.tier] || m.tier}</span>
             ${m.isNew ? '<span class="new-badge">Nouveau</span>' : ''}
             ${cd ? `<span class="cd-badge">${esc(cd.reason || 'IA non dispo')} (${Math.ceil(cd.remainingSec / 60)}m)</span>` : ''}
             <span class="spacer"></span>
@@ -1446,16 +1484,18 @@
       document.querySelectorAll('#mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === S.mode));
       const perm = S.permissionMode || 'acceptEdits';
       document.querySelectorAll('#permSeg button').forEach((b) => b.classList.toggle('on', b.dataset.perm === perm));
-      $('permDesc').textContent = perm === 'plan'
-        ? 'Lecture seule : analyse, /plan et /patch sans écriture disque'
-        : (perm === 'full'
-          ? 'Complet + Shell : lecture, écriture (/undo) et commandes bornées'
-          : 'Édition + Undo : écriture directe avec sauvegarde /undo');
+      if ($('permDesc')) {
+        $('permDesc').textContent = perm === 'plan'
+          ? 'Lecture seule : analyse, /plan et /patch sans écriture disque'
+          : (perm === 'full'
+            ? 'Complet + Shell : lecture, écriture (/undo) et commandes bornées'
+            : 'Édition + Undo : écriture directe avec sauvegarde /undo');
+      }
       const effort = S.reasoningEffort || 'deep';
       document.querySelectorAll('#reasoningSeg button').forEach((b) => b.classList.toggle('on', b.dataset.effort === effort));
       $('reasoningTag').textContent = effort === 'max'
-        ? 'Maximum + priorité modèles forts'
-        : (effort === 'standard' ? 'Standard rapide' : 'Approfondi (vérification active)');
+        ? 'Maximum · Modèles forts'
+        : (effort === 'standard' ? 'Standard' : 'Approfondi');
       const undoList = Array.isArray(S.undoEntries) ? S.undoEntries : [];
       $('undoWrap').hidden = undoList.length === 0;
       $('undoQuickBtn').hidden = undoList.length === 0;
@@ -1479,7 +1519,7 @@
       $('tabModelsCnt').textContent = catalog.length ? String(catalog.length) : '—';
       $('tabModelsNew').hidden = !catalog.some((m) => m.isNew);
       if (activeTab === 'models') renderModelsTab();
-      if (activeTab === 'logs') void loadLogs();
+      if (activeTab === 'settings' && settingsSubTab === 'advanced') void loadLogs();
       if (!settingsLoaded) { syncSettingsForm(); settingsLoaded = true; }
     }
 
@@ -1621,10 +1661,12 @@
     });
 
     function switchSettingsSubTab(sub) {
+      settingsSubTab = sub;
       document.querySelectorAll('#settingsSubSeg button').forEach((b) => b.classList.toggle('on', b.dataset.sub === sub));
       $('settings-sub-essential').hidden = sub !== 'essential';
       $('settings-sub-memory').hidden = sub !== 'memory';
       $('settings-sub-advanced').hidden = sub !== 'advanced';
+      if (sub === 'advanced') void loadLogs();
     }
     function syncCmdPills() {
       const m = $('task').value.trim().match(/^(\/\S+)/);
