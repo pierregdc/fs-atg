@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.1.0)</h1>
+<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.2.1)</h1>
 
 <p align="center">
   <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> pour Antigravity</strong><br>
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.1.0-2563eb?style=flat-square" alt="Version 2.1.0"></a>
+  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.2.1-2563eb?style=flat-square" alt="Version 2.2.1"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-334155?style=flat-square" alt="Licence MIT"></a>
   <a href="#commandes-slash-officielles"><img src="https://img.shields.io/badge/commandes-8%20slash-2563eb?style=flat-square" alt="8 commandes slash"></a>
   <a href="#securite-et-permissions"><img src="https://img.shields.io/badge/permissions-3%20niveaux-475569?style=flat-square" alt="3 niveaux de permissions"></a>
@@ -33,6 +33,17 @@ L'interface du panneau latéral adopte un thème monochrome/slate et bleu unifi�
 | Réglages (connexion &amp; comportement) | Journal &amp; Avancé (logs &amp; diagnostics) |
 | :---: | :---: |
 | ![Réglages](docs/images/screen-reglages.png) | ![Journal](docs/images/screen-journal.png) |
+
+---
+
+## Nouveautés v2.2
+
+- **Télémétrie par modèle (7 jours)** : mesure le débit réel (`tok/s`), le délai avant premier token (`TTFT`), le taux de succès et le nombre de replis `429/502`, affichés sur chaque carte de l'onglet **Modèles** avec alerte d'instabilité.
+- **Configuration portable** : export et import JSON sans secret dans **Réglages -> Avancé** (politiques modèles, profils, permissions, seuils).
+- **Cache de lecture (60 s)** : met en cache `list_directory` et `search_files`, invalidé automatiquement à chaque écriture ou commande.
+- **Commande `/model <nom>`** : force un modèle précis directement depuis le prompt.
+- **Diff avant `/undo`**, **jauge de contexte**, **notifications de fin de tâche (> 15 s)** et **trousseau système macOS / Linux** (`security` / `secret-tool`).
+- **Optimisation gros jobs (`v2.2.1`)** : `waitSeconds` porté à `120 s` (`180 s` max), timeout stream outils à `240 s`, cooldown groupé sur saturation `openai_v2` et maintien de `clientTools` sur erreur réseau transitoire.
 
 ---
 
@@ -87,6 +98,21 @@ Trois modes de permission PC encadrent les outils locaux de France Student :
 ---
 
 ## Comparatifs mesurés
+
+### Benchmark réel `/usage` Antigravity (3 tâches complètes : API REST, Dashboard Web, Audit sécurité)
+
+Mesuré sur **Gemini 4 Neon Medium** avec la même suite de 3 projets :
+
+| Mode | Livrable produit | Antigravity Weekly | Antigravity 5h | France Student |
+| :--- | :--- | :--- | :--- | :--- |
+| **SANS extension** (natif pur) | 14 fichiers, **864 lignes**, 7/7 tests | `81 %` -> `79 %` (**`-2 %`**) | `98 %` -> `93 %` (**`-5 %`**) | `0 %` |
+| **AVEC extension (`v2.2.1`)** | 14 fichiers, **1 603 lignes**, **45/45 tests** | `73 %` -> `72 %` (**`-1 %`**) | `100 %` -> `94 %` (**`-6 %`**) | `15,55 %` -> `7,60 %` (**`-7,95 %`**) |
+
+- **Coût brut dans un chat déjà chargé** : `-5 %` vs `-6 %` sur la limite 5h (les tours `fs_delegate`/`fs_job_status` repaient l'historique Antigravity en entrée).
+- **Coût ramené au volume livré** : **`~35 %` d'économie** (`3,74 %` vs `5,79 %` par 1 000 lignes générées, avec **6,4x** plus de tests).
+- **Depuis le panneau latéral** : **100 % d'économie Antigravity** (`0 %` consommé).
+
+### Mesures unitaires par commande / mode
 
 | Exemple de tâche | Mode &amp; Modèle | Résultat mesuré |
 | :--- | :--- | :--- |
