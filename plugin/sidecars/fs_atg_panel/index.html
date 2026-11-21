@@ -621,6 +621,20 @@
     .settings-fold[open] > summary::after { transform: rotate(180deg); }
     .settings-inner { padding: 0 12px 12px; border-top: 1px solid var(--fs-line-soft); padding-top: 10px; }
     .diagnostic-body { margin-top: 8px; color: var(--fs-muted); font-size: 10.5px; white-space: pre-wrap; }
+    .ctx-gauge { display: flex; align-items: center; gap: 7px; margin: -2px 0 8px; font-size: 10px; color: var(--fs-faint); }
+    .ctx-gauge[hidden] { display: none; }
+    .ctx-gauge .ctx-bar { flex: 1; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+    .ctx-gauge .ctx-bar > i { display: block; height: 100%; width: 0; background: var(--fs-accent); transition: width .2s; }
+    .ctx-gauge.warn .ctx-bar > i { background: var(--fs-warn); }
+    .ctx-gauge.crit .ctx-bar > i { background: var(--fs-bad); }
+    .mc-telemetry { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+    .tele-chip { font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--fs-line); color: var(--fs-muted); background: rgba(255, 255, 255, .03); font-variant-numeric: tabular-nums; }
+    .tele-chip.bad { color: #fbbf24; border-color: rgba(217, 119, 6, .4); }
+    .tele-hint { font-size: 9.5px; color: #fbbf24; margin-top: 4px; }
+    .diff-panel { margin-top: 6px; max-height: 220px; overflow: auto; background: var(--fs-input); border: 1px solid var(--fs-line); border-radius: 7px; padding: 6px 8px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; line-height: 1.45; white-space: pre; }
+    .diff-panel[hidden] { display: none; }
+    .diff-panel .dl-add { color: #5ee7ad; }
+    .diff-panel .dl-del { color: #ff9b9b; }
     .toast { font-size: 10.5px; font-weight: 600; color: #5ee7ad; }
     .toast.err { color: #ff9b9b; }
     .foot-note { font-size: 10px; color: var(--fs-faint); text-align: center; margin: 10px 0 2px; }
@@ -683,7 +697,7 @@
         <div class="brand">
           <img class="brand-logo" alt="France Student" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASzSURBVGhD7VhbjF1jFP6m1dZdoo2G0NaYurTSqHPO3mudkRiioWlKCEGlLuGJEiIRlxeJNwkRqTQVjBAVE52aObP/9Z/21GSIoYJU6INbiw6pUGXKVMt0ZK2953bOmenLXM7D/pL1cvbeZ3/f/r/1r7V+IEWKFClSpEhRBcuKJyGI1iDouAncfUL55VpFnZFldzlI3gfLf2B/BCwlUDFEU+fxdk9NQskF0fmg6HWQ/AWWgZi8CRgAu16E7kVkO+qx0s0pf3z6sKRlNoLiuWB5DOT2xWTlX7DrActrYNkElp/j1bBre0HRQ8i0L0Bm46zyv5tCDMxAxp8J9reD5bOYtBwFy+9gvwWhv8LygP3p4ML1IBGQ/DG0MiQ7EMotCNvmA0/OKP/3yUQdQncqAr8K7Apg+dOIkxwGy3sgdxsyhXnAgN53Nsg9AXIbQO2XIpC7Qe4jsKitjoLdAZBsRhitQGPbKeUvmnjokoeyDOReActPZgty/SD3NUL/IEgW2crYvYV5YFkPloNg+Qfk3kTQOhfc1oBQHgXJbrD028qR/AjyG0DbLkJT53Hlr50YZD6ZhdDfB3J7jBB7/eq/gqIXwIUL0eDmgPzjCISNfChPJ6ujvtck7gNFz5qtNOFzfinYvRxbzmx1CCzfguSOyRHBLbo9qmWUkL5su3k451bbFqlJyfJ5ksiaE38Pkx+KPrDvQl5ythpqG9tyXWf8USyHNqGpWbfbCYYK0ESMiXSD/FUJURXTl2ydgzuNEiknPxj9thr6tdlfg6A0F2FhMVg+teskbyX1YoIxSoDvQrZUH3tcyfjxCI8XmgMlBFEWLDumVkBYmm8FKV+8ESzfH+OrjxW9yMu9aDT7TYOAQZBcm1ipnOAxwv2ArFuO3DvnTK+AzLbTwO6LSoJjhe1gWtQ2WqGbdgEKcivNEhVkq4ZW4qdMuKImBOhL456nnGxlkOsFddyAJV/OtmdrQkC4dTHIWoRKwpWhK7DTeilFbQjwa6sQHS9+Q7Z4sT1bEwLYvVqF5FihSbzLqrFi2gUsalb/f1OF6Hjxi80RiqkXIN1o3LZgqI8P/XXDU1jV0CKnVXfEb9rcyTPxFtzWMDWtBEcdCYFDIO9AUWjdpSYjyUvW38eDzUjy2krvAkkrSHrATps8/W0f2K9D4K4Eu+1DHa41c5MhQNtpcveDZQ/IHR5up+V5ZOUCE6K1gNzbcaNmheoIyG81q2iLvHzzwuQ/1iNw65K5Yv+QUHbfIfR3TU47rVARuegSkCVsPOfGA81XIHkA+WihtcIZdx4ougfsnrP+XlfP0DITl5XqQe4RULQblAw0OidrVc61L5088sOoM9+SWw0WtVQ8UsZfsAuB3Gotsh2faI5oDNQh33oGSO4EuQ+HR0p/AOy2IJCrp2akHIWWmWhsOysmJTtHDPX7ze86qGQKJ5q1wuIKkA5DSljtYkctH4OjNfFuNrVD/WgMHqvo8M5eE1NF6Jy7FyTNIPdGYrfB5O5B6B42u03vsUoZ1OeazEqYhsbJEQdbchChzsBtDZMzMk4M6sw2eiZE8kEyYupqvItcRz5J5ho9WixHU+fJCKO1IHeziUqRIkWKFClSVOJ/3Vji70GskJcAAAAASUVORK5CYII=" />
           <div class="brand-txt">
-            <h1>France Student <span class="badge">ATG</span> <span class="ver-badge">v2.1.2</span></h1>
+            <h1>France Student <span class="badge">ATG</span> <span class="ver-badge">v2.2.0</span></h1>
             <div class="ws-line" id="heroWsBadge" hidden>
               <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
               <span id="heroWsName"></span>
@@ -760,6 +774,7 @@
               <div class="popover undo-popover" id="undoPopover" hidden>
                 <div class="pop-head"><span>Pile /undo</span><span>Clic pour restaurer</span></div>
                 <div id="undoPopoverList"></div>
+            <pre class="diff-panel" id="diffPanel" hidden></pre>
               </div>
             </div>
           </div>
@@ -788,9 +803,11 @@
         <button type="button" class="cmd-pill" data-cmd="/patch" title="Modification ciblée">/patch</button>
         <button type="button" class="cmd-pill" data-cmd="/plan" title="Plan sans écriture">/plan</button>
         <button type="button" class="cmd-pill" data-cmd="/eco" title="Profil Éco">/eco</button>
+        <button type="button" class="cmd-pill" data-cmd="/model" title="Forcer un modèle précis : /model gpt-6.2-astra ...">/model</button>
         <button type="button" class="cmd-pill" data-cmd="/remember" title="Mémoriser une règle projet">/remember</button>
       </div>
       <textarea id="task" placeholder="Ex : /fs ajoute les tests, /max corrige le bug, /patch trie les items…"></textarea>
+      <div class="ctx-gauge" id="ctxGauge" hidden><span id="ctxLbl"></span><span class="ctx-bar"><i id="ctxFill"></i></span></div>
       <div class="tier-row" id="tierRow">
         <button class="chip on" data-choice="">
           <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
@@ -1063,6 +1080,20 @@
         <div class="actions">
           <button class="btn sm" id="saveSettingsBtn" disabled>Appliquer</button>
           <span class="toast" id="orchToast"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="settings-title">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Configuration portable
+        </div>
+        <div class="f-help" style="margin-bottom:8px">Exporte politiques modèles et réglages (aucun secret) pour les retrouver sur une autre machine.</div>
+        <div class="actions">
+          <button class="btn ghost sm" id="exportCfgBtn">Exporter</button>
+          <button class="btn ghost sm" id="importCfgBtn">Importer</button>
+          <input type="file" id="importCfgFile" accept="application/json,.json" hidden />
+          <span class="toast" id="cfgToast"></span>
         </div>
       </div>
 
@@ -1443,6 +1474,19 @@
       }).join('') + '</div>';
     }
 
+    function telemetryHtml(m) {
+      const t = m.telemetry;
+      if (!t || !t.samples) return '';
+      const chips = [];
+      if (t.tokPerSec != null) chips.push(`<span class="tele-chip">${t.tokPerSec} tok/s</span>`);
+      if (t.ttftMs != null) chips.push(`<span class="tele-chip">TTFT ${t.ttftMs >= 1000 ? (t.ttftMs / 1000).toFixed(1) + ' s' : t.ttftMs + ' ms'}</span>`);
+      chips.push(`<span class="tele-chip ${t.successRate < 80 ? 'bad' : ''}">${t.successRate} % succès (${t.samples})</span>`);
+      if (t.fallbackCount) chips.push(`<span class="tele-chip bad">${t.fallbackCount} repli(s) 7 j</span>`);
+      const unstable = t.samples >= 3 && (t.successRate < 80 || t.fallbackCount >= 3);
+      const hint = unstable && policyOf(m) === 'allow' ? '<div class="tele-hint">Instable : envisage « À demander » ou « Non ».</div>' : '';
+      return `<div class="mc-telemetry">${chips.join('')}</div>${hint}`;
+    }
+
     function renderModelsTab() {
       const catalog = Array.isArray(S.modelCatalog) ? S.modelCatalog : [];
       const newCount = catalog.filter((m) => m.isNew).length;
@@ -1501,6 +1545,7 @@
               <button type="button" class="policy-btn deny ${policy === 'deny' ? 'on' : ''}" data-policy-id="${esc(m.id)}" data-policy-val="deny">Non</button>
             </div>
           </div>
+          ${telemetryHtml(m)}
           <div class="mc-meta"><span>${esc(dateTxt)}</span>${policyMeta}</div>
         </div>`;
       }).join('');
@@ -1608,7 +1653,7 @@
     function renderAuthUi() {
       const credMode = S.credential?.mode || (S.hasKey ? 'api-key' : 'none');
       const storageLabel = S.credential?.storage === 'windows-credential-manager'
-        ? 'Trousseau Windows'
+        ? 'Trousseau système'
         : (S.credential?.storage || 'local');
       const authState = S.authLogin?.state || 'idle';
       const inProgress = ['opening', 'waiting_login', 'verifying'].includes(authState);
@@ -1729,7 +1774,7 @@
             <span class="undo-path" title="${esc(u.rel || '')}">${esc(u.rel || '')}</span>
             <span class="undo-sub">${u.action === 'create' ? 'Créé' : 'Modifié'}${u.at ? ' · ' + fmtAgo(u.at) : ''}</span>
           </div>
-          <button type="button" class="undo-mini" data-undo-id="${esc(u.id)}">Annuler</button>
+          <span style="display:inline-flex;gap:4px;flex-shrink:0"><button type="button" class="undo-mini" data-undo-diff="${esc(u.id)}">Diff</button><button type="button" class="undo-mini" data-undo-id="${esc(u.id)}">Annuler</button></span>
         </div>`).join('');
       renderProjectMemory();
       renderAutoDelegate();
@@ -1743,6 +1788,8 @@
       if (activeTab === 'models') renderModelsTab();
       if (activeTab === 'settings' && settingsSubTab === 'advanced') void loadLogs();
       if (!settingsLoaded) { syncSettingsForm(); settingsLoaded = true; }
+      notifyFinishedJobs();
+      updateCtxGauge();
     }
 
     function schedulePoll() {
@@ -1805,6 +1852,7 @@
       const task = String(extra.task ?? $('task').value).trim();
       if (!task) return;
       hidePopover();
+      try { if (typeof Notification !== 'undefined' && Notification.permission === 'default') void Notification.requestPermission(); } catch {}
       const targetModel = extra.model !== undefined ? extra.model : (selectedChoice || undefined);
       if (!extra.approveModel && targetModel && !String(targetModel).startsWith('tier:')) {
         const catItem = (S.modelCatalog || []).find((m) => m.id === targetModel);
@@ -2274,6 +2322,64 @@
     $('tierPopover').addEventListener('mouseenter', () => clearTimeout(popHideTimer));
     $('tierPopover').addEventListener('mouseleave', () => { popHideTimer = setTimeout(hidePopover, 160); });
 
+    $('exportCfgBtn').onclick = async () => {
+      try {
+        const res = await api('/api/config/export', {});
+        const blob = new Blob([JSON.stringify(res.config, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'fsatg-config.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        flash('Configuration exportée', 'cfgToast');
+      } catch (e) { flash(e.message, 'cfgToast', true); }
+    };
+    $('importCfgBtn').onclick = () => $('importCfgFile').click();
+    $('importCfgFile').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const config = JSON.parse(await file.text());
+        const res = await api('/api/config/import', { config });
+        if (config.modelPolicies) { S.modelPolicies = config.modelPolicies; try { localStorage.setItem(LS_POLICIES_KEY, JSON.stringify(config.modelPolicies)); } catch {} }
+        flash(`Importé (${res.applied.length} bloc(s))`, 'cfgToast');
+        await poll(); syncSettingsForm();
+      } catch (err) { flash(err.message, 'cfgToast', true); }
+    });
+
+    function updateCtxGauge() {
+      const box = $('ctxGauge');
+      const txt = $('task').value;
+      if (!txt.trim()) { box.hidden = true; return; }
+      const tokens = Math.ceil(txt.length / 4);
+      const cat = (S.modelCatalog || []).find((m) => m.id === selectedChoice);
+      const win = cat?.contextWindow || null;
+      const pct = win ? Math.min(100, (tokens / win) * 100) : 0;
+      box.hidden = false;
+      box.classList.toggle('warn', pct >= 50 && pct < 80);
+      box.classList.toggle('crit', pct >= 80);
+      $('ctxLbl').textContent = win
+        ? `~${fmtNum(tokens)} / ${fmtNum(win)} tok (${pct < 1 ? '<1' : Math.round(pct)} %)`
+        : `~${fmtNum(tokens)} tok (fenêtre inconnue)`;
+      $('ctxFill').style.width = (win ? Math.max(pct, 1) : 0) + '%';
+    }
+    $('task').addEventListener('input', updateCtxGauge);
+
+    const seenActive = new Map();
+    function notifyFinishedJobs() {
+      const activeNow = new Set((S.active || []).map((j) => j.jobId));
+      for (const j of S.active || []) if (!seenActive.has(j.jobId)) seenActive.set(j.jobId, { at: Date.now(), title: String(j.title || '').replace(/^\[ATG\]\s*/, '') });
+      for (const [id, info] of [...seenActive]) {
+        if (activeNow.has(id)) continue;
+        seenActive.delete(id);
+        const done = (S.history || []).find((h) => (h.jobId || h.id) === id);
+        if (Date.now() - info.at < 15000 || !document.hidden) continue;
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') continue;
+        try { new Notification(done?.status === 'error' ? 'France Student : échec' : 'France Student : terminé', { body: (done?.summary || info.title || '').slice(0, 140) }); } catch {}
+      }
+    }
+
     document.addEventListener('click', async (e) => {
       if (!e.target.closest('.undo-wrap')) $('undoPopover').hidden = true;
       const undoIdBtn = e.target.closest('[data-undo-id]');
@@ -2287,6 +2393,22 @@
         return;
       }
 
+      const diffBtn = e.target.closest('[data-undo-diff]');
+      if (diffBtn) {
+        const panel = $('diffPanel');
+        if (!panel.hidden && panel.dataset.id === diffBtn.dataset.undoDiff) { panel.hidden = true; return; }
+        try {
+          const res = await api('/api/undo/diff', { undoId: diffBtn.dataset.undoDiff });
+          panel.dataset.id = diffBtn.dataset.undoDiff;
+          panel.innerHTML = res.ok
+            ? `<div style="color:var(--fs-muted);margin-bottom:4px">${esc(res.rel)} · <span class="dl-add">+${res.added}</span> <span class="dl-del">-${res.removed}</span> (ligne ${res.line})</div>` +
+              res.lines.map((l) => `<div class="${l.startsWith('+ ') ? 'dl-add' : l.startsWith('- ') ? 'dl-del' : ''}">${esc(l)}</div>`).join('') +
+              (res.truncated ? '<div style="color:var(--fs-faint)">… tronqué</div>' : '')
+            : esc(res.message || 'Diff indisponible');
+          panel.hidden = false;
+        } catch (err) { flash(err.message, 'toast', true); }
+        return;
+      }
       const pick = e.target.closest('[data-pick]');
       if (pick && !pick.disabled) {
         selectedChoice = pick.dataset.pick;

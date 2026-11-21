@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   clearStateCredential,
   clearWebSession,
+  keychainSupported,
   readWebSession,
   resolveStateCredential,
   saveStateCredential,
@@ -24,7 +25,7 @@ if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertif
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
-export const CONNECTOR_VERSION = '2.1.2';
+export const CONNECTOR_VERSION = '2.2.0';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const OFFICIAL_WEB_ORIGIN = 'https://ia.francestudent.org';
 export const SESSION_COOKIE_NAMES = Object.freeze(['__Secure-next-auth.session-token', 'next-auth.session-token']);
@@ -230,6 +231,73 @@ export const ANTIGRAVITY_QUOTA_VISIBILITY = Object.freeze({
 });
 export const STATE_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_state.json');
 export const POLICIES_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_model_policies.json');
+export const TELEMETRY_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_telemetry.json');
+export const TELEMETRY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export const TELEMETRY_MAX_SAMPLES = 200;
+
+function readTelemetryFile(filePath = TELEMETRY_PATH) {
+  try {
+    if (existsSync(filePath)) {
+      const parsed = JSON.parse(readFileSync(filePath, 'utf-8').replace(/^\uFEFF/, ''));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+/** Records one generation outcome per model (7-day window, bounded samples, atomic write). */
+export function recordModelTelemetry(modelId, sample = {}, { filePath = TELEMETRY_PATH, now = Date.now() } = {}) {
+  const id = String(modelId || '').trim();
+  if (!id) return false;
+  const data = readTelemetryFile(filePath);
+  const entry = {
+    at: now,
+    ok: sample.ok === true,
+    ttftMs: Number.isFinite(sample.ttftMs) ? Math.round(sample.ttftMs) : null,
+    durationMs: Number.isFinite(sample.durationMs) ? Math.round(sample.durationMs) : null,
+    outputTokens: Number.isFinite(sample.outputTokens) ? Math.round(sample.outputTokens) : null,
+    status: Number.isFinite(sample.status) ? sample.status : null,
+    fallback: sample.fallback === true || [429, 502, 503, 504].includes(Number(sample.status)),
+  };
+  const kept = (Array.isArray(data[id]) ? data[id] : []).filter((s) => now - Number(s?.at) <= TELEMETRY_WINDOW_MS);
+  kept.push(entry);
+  data[id] = kept.slice(-TELEMETRY_MAX_SAMPLES);
+  const payload = JSON.stringify(data);
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  try {
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(tmp, payload, 'utf-8');
+    try { renameSync(tmp, filePath); } catch { try { unlinkSync(tmp); } catch { /* ignore */ } writeFileSync(filePath, payload, 'utf-8'); }
+    return true;
+  } catch {
+    try { unlinkSync(tmp); } catch { /* ignore */ }
+    return false;
+  }
+}
+
+/** Aggregated per-model stats: { [id]: { samples, tokPerSec, ttftMs, successRate, fallbackCount } }. */
+export function getModelTelemetry({ filePath = TELEMETRY_PATH, now = Date.now() } = {}) {
+  const data = readTelemetryFile(filePath);
+  const out = {};
+  for (const [id, list] of Object.entries(data)) {
+    const rows = (Array.isArray(list) ? list : []).filter((s) => now - Number(s?.at) <= TELEMETRY_WINDOW_MS);
+    if (!rows.length) continue;
+    const okRows = rows.filter((s) => s.ok);
+    const speed = okRows.filter((s) => s.outputTokens > 0 && s.durationMs > 0);
+    const ttft = okRows.filter((s) => Number.isFinite(s.ttftMs));
+    const avg = (arr, fn) => (arr.length ? arr.reduce((a, s) => a + fn(s), 0) / arr.length : null);
+    const totalTok = speed.reduce((a, s) => a + s.outputTokens, 0);
+    const totalSec = speed.reduce((a, s) => a + s.durationMs / 1000, 0);
+    out[id] = {
+      samples: rows.length,
+      tokPerSec: totalSec > 0 ? Math.round((totalTok / totalSec) * 10) / 10 : null,
+      ttftMs: ttft.length ? Math.round(avg(ttft, (s) => s.ttftMs)) : null,
+      successRate: Math.round((okRows.length / rows.length) * 100),
+      fallbackCount: rows.filter((s) => s.fallback).length,
+    };
+  }
+  return out;
+}
 export const LIVE_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_live.json');
 export const SLOT_DIR = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_slots');
 export const LIVE_JOB_TTL_MS = 30_000;
@@ -722,7 +790,7 @@ export async function apiCredentialStatus(state) {
     return {
       configured: true,
       mode: 'web-session',
-      storage: state?.webSessionStorage || (process.platform === 'win32' ? 'windows-credential-manager' : 'state-file'),
+      storage: state?.webSessionStorage || (keychainSupported() ? 'windows-credential-manager' : 'state-file'),
       sessionActive: true,
       sessionUpdatedAt: state?.webSessionUpdatedAt || webSession.updatedAt || null,
     };
@@ -1171,6 +1239,7 @@ export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { pe
     if (item?.id) rawMap.set(item.id, item);
   }
   const known = { ...(state?.knownModels || {}) };
+  const telemetryAll = getModelTelemetry();
   let changed = false;
   const now = Date.now();
   const tierRank = { heavy: 0, medium: 1, light: 2 };
@@ -1213,6 +1282,7 @@ export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { pe
       addedAt,
       addedSource,
       isNew,
+      telemetry: telemetryAll[id] ?? null,
     });
   }
 
@@ -1393,6 +1463,13 @@ export function parseTaskDirectives(raw) {
     if (command === 'apply') { executionMode = 'apply'; prompt = next; continue; }
     if (command === 'think' || command === 'deep' || command === 'reason') { reasoningEffort = 'deep'; prompt = next; continue; }
     if (command === 'max' || command === 'boost' || command === 'xhigh') { reasoningEffort = 'max'; requested = requested ?? { kind: 'tier', value: 'heavy' }; prompt = next; continue; }
+    if (command === 'model' || command === 'modele') {
+      const m = /^(\S+)(?:\s+|$)/.exec(next);
+      if (!m) break;
+      requested = { kind: 'model', value: m[1] };
+      prompt = next.slice(m[0].length);
+      continue;
+    }
     if (command === 'mode') {
       const m = /^(\S+)(?:\s+|$)/.exec(next);
       const val = m ? normalizedDirective(m[1]) : '';
@@ -2278,6 +2355,12 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
     tried.add(model);
     const attemptNum = tried.size;
     const t0 = Date.now();
+    let firstTokenAt = null;
+    const userOnText = activeRequest.onText;
+    activeRequest = {
+      ...activeRequest,
+      onText: (d) => { if (firstTokenAt === null) firstTokenAt = Date.now(); return userOnText?.(d); },
+    };
     logEvent('info', 'core', 'stream.attempt', `Essai ${attemptNum}/${maxAttempts} avec ${model} (cascade meilleur -> pire).`, { model, attempt: attemptNum, maxAttempts, hasChatId: Boolean(chatId), clientTools: Boolean(activeRequest.clientTools?.length) });
     try {
       const result = await streamGeneration({
@@ -2297,6 +2380,12 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
         stubErr.retryable = true;
         throw stubErr;
       }
+      recordModelTelemetry(model, {
+        ok: true,
+        ttftMs: firstTokenAt === null ? null : firstTokenAt - t0,
+        durationMs: Date.now() - t0,
+        outputTokens: Number(result?.usage?.output_tokens ?? result?.usage?.completion_tokens) || Math.ceil(String(result?.text ?? '').length / 4),
+      });
       logEvent('info', 'core', 'stream.done', `Réponse reçue de ${model} (${result.text.length} car., ${Math.round((Date.now() - t0) / 1000)}s).`, {
         model,
         chars: result.text.length,
@@ -2316,6 +2405,9 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
 
       if (isUnavailableOr502) {
         recordModelCooldown(model, msg, UNAVAILABLE_REASON);
+      }
+      if (!activeRequest.signal?.aborted) {
+        recordModelTelemetry(model, { ok: false, status: status || null, fallback: isUnavailableOr502, durationMs: Date.now() - t0 });
       }
 
       // Account lacks clientTools flag: retry cleanly once in inline/patch mode without clientTools.

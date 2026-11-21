@@ -27,6 +27,12 @@ export const UNDO_DIR = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_undo
 
 export const PERMISSION_MODES = Object.freeze(['plan', 'acceptEdits', 'full']);
 export const READ_TOOLS = Object.freeze(['list_directory', 'read_file', 'search_files']);
+
+// Short-lived cache for discovery tools; any mutation clears it entirely.
+export const READ_CACHE_TTL_MS = 60_000;
+const READ_CACHE = new Map();
+export function clearReadCache() { READ_CACHE.clear(); }
+export function readCacheSize() { return READ_CACHE.size; }
 export const EDIT_TOOLS = Object.freeze(['list_directory', 'read_file', 'search_files', 'edit_file', 'write_file']);
 export const FULL_TOOLS = Object.freeze(['list_directory', 'read_file', 'search_files', 'edit_file', 'write_file', 'run_command']);
 
@@ -328,6 +334,37 @@ export function listUndoEntries(workspaceRoot, limit = 15) {
       existedBefore: Boolean(existedBefore),
       summary: newSummary || '',
     }));
+}
+
+/** Compact before/after diff (common prefix/suffix trimmed) of a stored mutation versus the current file. */
+export function diffTexts(before = '', after = '', context = 3, maxLines = 400) {
+  const a = String(before).split('\n');
+  const b = String(after).split('\n');
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
+  let endA = a.length - 1;
+  let endB = b.length - 1;
+  while (endA >= start && endB >= start && a[endA] === b[endB]) { endA -= 1; endB -= 1; }
+  const out = [];
+  const ctxStart = Math.max(0, start - context);
+  for (let i = ctxStart; i < start; i += 1) out.push(`  ${a[i]}`);
+  for (let i = start; i <= endA; i += 1) out.push(`- ${a[i]}`);
+  for (let i = start; i <= endB; i += 1) out.push(`+ ${b[i]}`);
+  for (let i = endA + 1; i < Math.min(a.length, endA + 1 + context); i += 1) out.push(`  ${a[i]}`);
+  const removed = Math.max(0, endA - start + 1);
+  const added = Math.max(0, endB - start + 1);
+  const truncated = out.length > maxLines;
+  return { added, removed, truncated, lines: out.slice(0, maxLines), line: start + 1 };
+}
+
+export function getUndoDiff(workspaceRoot, undoId) {
+  if (!workspaceRoot) throw new Error('workspaceRoot requis.');
+  const entry = loadUndoStack(workspaceRoot).find((e) => e.id === undoId);
+  if (!entry) return { ok: false, message: `Sauvegarde introuvable : ${undoId}.` };
+  const { abs, rel } = resolveWorkspacePath(workspaceRoot, entry.rel);
+  const before = entry.existedBefore ? String(entry.previousContent ?? '') : '';
+  const after = existsSync(abs) ? readFileSync(abs, 'utf-8') : '';
+  return { ok: true, id: entry.id, rel, existedBefore: Boolean(entry.existedBefore), ...diffTexts(before, after) };
 }
 
 /** Reverts the most recent (or specified) workspace file mutation atomically. */
@@ -855,6 +892,14 @@ export function createWorkspaceToolRunner({ workspaceRoot, permissionMode = 'acc
       try {
         const args = normalizeToolCallArgs(call.name, call.arguments);
         let output;
+        const cacheable = call.name === 'list_directory' || call.name === 'search_files';
+        const cacheKey = cacheable ? `${workspaceRoot}\u0000${call.name}\u0000${JSON.stringify(args)}` : '';
+        if (cacheable) {
+          const hit = READ_CACHE.get(cacheKey);
+          if (hit && Date.now() - hit.at < READ_CACHE_TTL_MS) {
+            return { callId: call.callId, output: hit.output };
+          }
+        }
         switch (call.name) {
           case 'list_directory': output = runListDirectory(args); break;
           case 'read_file': output = runReadFile(args); break;
@@ -864,6 +909,8 @@ export function createWorkspaceToolRunner({ workspaceRoot, permissionMode = 'acc
           case 'run_command': output = await runShellSafe(args); break;
           default: throw new Error(`Outil inconnu : ${call.name}`);
         }
+        if (cacheable) READ_CACHE.set(cacheKey, { at: Date.now(), output: String(output ?? '') });
+        else if (call.name === 'edit_file' || call.name === 'write_file' || call.name === 'run_command') clearReadCache();
         return { callId: call.callId, output: String(output ?? '') };
       } catch (err) {
         return { callId: call.callId, output: `Erreur ${call.name} : ${err?.message ?? err}`, isError: true };

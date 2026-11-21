@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,8 +16,72 @@ function parseResult(stdout) {
   return result;
 }
 
+const KEYCHAIN_ACCOUNT = 'fs-atg';
+let linuxSecretToolCache = null;
+
+/** True when a native OS secret store is usable: Windows Credential Manager, macOS Keychain, Linux Secret Service (secret-tool). */
+export function keychainSupported() {
+  if (process.platform === 'win32' || process.platform === 'darwin') return true;
+  if (process.platform === 'linux') {
+    if (linuxSecretToolCache === null) {
+      try {
+        linuxSecretToolCache = spawnSync('secret-tool', ['--version'], { stdio: 'ignore', windowsHide: true }).status !== null;
+      } catch { linuxSecretToolCache = false; }
+    }
+    return linuxSecretToolCache;
+  }
+  return false;
+}
+
+function runProcess(cmd, args, input = '') {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch { resolve({ code: -1, stdout: '' }); return; }
+    let stdout = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (c) => { stdout += c; });
+    child.on('error', () => resolve({ code: -1, stdout: '' }));
+    child.on('close', (code) => resolve({ code, stdout }));
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
+  });
+}
+
+const securityQuote = (s) => `"${String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
+/** macOS `security` / Linux `secret-tool`; secrets travel through stdin, never through argv. */
+async function runUnixKeychain(action, input, target) {
+  const mac = process.platform === 'darwin';
+  if (action === 'get') {
+    const r = mac
+      ? await runProcess('security', ['find-generic-password', '-a', KEYCHAIN_ACCOUNT, '-s', target, '-w'])
+      : await runProcess('secret-tool', ['lookup', 'service', KEYCHAIN_ACCOUNT, 'target', target]);
+    const value = r.stdout.replace(/\r?\n$/, '');
+    if (r.code !== 0 || !value) return { available: true, ok: true, found: false };
+    return { available: true, ok: true, found: true, valueBase64: Buffer.from(value, 'utf8').toString('base64') };
+  }
+  if (action === 'set') {
+    const r = mac
+      ? await runProcess('security', ['-i'], `add-generic-password -U -a ${securityQuote(KEYCHAIN_ACCOUNT)} -s ${securityQuote(target)} -w ${securityQuote(input)}\n`)
+      : await runProcess('secret-tool', ['store', '--label=France Student ATG', 'service', KEYCHAIN_ACCOUNT, 'target', target], input);
+    if (r.code !== 0) throw new Error('Le trousseau système est indisponible.');
+    return { available: true, ok: true };
+  }
+  if (action === 'delete') {
+    if (mac) await runProcess('security', ['delete-generic-password', '-a', KEYCHAIN_ACCOUNT, '-s', target]);
+    else await runProcess('secret-tool', ['clear', 'service', KEYCHAIN_ACCOUNT, 'target', target]);
+    return { available: true, ok: true };
+  }
+  throw new Error(`Action trousseau inconnue : ${action}`);
+}
+
 function runWindowsCredential(action, input = '', target = CREDENTIAL_TARGET) {
-  if (process.platform !== 'win32') return Promise.resolve({ available: false, found: false });
+  if (process.platform !== 'win32') {
+    if (!keychainSupported()) return Promise.resolve({ available: false, found: false });
+    return runUnixKeychain(action, input, target);
+  }
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', [
       '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
@@ -70,7 +134,7 @@ export async function credentialAvailability() {
     const result = await runWindowsCredential('get');
     return { available: Boolean(result.available), configured: Boolean(result.found) };
   } catch {
-    return { available: process.platform === 'win32', configured: false };
+    return { available: keychainSupported(), configured: false };
   }
 }
 
@@ -92,7 +156,7 @@ export async function resolveStateCredential(state, {
     if (legacy === 'test-key' || legacy.length < 10) {
       return { value: legacy, source: 'state-file', migrated: false };
     }
-    if (process.platform !== 'win32') return { value: legacy, source: 'state-file', migrated: false };
+    if (!keychainSupported()) return { value: legacy, source: 'state-file', migrated: false };
     try {
       const stored = await write(legacy);
       if (stored?.available) {
@@ -117,7 +181,7 @@ export async function resolveStateCredential(state, {
       return { value: stored.value, source: 'windows-credential-manager', migrated: false };
     }
   } catch { /* reported as unavailable by status, never as an empty success */ }
-  return { value: '', source: process.platform === 'win32' ? 'unavailable' : 'state-file', migrated: false };
+  return { value: '', source: keychainSupported() ? 'unavailable' : 'state-file', migrated: false };
 }
 
 export async function saveStateCredential(state, value, {
@@ -126,7 +190,7 @@ export async function saveStateCredential(state, value, {
 } = {}) {
   const secret = String(value || '').trim();
   if (!secret) throw new Error('La clé est vide.');
-  if (process.platform !== 'win32') {
+  if (!keychainSupported()) {
     state.apiKey = secret;
     state.credentialStorage = 'state-file';
     return { storage: 'state-file' };
@@ -145,7 +209,7 @@ export async function saveStateCredential(state, value, {
 export async function clearStateCredential(state, {
   remove = deleteCredential,
 } = {}) {
-  if (process.platform === 'win32') {
+  if (keychainSupported()) {
     const removed = await remove();
     if (!removed?.available) throw new Error('Le trousseau Windows est indisponible : la clé existante est conservée.');
   }
@@ -256,7 +320,7 @@ function normalizeWebSession(raw) {
 }
 
 export async function readWebSession(state) {
-  if (process.platform !== 'win32' || state?._ephemeral === true) {
+  if (!keychainSupported() || state?._ephemeral === true) {
     return normalizeWebSession(state?.webSession);
   }
   try {
@@ -271,7 +335,7 @@ export async function readWebSession(state) {
 export async function saveWebSession(state, session) {
   const payload = normalizeWebSession(session);
   if (!payload) throw new Error('Jeton de session France Student vide ou invalide.');
-  if (process.platform !== 'win32' || state?._ephemeral) {
+  if (!keychainSupported() || state?._ephemeral) {
     state.webSession = payload;
     state.webSessionConfigured = true;
     state.webSessionStorage = state?._ephemeral ? 'memory' : 'state-file';
@@ -293,7 +357,7 @@ export async function saveWebSession(state, session) {
 }
 
 export async function clearWebSession(state) {
-  if (process.platform === 'win32') {
+  if (keychainSupported()) {
     await deleteChunkedCredential(SESSION_CREDENTIAL_TARGET);
   }
   if (state && typeof state === 'object') {

@@ -25,6 +25,7 @@ import {
   fsJson,
   getGlobalCooldown,
   getModelCooldown,
+  getModelTelemetry,
   globalSlotStatus,
   groupModelsByTier,
   loadModelPoliciesFile,
@@ -63,6 +64,7 @@ import {
 import {
   PERMISSION_MODES,
   createWorkspaceToolRunner,
+  getUndoDiff,
   listUndoEntries,
   toolsForPermissionMode,
   undoLastChange,
@@ -573,6 +575,7 @@ app.api('/api/state', async () => {
     tierModels: groupModelsByTier(displayIds, state, metaMap),
     models: displayIds,
     modelCatalog,
+    telemetry: getModelTelemetry(),
     modelAvailability: { available: Boolean(modelsBundle.available), source: modelsBundle.source ?? 'unavailable' },
     mcp: {
       name: 'fs-atg',
@@ -746,6 +749,78 @@ app.api('/api/settings', (data) => {
     modelPolicies: state.modelPolicies || {},
     blockedModels: state.blockedModels || [],
   };
+});
+
+app.api('/api/undo/diff', (data) => {
+  state = loadState();
+  const ws = String(data?.workspaceRoot || state.lastWorkspaceRoot || '').trim();
+  if (!ws) throw new Error('Aucun workspace actif.');
+  return getUndoDiff(ws, String(data?.undoId || ''));
+});
+
+const CONFIG_EXPORT_VERSION = 1;
+
+app.api('/api/config/export', () => {
+  state = loadState();
+  return {
+    ok: true,
+    config: {
+      fsatgConfigVersion: CONFIG_EXPORT_VERSION,
+      connectorVersion: CONNECTOR_VERSION,
+      modelPolicies: { ...loadModelPoliciesFile(), ...(state.modelPolicies || {}) },
+      routingProfile: state.routingProfile,
+      mode: state.mode,
+      permissionMode: state.permissionMode,
+      reasoningEffort: state.reasoningEffort,
+      cutoffPercent: state.cutoffPercent,
+      maxParallel: state.maxParallel,
+      tiers: state.tiers,
+      allowedModels: state.allowedModels || [],
+      blockedModels: state.blockedModels || [],
+    },
+  };
+});
+
+app.api('/api/config/import', (data) => {
+  const cfg = data?.config;
+  if (!cfg || typeof cfg !== 'object' || Number(cfg.fsatgConfigVersion) !== CONFIG_EXPORT_VERSION) {
+    throw new Error('Fichier de configuration invalide (fsatgConfigVersion attendu : 1).');
+  }
+  state = loadState();
+  const applied = [];
+  if (cfg.modelPolicies && typeof cfg.modelPolicies === 'object' && !Array.isArray(cfg.modelPolicies)) {
+    const clean = {};
+    for (const [k, v] of Object.entries(cfg.modelPolicies)) {
+      const id = String(k).trim();
+      if (id && MODEL_POLICIES.includes(v)) clean[id] = v;
+    }
+    state.modelPolicies = clean;
+    saveModelPoliciesFile(clean);
+    state.blockedModels = [];
+    applied.push('modelPolicies');
+  }
+  if (ROUTING_PROFILES.has(cfg.routingProfile)) { state.routingProfile = cfg.routingProfile; applied.push('routingProfile'); }
+  if (cfg.mode === 'eco' || cfg.mode === 'fast') { state.mode = cfg.mode; applied.push('mode'); }
+  if (PERMISSION_MODES.includes(cfg.permissionMode)) { state.permissionMode = cfg.permissionMode; applied.push('permissionMode'); }
+  if (cfg.reasoningEffort !== undefined) { state.reasoningEffort = normalizeReasoningEffort(cfg.reasoningEffort, state.reasoningEffort || 'deep'); applied.push('reasoningEffort'); }
+  if (typeof cfg.cutoffPercent === 'number') { state.cutoffPercent = Math.max(0, Math.min(90, cfg.cutoffPercent)); applied.push('cutoffPercent'); }
+  if (typeof cfg.maxParallel === 'number') { state.maxParallel = Math.max(1, Math.min(6, cfg.maxParallel)); applied.push('maxParallel'); }
+  const cleanList = (a) => (Array.isArray(a) ? a.map((s) => String(s).trim()).filter(Boolean) : null);
+  if (cfg.tiers && typeof cfg.tiers === 'object') {
+    state.tiers = {
+      light: cleanList(cfg.tiers.light) || state.tiers.light,
+      medium: cleanList(cfg.tiers.medium) || state.tiers.medium,
+      heavy: cleanList(cfg.tiers.heavy) || state.tiers.heavy,
+    };
+    applied.push('tiers');
+  }
+  const allowed = cleanList(cfg.allowedModels);
+  if (allowed) { state.allowedModels = allowed; applied.push('allowedModels'); }
+  const blocked = cleanList(cfg.blockedModels);
+  if (blocked) { state.blockedModels = blocked; applied.push('blockedModels'); }
+  saveState(state);
+  logEvent('info', 'panel', 'settings.import', `Configuration importée (${applied.join(', ') || 'rien'}).`);
+  return { ok: true, applied };
 });
 
 app.api('/api/undo', (data) => {
