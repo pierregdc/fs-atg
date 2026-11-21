@@ -740,7 +740,7 @@ server.registerTool('fs_delegate', {
     routingProfile: z.enum(['auto', 'eco', 'fast', 'quality', 'security', 'refactor']).optional(),
     planB: z.boolean().optional().describe('Active le Plan B (chat neuf isolé ou découpage via parts) en cas d’échec du Plan A.'),
     parts: z.array(z.string().min(3)).max(6).optional().describe('Plan B : 2 à 6 petites sous-demandes simples générées séparément.'),
-    waitSeconds: z.number().min(0).max(45).optional().describe('Attente intégrée (défaut 45s) pour répondre en 1 appel.'),
+    waitSeconds: z.number().min(0).max(180).optional().describe('Attente intégrée (défaut 120s, max 180s) pour répondre en 1 appel.'),
     verbose: z.boolean().optional(),
   },
 }, async (a) => {
@@ -754,7 +754,7 @@ server.registerTool('fs_delegate', {
       saveState(st);
     }
   }
-  const waitSec = typeof a.waitSeconds === 'number' ? Math.max(0, Math.min(45, a.waitSeconds)) : 45;
+  const waitSec = typeof a.waitSeconds === 'number' ? Math.max(0, Math.min(180, a.waitSeconds)) : 120;
   const firstLine = (delegation.task || a.parts?.[0] || '').split('\n')[0];
   const job = {
     id: randomUUID().slice(0, 8),
@@ -797,18 +797,18 @@ server.registerTool('fs_delegate', {
     return asCompactText({
       jobId: job.id,
       status: doneJob?.status ?? job.status,
-      next: 'Job encore en cours après 45s : appelle fs_job_status(waitSeconds=45).',
+      next: `Job encore en cours après ${waitSec}s : appelle fs_job_status(waitSeconds=120).`,
     });
   }
-  return asCompactText({ jobId: job.id, status: job.status, next: 'Appelle fs_job_status avec waitSeconds=45.' });
+  return asCompactText({ jobId: job.id, status: job.status, next: 'Appelle fs_job_status avec waitSeconds=120.' });
 });
 
 server.registerTool('fs_job_status', {
   title: "État d'un job [ATG]",
   description: "Attend jusqu'à waitSeconds que le job finisse, puis renvoie le texte/code généré dans response.",
-  inputSchema: { jobId: z.string(), waitSeconds: z.number().min(0).max(45).optional(), verbose: z.boolean().optional() },
+  inputSchema: { jobId: z.string(), waitSeconds: z.number().min(0).max(180).optional(), verbose: z.boolean().optional() },
 }, async ({ jobId, waitSeconds, verbose }) => {
-  const job = await waitFor(jobId, (waitSeconds ?? 45) * 1000);
+  const job = await waitFor(jobId, Math.max(0, Math.min(180, waitSeconds ?? 120)) * 1000);
   return asCompactText(job ? mcpCompactView(job, Boolean(verbose)) : { error: 'jobId inconnu' });
 });
 

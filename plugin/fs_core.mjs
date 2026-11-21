@@ -25,7 +25,7 @@ if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertif
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
-export const CONNECTOR_VERSION = '2.2.0';
+export const CONNECTOR_VERSION = '2.2.1';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const OFFICIAL_WEB_ORIGIN = 'https://ia.francestudent.org';
 export const SESSION_COOKIE_NAMES = Object.freeze(['__Secure-next-auth.session-token', 'next-auth.session-token']);
@@ -495,8 +495,8 @@ export function syncAgentsRule(autoDelegate = true, permissionMode = null) {
   const writesDirectly = effectivePerm === 'acceptEdits' || effectivePerm === 'full';
   const header = auto
     ? (writesDirectly
-      ? `PRIORITÉ ABSOLUE — Mode Automatique actif (permission : \`${effectivePerm}\`) : pour **toute création de fichier, modification, refactorisation, débogage, exploration de code, planification${effectivePerm === 'full' ? ', exécution de tests/commandes' : ''} ou analyse technique**, appelle **IMMÉDIATEMENT EN PREMIER** \`fs_delegate\` avec \`workspaceRoot\` (chemin absolu du projet), \`contextMode="minimal"\` et \`waitSeconds=45\`. **INTERDICTION** de lire les fichiers (\`read_file\`, \`grep_search\`, \`find_by_name\`) ou de les éditer (\`edit_file\`, \`write_file\`) en natif avant d’appeler \`fs_delegate\` : France Student dispose de ses propres outils locaux (\`list_directory\`, \`search_files\`, \`read_file\`, \`edit_file\`, \`write_file\`${effectivePerm === 'full' ? ', \`run_command\`' : ''}) avec sauvegarde atomique \`/undo\`, agit directement sur le disque et te renvoie un bilan court (\`filesWritten\`, \`commandsRun\`).`
-      : 'PRIORITÉ ABSOLUE — Mode Automatique actif (permission : `plan` — lecture seule) : délègue immédiatement en premier à `fs_delegate` (`workspaceRoot`, `contextMode="minimal"`, `waitSeconds=45`) **sans lire les fichiers en natif avant** pour : **modifications (`executionMode="patch"`), plans (`executionMode="plan"`), exploration, revues/audits, debug et génération de code**.')
+      ? `PRIORITÉ ABSOLUE — Mode Automatique actif (permission : \`${effectivePerm}\`) : pour **toute création de fichier, modification, refactorisation, débogage, exploration de code, planification${effectivePerm === 'full' ? ', exécution de tests/commandes' : ''} ou analyse technique**, appelle **IMMÉDIATEMENT EN PREMIER** \`fs_delegate\` avec \`workspaceRoot\` (chemin absolu du projet), \`contextMode="minimal"\` et \`waitSeconds=120\`. **INTERDICTION** de lire les fichiers (\`read_file\`, \`grep_search\`, \`find_by_name\`) ou de les éditer (\`edit_file\`, \`write_file\`) en natif avant d’appeler \`fs_delegate\` : France Student dispose de ses propres outils locaux (\`list_directory\`, \`search_files\`, \`read_file\`, \`edit_file\`, \`write_file\`${effectivePerm === 'full' ? ', \`run_command\`' : ''}) avec sauvegarde atomique \`/undo\`, agit directement sur le disque et te renvoie un bilan court (\`filesWritten\`, \`commandsRun\`).`
+      : 'PRIORITÉ ABSOLUE — Mode Automatique actif (permission : `plan` — lecture seule) : délègue immédiatement en premier à `fs_delegate` (`workspaceRoot`, `contextMode="minimal"`, `waitSeconds=120`) **sans lire les fichiers en natif avant** pour : **modifications (`executionMode="patch"`), plans (`executionMode="plan"`), exploration, revues/audits, debug et génération de code**.')
     : 'Mode Manuel actif : n’appelle `fs_delegate`, `fs_undo`, `fs_memory`, `fs_session`, `fs_logs`, `fs_quota` ou `fs_diagnostics` **que** si l’utilisateur mentionne France Student, `@[plugin:fs-atg]` ou une commande slash officielle (`/fs`, `/max`, `/patch`, `/plan`, `/eco`, `/undo`, `/remember`, `/quota`).';
   const content = [
     '# France Student [ATG]',
@@ -1911,6 +1911,7 @@ export function tokenMeasurementForPrompt(prompt, usage) {
 }
 
 const DEFAULT_STREAM_TIMEOUT_MS = 120_000;
+export const DEFAULT_TOOLS_STREAM_TIMEOUT_MS = 240_000;
 
 function normalizeApiToolCall(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -1959,7 +1960,7 @@ export async function streamGeneration({
   executeToolCall = null,
   maxToolTurns = 12,
   signal,
-  timeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
+  timeoutMs,
   onText,
   onReasoning,
   onChatId,
@@ -1972,12 +1973,16 @@ export async function streamGeneration({
   const localPromptEstimateTokens = estimateTokens(prompt);
   let activeChatId = existingChatId ?? null;
 
+  const effectiveTimeoutMs = Math.max(
+    10_000,
+    Number(timeoutMs) || (Array.isArray(clientTools) && clientTools.length ? DEFAULT_TOOLS_STREAM_TIMEOUT_MS : DEFAULT_STREAM_TIMEOUT_MS)
+  );
   const timeoutCtrl = new AbortController();
   const timeoutTimer = setTimeout(() => {
-    const err = new Error(`Délai dépassé (${Math.round(timeoutMs / 1000)}s).`);
+    const err = new Error(`Délai dépassé (${Math.round(effectiveTimeoutMs / 1000)}s).`);
     err.retryable = true;
     timeoutCtrl.abort(err);
-  }, Math.max(10_000, Number(timeoutMs) || DEFAULT_STREAM_TIMEOUT_MS));
+  }, effectiveTimeoutMs);
   const onParentAbort = () => {
     timeoutCtrl.abort(new Error('Annulé.'));
     if (activeChatId) void cancelChatStreamBestEffort(base, apiKey, activeChatId);
@@ -2405,6 +2410,15 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
 
       if (isUnavailableOr502) {
         recordModelCooldown(model, msg, UNAVAILABLE_REASON);
+        const isClaudeModel = /claude|opus|sonnet|haiku|fable/i.test(model);
+        if (!isClaudeModel && /openai_v2|no responses upstream has available capacity/i.test(msg)) {
+          for (const sibling of rankedAll) {
+            if (!tried.has(sibling) && !/claude|opus|sonnet|haiku|fable/i.test(sibling)) {
+              tried.add(sibling);
+              recordModelCooldown(sibling, msg, UNAVAILABLE_REASON);
+            }
+          }
+        }
       }
       if (!activeRequest.signal?.aborted) {
         recordModelTelemetry(model, { ok: false, status: status || null, fallback: isUnavailableOr502, durationMs: Date.now() - t0 });
@@ -2442,7 +2456,7 @@ export async function streamGenerationWithRefusalFallback({ availableModels = []
 
       const next = pickNextBestToWorst(model, msg);
       if (!next) {
-        if (activeRequest.clientTools?.length) {
+        if (activeRequest.clientTools?.length && (error?.clientToolsUnsupported || error?.clientToolsAccountDisabled)) {
           activeRequest = { ...activeRequest, clientTools: [], executeToolCall: null };
           chatId = undefined;
           onRetry?.({ from: model, to: model, reason: 'Outils client indisponibles -> repli texte/patch', attempt: attemptNum });

@@ -5,10 +5,11 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  DEFAULT_STATE,
+  DEFAULT_TOOLS_STREAM_TIMEOUT_MS,
   getModelTelemetry,
   parseTaskDirectives,
   pickModel,
-  DEFAULT_STATE,
   recordModelTelemetry,
   TELEMETRY_MAX_SAMPLES,
   TELEMETRY_WINDOW_MS,
@@ -85,4 +86,8 @@ test('cache de lecture : list_directory mis en cache 60 s, invalidé par toute �
   const fresh = await call('list_directory', { path: '.' });
   assert.match(fresh.output, /b\.txt/);
   assert.match(fresh.output, /c\.txt/);
+});
+
+test('v2.2.1 : timeout outils locaux fixé à 240 s', () => {
+  assert.equal(DEFAULT_TOOLS_STREAM_TIMEOUT_MS, 240_000);
 });
