@@ -1,20 +1,21 @@
 {
   "name": "fs-atg",
   "displayName": "France Student [ATG]",
-  "description": "Orchestrateur France Student v2.4 pour Antigravity : 16 outils MCP dont Hub 34+ MCP (Roblox Studio, Blender, Unity, Unreal, Godot, Figma, Postgres, SQLite, Docker, GitHub…), Computer Use (/computer), Navigateur CDP (/browse), Lecture & Recherche Web (/web), exécution autonome avec /undo, contrôle par modèle (Oui / À demander / Non) et mémoire projet.",
-  "version": "2.4.0",
+  "description": "Orchestrateur France Student v2.5 pour Antigravity : 24 outils MCP + Hub de 34 connecteurs (Roblox Studio, Blender, Unity, DB, DevOps…) + Suite IA Classique (Code Interpreter /data, Deep Research /research, Live Canvas /canvas, Vision OCR /vision, Consensus Multi-IA /arena, Lecteur PDF/Office /doc, Voix TTS /voice, Tâches Planifiées /watch), Computer Use (/computer) et Navigateur CDP (/browse).",
+  "version": "2.5.0",
   "logo": "assets/logo.png",
   "suggestedPrompts": [
     "Utilise /fs pour créer ou modifier directement ce module avec France Student",
     "Utilise /mcp pour activer ou appeler Blender, Roblox Studio, Unity, Postgres, Docker…",
+    "Utilise /data pour profiler ce CSV/JSON et générer un graphique SVG",
+    "Utilise /research pour lancer une Deep Research multi-sources sourcée",
+    "Utilise /canvas pour créer un artifact interactif HTML/Mermaid/3D en live",
+    "Utilise /vision pour lire le texte à l'écran via l'OCR natif Windows",
+    "Utilise /arena pour comparer 2 ou 3 modèles France Student en parallèle",
+    "Utilise /doc pour extraire ou chercher dans un PDF, Word, Excel ou ZIP",
+    "Utilise /voice pour annoncer vocalement le résultat ou générer un fichier WAV",
+    "Utilise /watch pour surveiller automatiquement un fichier, une URL ou une commande",
     "Utilise /computer pour capturer l'écran, lister les fenêtres ou cliquer/taper",
-    "Utilise /browse pour ouvrir et inspecter une page web via Chrome CDP",
-    "Utilise /web pour lire et résumer une documentation externe avec France Student",
-    "Utilise /max pour activer le raisonnement maximum avec un modèle Fort",
-    "Utilise /patch pour recevoir uniquement un diff ciblé en lecture seule",
-    "Utilise /plan pour obtenir un plan compact sans écriture disque",
-    "Utilise /undo pour annuler la dernière modification France Student",
-    "Utilise /remember pour mémoriser une règle persistante sur ce projet",
-    "Utilise /quota pour vérifier le quota, les modèles et le diagnostic"
+    "Utilise /browse pour ouvrir et inspecter une page web via Chrome CDP"
   ]
 }

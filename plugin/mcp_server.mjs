@@ -66,6 +66,16 @@ import { BROWSER_ACTIONS, executeBrowserAction } from './browser_use.mjs';
 import { WEB_ACTIONS, executeWebAction } from './web_tools.mjs';
 import { SYSTEM_ACTIONS, executeSystemAction } from './system_tools.mjs';
 import { executeMcpHubAction } from './mcp_hub.mjs';
+import {
+  executeArenaAction,
+  executeCanvasAction,
+  executeDataAction,
+  executeDocAction,
+  executeResearchAction,
+  executeScheduleAction,
+  executeVisionAction,
+  executeVoiceAction,
+} from './classic_ai_tools.mjs';
 
 const CLIENT_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis (list_directory, search_files, read_file, et selon permission edit_file, write_file, run_command). Ne réécris pas le code dans ta réponse finale : termine par un bilan ultra-court (<= 6 lignes) des fichiers modifiés/commandes lancées.`;
 
@@ -1120,6 +1130,122 @@ server.registerTool('fs_mcp_hub', {
   const ws = params.workspaceRoot || loadState().lastWorkspaceRoot || '';
   return asCompactText(await executeMcpHubAction({ ...params, workspaceRoot: ws }));
 });
+
+server.registerTool('fs_data', {
+  title: 'Code Interpreter, Data Analyst & Graphiques SVG (/data) [ATG]',
+  description: 'Analyse des jeux de données CSV/TSV/JSON/JSONL sans gaspiller le contexte Antigravity : profile (types, min/max/moyenne/médiane/écart-type, valeurs fréquentes), query (filtre, group-by, agrégation sum/avg/min/max, tri), chart (génère un graphique SVG bar/line), run_js / run_python (exécute un script d’analyse isolé).',
+  inputSchema: {
+    action: z.enum(['profile', 'query', 'chart', 'run_js', 'run_python']).default('profile').describe('Action Data Analyst.'),
+    filePath: z.string().optional().describe('Chemin du fichier CSV, TSV, JSON ou JSONL.'),
+    data: z.any().optional().describe('Données brutes inline (chaîne CSV/JSON ou tableau d’objets).'),
+    filterColumn: z.string().optional().describe('Colonne à filtrer pour query.'),
+    filterOp: z.enum(['eq', 'neq', 'contains', 'gt', 'gte', 'lt', 'lte']).optional().describe('Opérateur de filtre.'),
+    filterValue: z.any().optional().describe('Valeur de filtre.'),
+    groupBy: z.string().optional().describe('Colonne de regroupement pour query.'),
+    aggColumn: z.string().optional().describe('Colonne numérique à agréger.'),
+    aggOp: z.enum(['count', 'sum', 'avg', 'min', 'max']).optional().describe('Fonction d’agrégation.'),
+    sortBy: z.string().optional().describe('Colonne de tri.'),
+    sortOrder: z.enum(['asc', 'desc']).optional().describe('Ordre de tri.'),
+    limit: z.number().optional().describe('Nombre max de lignes retournées (défaut 25).'),
+    chartType: z.enum(['bar', 'line']).optional().describe('Type de graphique SVG.'),
+    title: z.string().optional().describe('Titre du graphique SVG.'),
+    labels: z.array(z.string()).optional().describe('Étiquettes X du graphique.'),
+    values: z.array(z.number()).optional().describe('Valeurs Y du graphique.'),
+    labelColumn: z.string().optional().describe('Colonne des étiquettes X si fichier fourni.'),
+    valueColumn: z.string().optional().describe('Colonne des valeurs Y si fichier fourni.'),
+    outputPath: z.string().optional().describe('Chemin de sortie du fichier .svg.'),
+    code: z.string().optional().describe('Code JS ou Python à exécuter pour run_js / run_python.'),
+    workspaceRoot: z.string().optional().describe('Dossier de travail optionnel.'),
+  },
+}, async (params) => asCompactText(await executeDataAction(params)));
+
+server.registerTool('fs_research', {
+  title: 'Deep Research Multi-Sources & Synthèse Sourcée (/research) [ATG]',
+  description: 'Effectue une recherche approfondie multi-sources (façon Perplexity / ChatGPT Deep Research) : lance des recherches web parallèles, extrait le Markdown propre des meilleures pages et génère une synthèse sourcée avec citations numérotées [1], [2] via France Student.',
+  inputSchema: {
+    query: z.string().optional().describe('Sujet principal de recherche.'),
+    queries: z.array(z.string()).optional().describe('Liste de 1 à 4 sous-requêtes parallèles.'),
+    maxSources: z.number().optional().describe('Nombre de sources web à lire et croiser (défaut 3, max 6).'),
+    maxCharsPerSource: z.number().optional().describe('Caractères extraits par source (défaut 3500).'),
+    synthesize: z.boolean().optional().describe('Synthétiser automatiquement via France Student (défaut true).'),
+  },
+}, async (params) => asCompactText(await executeResearchAction(params)));
+
+server.registerTool('fs_canvas', {
+  title: 'Artifacts & Live Canvas Preview (/canvas) [ATG]',
+  description: 'Crée, met à jour et prévisualise en direct des artifacts interactifs (HTML/CSS/JS, SVG, diagrammes Mermaid, scènes 3D Three.js) servis sur une URL HTTP locale dédiée.',
+  inputSchema: {
+    action: z.enum(['create', 'update', 'list', 'get', 'clear']).default('create').describe('Action Canvas.'),
+    id: z.string().optional().describe('Identifiant ou nom de fichier de l’artifact.'),
+    title: z.string().optional().describe('Titre de l’artifact.'),
+    type: z.enum(['html', 'svg', 'mermaid']).optional().describe('Format de l’artifact (défaut html).'),
+    content: z.string().optional().describe('Code source HTML, SVG ou Mermaid de l’artifact.'),
+  },
+}, async (params) => asCompactText(await executeCanvasAction(params)));
+
+server.registerTool('fs_vision', {
+  title: 'Vision & OCR Écran Natif Windows (/vision) [ATG]',
+  description: 'Extrait le texte visible à l’écran (ocr_screen) ou dans un fichier image (ocr_image) grâce au moteur OCR natif Windows WinRT (100% local et hors-ligne), ou inspecte les dimensions et le hash SHA-256 d’une image (inspect_image).',
+  inputSchema: {
+    action: z.enum(['ocr_screen', 'ocr_image', 'inspect_image']).default('ocr_screen').describe('Action Vision/OCR.'),
+    path: z.string().optional().describe('Chemin de l’image pour ocr_image ou inspect_image.'),
+    region: z.object({
+      x: z.number(),
+      y: z.number(),
+      width: z.number(),
+      height: z.number(),
+    }).optional().describe('Zone de l’écran à capturer pour ocr_screen.'),
+  },
+}, async (params) => asCompactText(await executeVisionAction(params)));
+
+server.registerTool('fs_arena', {
+  title: 'Consensus & Comparatif Multi-Modèles (/arena) [ATG]',
+  description: 'Interroge 2 ou 3 modèles France Student en parallèle sur la même question ou revue critique, mesure leur latence et retourne leurs réponses côte-à-côte pour consensus.',
+  inputSchema: {
+    prompt: z.string().describe('Question, problème d’architecture ou code à soumettre au conseil de modèles.'),
+    models: z.array(z.string()).optional().describe('Liste explicite de 2 ou 3 modèles à comparer (sinon sélection automatique des meilleurs modèles autorisés).'),
+    count: z.number().optional().describe('Nombre de modèles à comparer (2 ou 3, défaut 2).'),
+    dryRun: z.boolean().optional().describe('Vérifier uniquement les modèles sélectionnés sans lancer d’appel réseau.'),
+  },
+}, async (params) => asCompactText(await executeArenaAction(params)));
+
+server.registerTool('fs_doc', {
+  title: 'Lecteur Universel de Documents PDF, Word, Excel, PowerPoint, ZIP (/doc) [ATG]',
+  description: 'Lit, découpe et indexe localement des documents .pdf, .docx, .xlsx, .pptx, .odt, .zip, .md et .txt : extract (extraction texte propre) ou search (retourne uniquement les passages pertinents sans saturer le contexte Antigravity).',
+  inputSchema: {
+    action: z.enum(['extract', 'search']).default('extract').describe('extract ou search.'),
+    path: z.string().describe('Chemin absolu ou relatif du document (.pdf, .docx, .xlsx, .pptx, .zip, .md…).'),
+    query: z.string().optional().describe('Mots-clés recherchés dans le document pour action="search".'),
+    topK: z.number().optional().describe('Nombre d’extraits pertinents à retourner pour search (défaut 5).'),
+    maxChars: z.number().optional().describe('Limite de caractères pour extract (défaut 10000).'),
+  },
+}, async (params) => asCompactText(await executeDocAction(params)));
+
+server.registerTool('fs_voice', {
+  title: 'Mode Vocal & Synthèse TTS Windows (/voice) [ATG]',
+  description: 'Fait parler l’assistant à voix haute via la synthèse vocale native Windows (speak), génère un fichier audio .wav (to_wav) ou liste les voix installées (voices).',
+  inputSchema: {
+    action: z.enum(['speak', 'to_wav', 'voices']).default('speak').describe('speak, to_wav ou voices.'),
+    text: z.string().optional().describe('Texte à prononcer ou synthétiser en WAV.'),
+    rate: z.number().optional().describe('Vitesse d’élocution de -5 (lent) à +5 (rapide), défaut 0.'),
+    outputPath: z.string().optional().describe('Chemin du fichier .wav pour to_wav.'),
+    dryRun: z.boolean().optional().describe('Simulation sans lecture audio réelle.'),
+  },
+}, async (params) => asCompactText(await executeVoiceAction(params)));
+
+server.registerTool('fs_schedule', {
+  title: 'Tâches Planifiées & Watchers Intelligents (/watch) [ATG]',
+  description: 'Programme et gère des veilles autonomes en arrière-plan (surveillance de fichier, d’URL HTTP ou de commande) avec notification Windows lors d’un changement : list, add, run_now, remove, clear.',
+  inputSchema: {
+    action: z.enum(['list', 'add', 'run_now', 'remove', 'clear']).default('list').describe('Action du planificateur.'),
+    id: z.string().optional().describe('Identifiant de la tâche pour run_now ou remove.'),
+    name: z.string().optional().describe('Nom lisible de la veille (ex: "Tests unitaires", "API locale").'),
+    kind: z.enum(['file', 'http', 'command']).optional().describe('Type de cible à surveiller (file, http, command).'),
+    target: z.string().optional().describe('Chemin du fichier, URL HTTP ou commande à surveiller.'),
+    intervalSec: z.number().optional().describe('Intervalle de vérification en secondes (min 5, défaut 60).'),
+    notifyOnChange: z.boolean().optional().describe('Afficher une notification Windows en cas de changement (défaut true).'),
+  },
+}, async (params) => asCompactText(await executeScheduleAction(params)));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

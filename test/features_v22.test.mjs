@@ -26,6 +26,15 @@ import {
   executeMcpHubAction,
   executeRobloxBridge,
 } from '../plugin/mcp_hub.mjs';
+import {
+  executeArenaAction,
+  executeCanvasAction,
+  executeDataAction,
+  executeDocAction,
+  executeScheduleAction,
+  executeVisionAction,
+  executeVoiceAction,
+} from '../plugin/classic_ai_tools.mjs';
 
 test('télémétrie : agrège tok/s, TTFT, taux de succès et replis, fenêtre 7 jours', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'fs-atg-tele-'));
@@ -103,10 +112,13 @@ test('v2.2.1 : timeout outils locaux fixé à 240 s', () => {
   assert.equal(DEFAULT_TOOLS_STREAM_TIMEOUT_MS, 240_000);
 });
 
-test('v2.4.0 : catalogue MCP expose 16 outils dont fs_computer, fs_browser, fs_web, fs_system et fs_mcp_hub', () => {
+test('v2.5.0 : catalogue MCP expose 24 outils dont la Suite IA Classique (fs_data, fs_research, fs_canvas, fs_vision, fs_arena, fs_doc, fs_voice, fs_schedule)', () => {
   const names = MCP_TOOL_CATALOG.map((t) => t.name);
-  assert.equal(names.length, 16);
-  for (const expected of ['fs_computer', 'fs_browser', 'fs_web', 'fs_system', 'fs_mcp_hub']) {
+  assert.equal(names.length, 24);
+  for (const expected of [
+    'fs_computer', 'fs_browser', 'fs_web', 'fs_system', 'fs_mcp_hub',
+    'fs_data', 'fs_research', 'fs_canvas', 'fs_vision', 'fs_arena', 'fs_doc', 'fs_voice', 'fs_schedule',
+  ]) {
     assert.ok(names.includes(expected), `Outil manquant : ${expected}`);
   }
 });
@@ -185,4 +197,119 @@ test('v2.4.0 : Hub MCP contient 34 connecteurs (dont Blender, Roblox Studio, Uni
   const rojo = await executeRobloxBridge({ action: 'scaffold_rojo', workspaceRoot: dir }, { configFilePath });
   assert.equal(rojo.ok, true);
   assert.equal(rojo.filesCreated.length, 2);
+});
+
+test('v2.5.0 : Suite IA Classique (fs_data, fs_canvas, fs_vision, fs_arena, fs_doc, fs_voice, fs_schedule)', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'fs-atg-classic-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+
+  // 1. fs_data : profile, query, chart, run_js
+  const csv = 'team,score\nAlpha,10\nBeta,30\nAlpha,20';
+  const prof = await executeDataAction({ action: 'profile', data: csv });
+  assert.equal(prof.rowCount, 3);
+  assert.equal(prof.columns.score.type, 'number');
+  assert.equal(prof.columns.score.mean, 20);
+
+  const grouped = await executeDataAction({
+    action: 'query',
+    data: csv,
+    groupBy: 'team',
+    aggColumn: 'score',
+    aggOp: 'sum',
+    sortBy: 'sum',
+    sortOrder: 'desc',
+  });
+  assert.equal(grouped.rows[0].team, 'Alpha');
+  assert.equal(grouped.rows[0].sum, 30);
+
+  const chart = await executeDataAction({
+    action: 'chart',
+    title: 'Scores',
+    labels: ['Alpha', 'Beta'],
+    values: [30, 30],
+    outputPath: join(dir, 'scores.svg'),
+  });
+  assert.equal(chart.ok, true);
+  assert.match(chart.svg, /<svg/);
+
+  const jsRun = await executeDataAction({
+    action: 'run_js',
+    code: 'console.log(JSON.stringify({ sum: 21 + 21 }));',
+  });
+  assert.equal(jsRun.ok, true);
+  assert.match(jsRun.stdout, /"sum":42/);
+
+  // 2. fs_canvas : create, list, get
+  const art = await executeCanvasAction({
+    action: 'create',
+    id: 'test-art',
+    title: 'Test Canvas',
+    type: 'mermaid',
+    content: 'flowchart LR\nA --> B',
+  });
+  assert.equal(art.ok, true);
+  assert.match(art.previewUrl, /^http:\/\/127\.0\.0\.1:\d+\//);
+  const gotArt = await executeCanvasAction({ action: 'get', id: 'test-art' });
+  assert.match(gotArt.content, /mermaid/);
+
+  // 3. fs_vision : inspect_image sur un mini PNG 1x1
+  const png1x1 = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  );
+  const pngPath = join(dir, 'pixel.png');
+  await writeFile(pngPath, png1x1);
+  const imgInfo = await executeVisionAction({ action: 'inspect_image', path: pngPath });
+  assert.equal(imgInfo.format, 'png');
+  assert.equal(imgInfo.width, 1);
+  assert.equal(imgInfo.height, 1);
+
+  // 4. fs_arena : dry-run council selection
+  const arena = await executeArenaAction({ prompt: 'Compare two architectures', dryRun: true });
+  assert.equal(arena.ok, true);
+  assert.ok(arena.selectedModels.length >= 2);
+
+  // 5. fs_doc : extract & search
+  const docPath = join(dir, 'cahier.md');
+  await writeFile(
+    docPath,
+    '# Architecture\n\nLe moteur physique tourne à 120 Hz.\n\n# Réseau\n\nLa synchronisation Roblox utilise Rojo et Luau.'
+  );
+  const docSearch = await executeDocAction({ action: 'search', path: docPath, query: 'Rojo Luau', topK: 2 });
+  assert.equal(docSearch.ok, true);
+  assert.ok(docSearch.matchesCount >= 1);
+  assert.match(docSearch.excerpts[0].text, /Rojo/);
+
+  // 6. fs_voice : dry-run speak
+  const voice = await executeVoiceAction({ action: 'speak', text: 'Test vocal', dryRun: true });
+  assert.equal(voice.ok, true);
+  assert.equal(voice.spoken, 'Test vocal');
+
+  // 7. fs_schedule : add, list, run_now, remove
+  const schedFile = join(dir, 'schedules.json');
+  const added = await executeScheduleAction({
+    action: 'add',
+    name: 'Veille Cahier',
+    kind: 'file',
+    target: docPath,
+    intervalSec: 30,
+    startTimer: false,
+    configFilePath: schedFile,
+  });
+  assert.equal(added.ok, true);
+  assert.equal(added.total, 1);
+
+  const ran = await executeScheduleAction({
+    action: 'run_now',
+    id: added.schedule.id,
+    configFilePath: schedFile,
+  });
+  assert.equal(ran.result.ok, true);
+
+  const removed = await executeScheduleAction({
+    action: 'remove',
+    id: added.schedule.id,
+    configFilePath: schedFile,
+  });
+  assert.equal(removed.remaining, 0);
 });

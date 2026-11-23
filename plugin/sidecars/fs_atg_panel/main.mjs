@@ -73,6 +73,17 @@ import { executeComputerAction } from '../../computer_use.mjs';
 import { executeBrowserAction, getBrowserSessionStatus } from '../../browser_use.mjs';
 import { executeSystemAction } from '../../system_tools.mjs';
 import { MCP_HUB_CATEGORIES, MCP_HUB_CATALOG, allHubConnectors, executeMcpHubAction } from '../../mcp_hub.mjs';
+import {
+  executeArenaAction,
+  executeCanvasAction,
+  executeDataAction,
+  executeDocAction,
+  executeResearchAction,
+  executeScheduleAction,
+  executeVisionAction,
+  executeVoiceAction,
+  loadSchedules,
+} from '../../classic_ai_tools.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -567,6 +578,7 @@ app.api('/api/state', async () => {
       categories: MCP_HUB_CATEGORIES,
       connectors: allHubConnectors(),
     },
+    schedules: loadSchedules(),
     lastWorkspaceRoot: wsRoot || null,
     undoEntries: wsRoot ? listUndoEntries(wsRoot, 15) : [],
     projectMemory: getProjectMemory(wsRoot),
@@ -783,6 +795,21 @@ app.api('/api/mcp-hub', async (data) => {
     ...data,
     workspaceRoot: data?.workspaceRoot || state.lastWorkspaceRoot || '',
   });
+});
+
+app.api('/api/classic-ai', async (data) => {
+  state = loadState();
+  const tool = String(data?.tool || '').trim().toLowerCase();
+  const payload = { ...data, workspaceRoot: data?.workspaceRoot || state.lastWorkspaceRoot || '' };
+  if (tool === 'data') return await executeDataAction(payload);
+  if (tool === 'research') return await executeResearchAction(payload);
+  if (tool === 'canvas') return await executeCanvasAction(payload);
+  if (tool === 'vision') return await executeVisionAction(payload);
+  if (tool === 'arena') return await executeArenaAction(payload);
+  if (tool === 'doc') return await executeDocAction(payload);
+  if (tool === 'voice') return await executeVoiceAction(payload);
+  if (tool === 'schedule') return await executeScheduleAction(payload);
+  throw new Error(`Outil classic-ai inconnu : "${tool}".`);
 });
 
 app.api('/api/undo/diff', (data) => {

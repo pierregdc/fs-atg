@@ -6,18 +6,18 @@
   </picture>
 </p>
 
-<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.4.0)</h1>
+<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.5.0)</h1>
 
 <p align="center">
-  <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> (16 outils + Hub de 34 connecteurs MCP) pour Antigravity</strong><br>
-  Exécution autonome sur le workspace, Hub 34+ MCP (Roblox Studio, Blender, Unity, Unreal, Godot, Figma, Postgres, SQLite, Docker, GitHub…), Computer Use (<code>/computer</code>), Navigateur CDP (<code>/browse</code>), Lecture &amp; Recherche Web (<code>/web</code>), sauvegarde atomique <code>/undo</code> et contrôle par modèle (Oui / À demander / Non).
+  <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> (24 outils + Hub de 34 connecteurs MCP + Suite IA Classique) pour Antigravity</strong><br>
+  Exécution autonome sur le workspace, Suite IA Classique (Code Interpreter <code>/data</code>, Deep Research <code>/research</code>, Live Canvas <code>/canvas</code>, Vision OCR <code>/vision</code>, Consensus Multi-IA <code>/arena</code>, Lecteur PDF/Office <code>/doc</code>, Voix TTS <code>/voice</code>, Watchers <code>/watch</code>), Hub 34+ MCP (Roblox Studio, Blender, Unity, DB, DevOps…), Computer Use (<code>/computer</code>) et Navigateur CDP (<code>/browse</code>).
 </p>
 
 <p align="center">
-  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.4.0-2563eb?style=flat-square" alt="Version 2.4.0"></a>
+  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.5.0-2563eb?style=flat-square" alt="Version 2.5.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-334155?style=flat-square" alt="Licence MIT"></a>
-  <a href="#commandes-slash-officielles"><img src="https://img.shields.io/badge/commandes-12%20slash-2563eb?style=flat-square" alt="12 commandes slash"></a>
-  <a href="#hub-mcp-universel-34-connecteurs-dont-roblox-studio-et-blender"><img src="https://img.shields.io/badge/MCP-16%20outils%20%2B%2034%20connecteurs-475569?style=flat-square" alt="16 outils MCP + 34 connecteurs"></a>
+  <a href="#commandes-slash-officielles"><img src="https://img.shields.io/badge/commandes-20%20slash-2563eb?style=flat-square" alt="20 commandes slash"></a>
+  <a href="#nouveautes-v25--suite-ia-classique-8-outils-integres"><img src="https://img.shields.io/badge/MCP-24%20outils%20%2B%2034%20connecteurs-475569?style=flat-square" alt="24 outils MCP + 34 connecteurs"></a>
 </p>
 
 ---
@@ -33,6 +33,19 @@ L'interface du panneau latéral adopte un thème monochrome/slate et bleu unifi�
 | Réglages (connexion &amp; comportement) | Journal &amp; Avancé (logs &amp; diagnostics) |
 | :---: | :---: |
 | ![Réglages](docs/images/screen-reglages.png) | ![Journal](docs/images/screen-journal.png) |
+
+---
+
+## Nouveautés v2.5 — Suite IA Classique (8 outils intégrés)
+
+1. **`fs_data` (`/data` — Code Interpreter, Data Analyst &amp; Graphiques SVG)** : profilage statistique complet de fichiers `.csv`, `.tsv`, `.json`, `.jsonl` (`profile`: types, valeurs manquantes, min/max/moyenne/médiane/écart-type, top catégories), requêtes filtrées et agrégées (`query`: `groupBy`, `sum`/`avg`/`min`/`max`, `sortBy`), génération de graphiques SVG autonomes (`chart`: `bar`, `line`) et exécution sandboxée de scripts Node.js ou Python (`run_js`, `run_python`).
+2. **`fs_research` (`/research` — Deep Research Multi-Sources)** : lance plusieurs recherches web en parallèle, extrait le Markdown propre des meilleures pages, croise les informations et produit un rapport synthétique sourcé avec citations numérotées `[1]`, `[2]` via France Student.
+3. **`fs_canvas` (`/canvas` — Artifacts &amp; Live Canvas Preview)** : enregistre et sert en direct des artifacts interactifs (`html`, `svg`, `mermaid`) sur un serveur HTTP local dédié (`http://127.0.0.1:<port>/<id>.html`).
+4. **`fs_vision` (`/vision` — Vision &amp; OCR Écran Natif Windows WinRT)** : capture l'écran ou une image locale et extrait instantanément toutes les lignes de texte visibles grâce au moteur OCR natif Windows (`Windows.Media.Ocr`, 100 % local et hors-ligne), ou inspecte les dimensions PNG et le hash SHA-256 (`inspect_image`).
+5. **`fs_arena` (`/arena` — Consensus &amp; Comparatif Multi-Modèles)** : soumet une question complexe ou une revue critique à 2 ou 3 modèles France Student en parallèle, mesure leur latence et retourne leurs réponses côte-à-côte.
+6. **`fs_doc` (`/doc` — Lecteur Universel de Documents PDF, Office &amp; ZIP)** : extrait le texte de fichiers `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.odt`, `.zip`, `.md` et `.txt` (`extract`), ou découpe le document en paragraphes pour ne retourner que les `topK` passages pertinents (`search`) sans saturer la fenêtre de contexte d'Antigravity.
+7. **`fs_voice` (`/voice` — Mode Vocal : Dictée &amp; Synthèse TTS Windows)** : bouton de dictée vocale (`Micro`) dans le panneau latéral et outil MCP de synthèse vocale native Windows (`System.Speech.Synthesis`) pour parler à voix haute (`speak`), générer un fichier `.wav` (`to_wav`) ou lister les voix installées (`voices`).
+8. **`fs_schedule` (`/watch` — Tâches Planifiées &amp; Watchers Intelligents)** : surveille en arrière-plan un fichier (`file`), une URL (`http`) ou une commande (`command`) à intervalle régulier et déclenche une notification Windows en cas de changement.
 
 ---
 
@@ -118,6 +131,14 @@ Dans l'onglet **Modèles**, chaque modèle dispose d'un sélecteur persistant (`
 | **`/browse`** | `fs_browser` | Automatisation Chrome/Edge par CDP : ouverture d'URL, snapshot DOM interactif, clic, formulaire, screenshot et JS. |
 | **`/web`** | `fs_web` | Lecture d'URL convertie en Markdown propre, recherche web et synthèse documentaire par France Student. |
 | **`/mcp`** | `fs_mcp_hub` | Hub de 34 connecteurs MCP : ponts natifs Blender (`bpy`) et Roblox Studio (HTTP + Rojo Luau), bases SQL/NoSQL, Docker, GitHub, etc. |
+| **`/data`** | `fs_data` | Code Interpreter : profilage statistique CSV/JSON, agrégations, graphiques SVG et exécution Node/Python isolée. |
+| **`/research`** | `fs_research` | Deep Research : recherches web parallèles, lecture multi-sources et synthèse sourcée `[1]`, `[2]`. |
+| **`/canvas`** | `fs_canvas` | Live Canvas : création et prévisualisation HTTP locale d'artifacts HTML, SVG et Mermaid. |
+| **`/vision`** | `fs_vision` | Vision &amp; OCR natif Windows WinRT sur l'écran ou un fichier image (100 % hors-ligne). |
+| **`/arena`** | `fs_arena` | Conseil Multi-Modèles : interroge 2 ou 3 modèles France Student en parallèle pour consensus. |
+| **`/doc`** | `fs_doc` | Lecteur universel `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.zip` avec recherche des passages pertinents. |
+| **`/voice`** | `fs_voice` | Synthèse vocale TTS Windows à voix haute ou export `.wav` (+ bouton dictée vocale dans le panneau). |
+| **`/watch`** | `fs_schedule` | Tâches planifiées et surveillance automatique de fichiers, URLs HTTP ou commandes avec notifications. |
 
 ---
 
