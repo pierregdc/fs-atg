@@ -25,7 +25,7 @@ if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertif
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
-export const CONNECTOR_VERSION = '2.2.1';
+export const CONNECTOR_VERSION = '2.3.0';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const OFFICIAL_WEB_ORIGIN = 'https://ia.francestudent.org';
 export const SESSION_COOKIE_NAMES = Object.freeze(['__Secure-next-auth.session-token', 'next-auth.session-token']);
@@ -122,8 +122,12 @@ export function clearGlobalCooldown() {
 }
 
 export function getGlobalCooldown(state = null) {
-  const st = state || (() => { try { return loadState(); } catch { return null; } })();
-  const entry = globalCooldownMemory || st?.globalCooldown || null;
+  const diskState = (() => { try { return loadState(); } catch { return null; } })();
+  if (diskState && !diskState.globalCooldown && !state?.globalCooldown) {
+    globalCooldownMemory = null;
+  }
+  const st = state || diskState;
+  const entry = st?.globalCooldown || globalCooldownMemory || null;
   if (!entry || !entry.until) return { active: false, reason: null, until: null, remainingSec: 0 };
   if (Date.now() >= Number(entry.until)) {
     globalCooldownMemory = null;
@@ -216,6 +220,10 @@ export const MCP_TOOL_CATALOG = Object.freeze([
   { name: 'fs_job_status', label: 'Suivi', writesWorkspace: false },
   { name: 'fs_undo', label: 'Annuler (/undo)', writesWorkspace: true },
   { name: 'fs_memory', label: 'Mémoire projet', writesWorkspace: false },
+  { name: 'fs_computer', label: 'Computer Use (/computer)', writesWorkspace: false },
+  { name: 'fs_browser', label: 'Navigateur CDP (/browse)', writesWorkspace: false },
+  { name: 'fs_web', label: 'Lecture & Recherche Web (/web)', writesWorkspace: false },
+  { name: 'fs_system', label: 'Système, Ports & Processus', writesWorkspace: false },
   { name: 'fs_logs', label: 'Journal de bord', writesWorkspace: false },
   { name: 'fs_session', label: 'Session', writesWorkspace: false },
   { name: 'fs_quota', label: 'Quota France Student', writesWorkspace: false },
@@ -363,6 +371,7 @@ export const DEFAULT_STATE = {
   showReasoning: true,
   reasoningEffort: 'deep',
   useClientTools: true,
+  computerUseEnabled: true,
   enableWebSearch: true,
   reuseChat: true,
   contextCompactPercent: 80,
@@ -1978,11 +1987,16 @@ export async function streamGeneration({
     Number(timeoutMs) || (Array.isArray(clientTools) && clientTools.length ? DEFAULT_TOOLS_STREAM_TIMEOUT_MS : DEFAULT_STREAM_TIMEOUT_MS)
   );
   const timeoutCtrl = new AbortController();
-  const timeoutTimer = setTimeout(() => {
-    const err = new Error(`Délai dépassé (${Math.round(effectiveTimeoutMs / 1000)}s).`);
-    err.retryable = true;
-    timeoutCtrl.abort(err);
-  }, effectiveTimeoutMs);
+  let timeoutTimer = null;
+  const refreshTimeout = () => {
+    if (timeoutTimer) clearTimeout(timeoutTimer);
+    timeoutTimer = setTimeout(() => {
+      const err = new Error(`Délai dépassé (${Math.round(effectiveTimeoutMs / 1000)}s).`);
+      err.retryable = true;
+      timeoutCtrl.abort(err);
+    }, effectiveTimeoutMs);
+  };
+  refreshTimeout();
   const onParentAbort = () => {
     timeoutCtrl.abort(new Error('Annulé.'));
     if (activeChatId) void cancelChatStreamBestEffort(base, apiKey, activeChatId);
@@ -2030,6 +2044,7 @@ export async function streamGeneration({
     let text = '';
     let usage = null;
     for await (const ev of readSse(res.body)) {
+      refreshTimeout();
       if (ev?.type === 'response.output_text.delta') {
         const d = ev.delta ?? '';
         text += d;
@@ -2115,6 +2130,7 @@ export async function streamGeneration({
       let completed = false;
       try {
         for await (const frame of readSseFrames(res.body)) {
+          refreshTimeout();
           if (frame.id) lastEventId = frame.id;
           const ev = frame.event;
           if (ev?.type === 'stream.open' && ev.chat_id) {
@@ -2238,7 +2254,9 @@ export async function streamGeneration({
       for (const call of turn.toolCalls.slice(0, 32)) {
         if (effectiveSignal.aborted) break;
         onToolCall?.({ turn: toolTurns, name: call.name, args: call.arguments });
+        refreshTimeout();
         const result = await executeToolCall(call);
+        refreshTimeout();
         rawResults.push({
           callId: call.callId,
           output: String(result?.output ?? ''),

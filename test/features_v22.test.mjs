@@ -8,6 +8,7 @@ import {
   DEFAULT_STATE,
   DEFAULT_TOOLS_STREAM_TIMEOUT_MS,
   getModelTelemetry,
+  MCP_TOOL_CATALOG,
   parseTaskDirectives,
   pickModel,
   recordModelTelemetry,
@@ -15,6 +16,10 @@ import {
   TELEMETRY_WINDOW_MS,
 } from '../plugin/fs_core.mjs';
 import { clearReadCache, createWorkspaceToolRunner, diffTexts, readCacheSize } from '../plugin/tools_engine.mjs';
+import { COMPUTER_ACTIONS, validateComputerAction } from '../plugin/computer_use.mjs';
+import { BROWSER_ACTIONS, validateBrowserUrl } from '../plugin/browser_use.mjs';
+import { htmlToCleanMarkdown } from '../plugin/web_tools.mjs';
+import { executeSystemAction } from '../plugin/system_tools.mjs';
 
 test('télémétrie : agrège tok/s, TTFT, taux de succès et replis, fenêtre 7 jours', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'fs-atg-tele-'));
@@ -90,4 +95,53 @@ test('cache de lecture : list_directory mis en cache 60 s, invalidé par toute �
 
 test('v2.2.1 : timeout outils locaux fixé à 240 s', () => {
   assert.equal(DEFAULT_TOOLS_STREAM_TIMEOUT_MS, 240_000);
+});
+
+test('v2.3.0 : catalogue MCP expose 15 outils dont fs_computer, fs_browser, fs_web et fs_system', () => {
+  const names = MCP_TOOL_CATALOG.map((t) => t.name);
+  assert.equal(names.length, 15);
+  for (const expected of ['fs_computer', 'fs_browser', 'fs_web', 'fs_system']) {
+    assert.ok(names.includes(expected), `Outil manquant : ${expected}`);
+  }
+});
+
+test('v2.3.0 : validateComputerAction applique les permissions et bloque les raccourcis système dangereux', () => {
+  assert.ok(COMPUTER_ACTIONS.includes('screenshot'));
+  assert.equal(validateComputerAction({ action: 'screenshot' }, { permissionMode: 'plan' }), 'screenshot');
+  assert.throws(
+    () => validateComputerAction({ action: 'click', x: 10, y: 20 }, { permissionMode: 'plan' }),
+    /Lecture seule/i
+  );
+  assert.throws(
+    () => validateComputerAction({ action: 'click', x: 10, y: 20 }, { permissionMode: 'full', computerUseEnabled: false }),
+    /désactivé/i
+  );
+  assert.throws(
+    () => validateComputerAction({ action: 'hotkey', keys: 'Ctrl + Alt + Del' }, { permissionMode: 'full' }),
+    /protégé refusé/i
+  );
+});
+
+test('v2.3.0 : validateBrowserUrl et htmlToCleanMarkdown nettoient et sécurisent le contenu web', () => {
+  assert.ok(BROWSER_ACTIONS.includes('snapshot'));
+  assert.equal(validateBrowserUrl('example.com/docs'), 'https://example.com/docs');
+  assert.throws(() => validateBrowserUrl('file:///C:/app/.env'), /sensible refusée/i);
+  assert.throws(() => validateBrowserUrl('javascript:alert(1)'), /Protocole non autorisé/i);
+
+  const md = htmlToCleanMarkdown(
+    '<html><head><title>Doc &amp; API</title><script>evil()</script></head><body><h1>Bienvenue</h1><p>Texte <code>fs_browser</code></p><a href="/guide">Guide</a></body></html>',
+    'https://ia.francestudent.org'
+  );
+  assert.equal(md.title, 'Doc & API');
+  assert.match(md.markdown, /# Bienvenue/);
+  assert.match(md.markdown, /`fs_browser`/);
+  assert.doesNotMatch(md.markdown, /evil/);
+  assert.equal(md.links[0].url, 'https://ia.francestudent.org/guide');
+});
+
+test('v2.3.0 : executeSystemAction overview retourne les métriques CPU/RAM/OS', async () => {
+  const res = await executeSystemAction({ action: 'overview' });
+  assert.equal(res.ok, true);
+  assert.ok(res.cpuCores >= 1);
+  assert.ok(res.memory.totalMb > 0);
 });

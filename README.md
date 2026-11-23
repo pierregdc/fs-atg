@@ -6,18 +6,18 @@
   </picture>
 </p>
 
-<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.2.1)</h1>
+<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.3.0)</h1>
 
 <p align="center">
-  <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> pour Antigravity</strong><br>
-  Exécution autonome sur le workspace, sauvegarde atomique <code>/undo</code>, contrôle par modèle (Oui / À demander / Non), raisonnement boosté et cascade de résilience 502/429.
+  <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> (15 outils) pour Antigravity</strong><br>
+  Exécution autonome sur le workspace, Computer Use (écran, fenêtres, souris, clavier), Navigateur CDP (<code>/browse</code>), Lecture &amp; Recherche Web (<code>/web</code>), sauvegarde atomique <code>/undo</code>, contrôle par modèle (Oui / À demander / Non) et cascade de résilience 502/429.
 </p>
 
 <p align="center">
-  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.2.1-2563eb?style=flat-square" alt="Version 2.2.1"></a>
+  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.3.0-2563eb?style=flat-square" alt="Version 2.3.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-334155?style=flat-square" alt="Licence MIT"></a>
-  <a href="#commandes-slash-officielles"><img src="https://img.shields.io/badge/commandes-8%20slash-2563eb?style=flat-square" alt="8 commandes slash"></a>
-  <a href="#securite-et-permissions"><img src="https://img.shields.io/badge/permissions-3%20niveaux-475569?style=flat-square" alt="3 niveaux de permissions"></a>
+  <a href="#commandes-slash-officielles"><img src="https://img.shields.io/badge/commandes-11%20slash-2563eb?style=flat-square" alt="11 commandes slash"></a>
+  <a href="#securite-et-permissions"><img src="https://img.shields.io/badge/MCP-15%20outils-475569?style=flat-square" alt="15 outils MCP"></a>
 </p>
 
 ---
@@ -33,6 +33,16 @@ L'interface du panneau latéral adopte un thème monochrome/slate et bleu unifi�
 | Réglages (connexion &amp; comportement) | Journal &amp; Avancé (logs &amp; diagnostics) |
 | :---: | :---: |
 | ![Réglages](docs/images/screen-reglages.png) | ![Journal](docs/images/screen-journal.png) |
+
+---
+
+## Nouveautés v2.3 — Computer Use, Navigateur CDP, Web &amp; Système
+
+- **`fs_computer` (`/computer` — Computer Use Windows)** : capture d'écran PNG (`screenshot`, avec protection des surfaces DirectX plein écran), topologie multi-écrans et position du curseur (`screen_info`), liste et focus des fenêtres (`windows`, `focus_window`), actions souris (`mouse_move`, `click`, `double_click`, `right_click`, `drag`, `scroll`), saisie clavier et raccourcis (`type`, `key`, `hotkey` avec blocage des combinaisons système critiques) et presse-papiers (`clipboard_get`, `clipboard_set`).
+- **`fs_browser` (`/browse` — Automatisation Chrome/Edge par CDP)** : pilote Chrome ou Edge en mode headless ou visible sans dépendance externe via Chrome DevTools Protocol (`open`, `snapshot` DOM interactif compact, `screenshot`, `click`, `fill`, `press`, `scroll`, `eval`, `console`, `close`).
+- **`fs_web` (`/web` — Lecture Web Markdown &amp; Recherche)** : convertit toute page ou documentation en Markdown propre sans bruit HTML (`fetch`), effectue des recherches web (`search`), et peut déléguer la lecture d'une longue documentation à France Student (`question`) pour ne renvoyer qu'une synthèse courte à Antigravity.
+- **`fs_system` (Inspection Système, Processus &amp; Ports TCP)** : bilan CPU/RAM/OS (`overview`), top processus par mémoire (`processes`), propriétaires des ports TCP en écoute (`ports`) et notifications bureau (`notify`).
+- **Timeout SSE glissant** : le timeout de génération se réarme à chaque frame SSE reçue et à chaque tour d'outil local.
 
 ---
 

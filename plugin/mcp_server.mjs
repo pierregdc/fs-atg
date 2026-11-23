@@ -61,6 +61,10 @@ import {
   toolsForPermissionMode,
   undoLastChange,
 } from './tools_engine.mjs';
+import { COMPUTER_ACTIONS, executeComputerAction } from './computer_use.mjs';
+import { BROWSER_ACTIONS, executeBrowserAction } from './browser_use.mjs';
+import { WEB_ACTIONS, executeWebAction } from './web_tools.mjs';
+import { SYSTEM_ACTIONS, executeSystemAction } from './system_tools.mjs';
 
 const CLIENT_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis (list_directory, search_files, read_file, et selon permission edit_file, write_file, run_command). Ne réécris pas le code dans ta réponse finale : termine par un bilan ultra-court (<= 6 lignes) des fichiers modifiés/commandes lancées.`;
 
@@ -981,6 +985,114 @@ server.registerTool('fs_memory', {
       return asCompactText({ ok: true, workspaceRoot: ws || null, ...getProjectMemory(ws) });
   }
 });
+
+server.registerTool('fs_computer', {
+  title: 'Computer Use — Écran, Fenêtres, Souris & Clavier [ATG]',
+  description: 'Contrôle du bureau Windows façon Computer Use : capture écran PNG (screenshot), infos écrans/curseur (screen_info), liste et focus des fenêtres (windows, focus_window), clic/déplacement/glisser/molette souris (mouse_move, click, double_click, right_click, drag, scroll), frappe clavier et raccourcis (type, key, hotkey), presse-papiers (clipboard_get, clipboard_set). Les actions de modification respectent permissionMode.',
+  inputSchema: {
+    action: z.enum(COMPUTER_ACTIONS).describe('Action Computer Use à exécuter.'),
+    x: z.number().optional().describe('Coordonnée X écran (pixels).'),
+    y: z.number().optional().describe('Coordonnée Y écran (pixels).'),
+    toX: z.number().optional().describe('Coordonnée X cible pour drag.'),
+    toY: z.number().optional().describe('Coordonnée Y cible pour drag.'),
+    deltaY: z.number().optional().describe('Défilement molette vertical (ex: -360 vers le bas, 360 vers le haut).'),
+    text: z.string().optional().describe('Texte à taper (type) ou à copier dans le presse-papiers (clipboard_set).'),
+    key: z.string().optional().describe('Touche ou raccourci (ex: Enter, Escape, Tab, Ctrl+C, Alt+Tab).'),
+    keys: z.string().optional().describe('Alias de key pour hotkey.'),
+    title: z.string().optional().describe('Filtre titre de fenêtre pour focus_window.'),
+    processName: z.string().optional().describe('Nom de processus pour focus_window.'),
+    pid: z.number().optional().describe('PID de fenêtre pour focus_window.'),
+    outputPath: z.string().optional().describe('Chemin PNG de sortie pour screenshot (optionnel).'),
+    region: z.object({
+      x: z.number(),
+      y: z.number(),
+      width: z.number(),
+      height: z.number(),
+    }).optional().describe('Sous-région de capture écran optionnelle.'),
+  },
+}, async (params) => {
+  const st = loadState();
+  const res = await executeComputerAction(params, {
+    permissionMode: st.permissionMode || 'acceptEdits',
+    computerUseEnabled: st.computerUseEnabled !== false,
+  });
+  return asCompactText(res);
+});
+
+server.registerTool('fs_browser', {
+  title: 'Navigateur CDP — Automatisation Web (/browse) [ATG]',
+  description: 'Pilote Chrome ou Edge via Chrome DevTools Protocol (CDP) en mode headless ou fenêtre visible : open (ouvrir URL + snapshot), snapshot (arbre interactif compact des boutons/champs/liens + texte), screenshot (capture PNG), click (par sélecteur CSS, texte ou x/y), fill (remplir un champ), press (touche clavier), scroll, eval (JS dans la page), console (logs/erreurs page), status, close.',
+  inputSchema: {
+    action: z.enum(BROWSER_ACTIONS).default('status').describe('Action navigateur à exécuter.'),
+    url: z.string().optional().describe('URL cible pour open, snapshot ou screenshot.'),
+    headless: z.boolean().optional().describe('Mode headless (défaut true ; passer false pour afficher la fenêtre).'),
+    selector: z.string().optional().describe('Sélecteur CSS pour click ou fill.'),
+    text: z.string().optional().describe('Texte du bouton/lien à cliquer (click) ou valeur à saisir (fill).'),
+    value: z.string().optional().describe('Valeur à saisir dans un champ (fill).'),
+    key: z.string().optional().describe('Touche clavier pour press (ex: Enter, Tab, Escape).'),
+    x: z.number().optional().describe('Coordonnée X viewport pour click.'),
+    y: z.number().optional().describe('Coordonnée Y viewport pour click.'),
+    deltaY: z.number().optional().describe('Pixels de défilement vertical pour scroll (défaut 500).'),
+    expression: z.string().optional().describe('Expression JavaScript à évaluer dans la page (eval).'),
+    waitMs: z.number().optional().describe('Attente après navigation en ms (défaut 1200).'),
+    maxElements: z.number().optional().describe('Nombre max d’éléments interactifs dans snapshot (défaut 60).'),
+    maxText: z.number().optional().describe('Longueur max de l’extrait texte dans snapshot (défaut 3500).'),
+    outputPath: z.string().optional().describe('Chemin PNG de sortie pour screenshot.'),
+  },
+}, async (params) => asCompactText(await executeBrowserAction(params)));
+
+server.registerTool('fs_web', {
+  title: 'Lecture Web Markdown & Recherche (/web) [ATG]',
+  description: 'Lit une page web ou documentation en Markdown propre sans bruit HTML (fetch) ou effectue une recherche web rapide (search). Si question est fourni avec fetch, délègue la lecture à France Student pour ne renvoyer qu’une réponse synthétique et économiser le contexte Antigravity.',
+  inputSchema: {
+    action: z.enum(WEB_ACTIONS).default('fetch').describe('fetch (lire une URL en Markdown) ou search (recherche web).'),
+    url: z.string().optional().describe('URL à lire pour fetch.'),
+    query: z.string().optional().describe('Requête de recherche pour search.'),
+    question: z.string().optional().describe('Question optionnelle à poser à France Student sur le contenu de l’URL (économise >90% de tokens Antigravity).'),
+    maxChars: z.number().optional().describe('Limite de caractères retournés (défaut 12000).'),
+    limit: z.number().optional().describe('Nombre max de résultats pour search (défaut 6).'),
+  },
+}, async (params) => {
+  const res = await executeWebAction(params);
+  if (params.action !== 'search' && params.question && res.content) {
+    try {
+      const st = loadState();
+      const { ids, agentMap } = await fetchAgentsAndModels(st);
+      const route = pickModel('/eco ' + params.question, ids, st);
+      const ans = await streamGenerationWithRefusalFallback({
+        state: st,
+        model: route.model,
+        availableModels: ids,
+        agentMap,
+        instructions: 'Réponds de façon ultra-concise (<= 12 lignes) uniquement à partir de la page fournie.',
+        prompt: `URL : ${res.url}\nTitre : ${res.title || ''}\nQuestion : ${params.question}\n\n---\n${res.content.slice(0, 18_000)}`,
+      });
+      return asCompactText({
+        ok: true,
+        url: res.url,
+        title: res.title,
+        model: ans.model,
+        answer: String(ans.text || '').trim(),
+      });
+    } catch (err) {
+      return asCompactText({ ...res, fsSummaryError: String(err?.message || err) });
+    }
+  }
+  return asCompactText(res);
+});
+
+server.registerTool('fs_system', {
+  title: 'Système, Ports TCP, Processus & Notifications [ATG]',
+  description: 'Inspecte la machine locale : overview (OS, CPU, RAM libre/totale, uptime), processes (processus triés par RAM avec filtre), ports (ports TCP en écoute et PID propriétaire), notify (notification bureau Windows).',
+  inputSchema: {
+    action: z.enum(SYSTEM_ACTIONS).default('overview').describe('overview, processes, ports ou notify.'),
+    filter: z.string().optional().describe('Filtre nom/titre pour processes (ex: node, chrome).'),
+    limit: z.number().optional().describe('Nombre max de processus retournés (défaut 15).'),
+    port: z.number().optional().describe('Numéro de port TCP à vérifier pour ports (ex: 3000).'),
+    title: z.string().optional().describe('Titre de la notification pour notify.'),
+    message: z.string().optional().describe('Message de la notification pour notify.'),
+  },
+}, async (params) => asCompactText(await executeSystemAction(params)));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

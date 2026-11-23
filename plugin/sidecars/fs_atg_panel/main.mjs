@@ -69,6 +69,9 @@ import {
   toolsForPermissionMode,
   undoLastChange,
 } from '../../tools_engine.mjs';
+import { executeComputerAction } from '../../computer_use.mjs';
+import { executeBrowserAction, getBrowserSessionStatus } from '../../browser_use.mjs';
+import { executeSystemAction } from '../../system_tools.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -556,6 +559,8 @@ app.api('/api/state', async () => {
     routingProfile: ROUTING_PROFILES.has(state.routingProfile) ? state.routingProfile : 'quality',
     permissionMode: permMode,
     useClientTools,
+    computerUseEnabled: state.computerUseEnabled !== false,
+    browserSession: getBrowserSessionStatus(),
     lastWorkspaceRoot: wsRoot || null,
     undoEntries: wsRoot ? listUndoEntries(wsRoot, 15) : [],
     projectMemory: getProjectMemory(wsRoot),
@@ -700,6 +705,9 @@ app.api('/api/settings', (data) => {
   if (typeof data.useClientTools === 'boolean') {
     state.useClientTools = data.useClientTools;
   }
+  if (typeof data.computerUseEnabled === 'boolean') {
+    state.computerUseEnabled = data.computerUseEnabled;
+  }
   if (typeof data.autoDelegate === 'boolean' || PERMISSION_MODES.includes(data.permissionMode)) {
     syncAgentsRule(state.autoDelegate !== false, state.permissionMode);
     logEvent('info', 'panel', 'settings.policy', `Règles mises à jour : ${state.autoDelegate !== false ? 'Auto' : 'Manuel'} (${state.permissionMode || 'acceptEdits'}).`);
@@ -750,6 +758,18 @@ app.api('/api/settings', (data) => {
     blockedModels: state.blockedModels || [],
   };
 });
+
+app.api('/api/computer', async (data) => {
+  state = loadState();
+  return await executeComputerAction(data, {
+    permissionMode: state.permissionMode || 'acceptEdits',
+    computerUseEnabled: state.computerUseEnabled !== false,
+  });
+});
+
+app.api('/api/browser', async (data) => await executeBrowserAction(data));
+
+app.api('/api/system', async (data) => await executeSystemAction(data));
 
 app.api('/api/undo/diff', (data) => {
   state = loadState();
