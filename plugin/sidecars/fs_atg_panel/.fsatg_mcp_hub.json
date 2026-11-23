@@ -1,0 +1,12 @@
+{
+  "enabled": [
+    "blender",
+    "roblox",
+    "context7",
+    "git",
+    "sqlite",
+    "playwright"
+  ],
+  "overrides": {},
+  "customConnectors": []
+}

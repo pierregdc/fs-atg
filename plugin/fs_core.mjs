@@ -25,7 +25,7 @@ if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertif
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
-export const CONNECTOR_VERSION = '2.3.0';
+export const CONNECTOR_VERSION = '2.4.0';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const OFFICIAL_WEB_ORIGIN = 'https://ia.francestudent.org';
 export const SESSION_COOKIE_NAMES = Object.freeze(['__Secure-next-auth.session-token', 'next-auth.session-token']);
@@ -224,6 +224,7 @@ export const MCP_TOOL_CATALOG = Object.freeze([
   { name: 'fs_browser', label: 'Navigateur CDP (/browse)', writesWorkspace: false },
   { name: 'fs_web', label: 'Lecture & Recherche Web (/web)', writesWorkspace: false },
   { name: 'fs_system', label: 'Système, Ports & Processus', writesWorkspace: false },
+  { name: 'fs_mcp_hub', label: 'Hub 34+ MCP (Roblox, Blender, Unity, DB…)', writesWorkspace: false },
   { name: 'fs_logs', label: 'Journal de bord', writesWorkspace: false },
   { name: 'fs_session', label: 'Session', writesWorkspace: false },
   { name: 'fs_quota', label: 'Quota France Student', writesWorkspace: false },

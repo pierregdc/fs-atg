@@ -65,6 +65,7 @@ import { COMPUTER_ACTIONS, executeComputerAction } from './computer_use.mjs';
 import { BROWSER_ACTIONS, executeBrowserAction } from './browser_use.mjs';
 import { WEB_ACTIONS, executeWebAction } from './web_tools.mjs';
 import { SYSTEM_ACTIONS, executeSystemAction } from './system_tools.mjs';
+import { executeMcpHubAction } from './mcp_hub.mjs';
 
 const CLIENT_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis (list_directory, search_files, read_file, et selon permission edit_file, write_file, run_command). Ne réécris pas le code dans ta réponse finale : termine par un bilan ultra-court (<= 6 lignes) des fichiers modifiés/commandes lancées.`;
 
@@ -1093,6 +1094,32 @@ server.registerTool('fs_system', {
     message: z.string().optional().describe('Message de la notification pour notify.'),
   },
 }, async (params) => asCompactText(await executeSystemAction(params)));
+
+server.registerTool('fs_mcp_hub', {
+  title: 'Hub 34+ MCP — Roblox, Blender, Unity, Unreal, Godot, DB, DevOps (/mcp) [ATG]',
+  description: 'Passerelle universelle vers 34+ serveurs MCP et ponts applicatifs (blender, roblox, unity, unreal, godot, figma, aseprite, postgres, sqlite, mysql, mongodb, redis, supabase, firebase, prisma, github, gitlab, git, docker, kubernetes, cloudflare, vercel, sentry, playwright, puppeteer, ffmpeg, youtube, brave-search, context7, notion, obsidian, discord, slack, linear). Actions : list, search, probe (détecte les apps et ports ouverts), enable, disable, configure, export_config, blender (exécute du Python bpy sur le port 9876 ou via blender CLI), roblox (pont Studio 44755 ou génération projet Rojo/Luau), tools (liste les outils JSON-RPC d’un MCP), call (appelle un outil d’un MCP).',
+  inputSchema: {
+    action: z.enum(['list', 'search', 'probe', 'enable', 'disable', 'configure', 'export_config', 'blender', 'roblox', 'tools', 'call']).default('list').describe('Action du Hub MCP.'),
+    connectorId: z.string().optional().describe('ID du connecteur (ex: blender, roblox, unity, postgres, github, playwright, context7…).'),
+    category: z.enum(['3d-games', 'databases', 'devops', 'web-media', 'productivity']).optional().describe('Filtre catégorie pour list/search.'),
+    query: z.string().optional().describe('Recherche texte dans les 34+ connecteurs.'),
+    onlyEnabled: z.boolean().optional().describe('Afficher uniquement les connecteurs activés.'),
+    code: z.string().optional().describe('Script Python bpy (pour action="blender") ou script Luau (pour action="roblox").'),
+    robloxAction: z.enum(['status', 'scaffold_rojo', 'execute_luau', 'query_studio']).optional().describe('Sous-action pour action="roblox".'),
+    workspaceRoot: z.string().optional().describe('Chemin du projet (utilisé par roblox scaffold_rojo).'),
+    toolName: z.string().optional().describe('Nom de l’outil distant à appeler (pour action="call").'),
+    toolArgs: z.record(z.any()).optional().describe('Arguments JSON de l’outil distant (pour action="call").'),
+    command: z.string().optional().describe('Commande personnalisée pour configure (ex: npx, uvx).'),
+    args: z.array(z.string()).optional().describe('Arguments de commande pour configure.'),
+    port: z.number().optional().describe('Port local du pont applicatif (ex: 9876 pour Blender, 44755 pour Roblox).'),
+    env: z.record(z.string()).optional().describe('Clés API / secrets du connecteur (chiffrés dans le trousseau système).'),
+    name: z.string().optional().describe('Nom d’affichage pour un connecteur personnalisé.'),
+    description: z.string().optional().describe('Description pour un connecteur personnalisé.'),
+  },
+}, async (params) => {
+  const ws = params.workspaceRoot || loadState().lastWorkspaceRoot || '';
+  return asCompactText(await executeMcpHubAction({ ...params, workspaceRoot: ws }));
+});
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

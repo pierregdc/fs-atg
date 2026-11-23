@@ -6,18 +6,18 @@
   </picture>
 </p>
 
-<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.3.0)</h1>
+<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.4.0)</h1>
 
 <p align="center">
-  <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> (15 outils) pour Antigravity</strong><br>
-  Exécution autonome sur le workspace, Computer Use (écran, fenêtres, souris, clavier), Navigateur CDP (<code>/browse</code>), Lecture &amp; Recherche Web (<code>/web</code>), sauvegarde atomique <code>/undo</code>, contrôle par modèle (Oui / À demander / Non) et cascade de résilience 502/429.
+  <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> (16 outils + Hub de 34 connecteurs MCP) pour Antigravity</strong><br>
+  Exécution autonome sur le workspace, Hub 34+ MCP (Roblox Studio, Blender, Unity, Unreal, Godot, Figma, Postgres, SQLite, Docker, GitHub…), Computer Use (<code>/computer</code>), Navigateur CDP (<code>/browse</code>), Lecture &amp; Recherche Web (<code>/web</code>), sauvegarde atomique <code>/undo</code> et contrôle par modèle (Oui / À demander / Non).
 </p>
 
 <p align="center">
-  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.3.0-2563eb?style=flat-square" alt="Version 2.3.0"></a>
+  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.4.0-2563eb?style=flat-square" alt="Version 2.4.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-334155?style=flat-square" alt="Licence MIT"></a>
-  <a href="#commandes-slash-officielles"><img src="https://img.shields.io/badge/commandes-11%20slash-2563eb?style=flat-square" alt="11 commandes slash"></a>
-  <a href="#securite-et-permissions"><img src="https://img.shields.io/badge/MCP-15%20outils-475569?style=flat-square" alt="15 outils MCP"></a>
+  <a href="#commandes-slash-officielles"><img src="https://img.shields.io/badge/commandes-12%20slash-2563eb?style=flat-square" alt="12 commandes slash"></a>
+  <a href="#hub-mcp-universel-34-connecteurs-dont-roblox-studio-et-blender"><img src="https://img.shields.io/badge/MCP-16%20outils%20%2B%2034%20connecteurs-475569?style=flat-square" alt="16 outils MCP + 34 connecteurs"></a>
 </p>
 
 ---
@@ -33,6 +33,26 @@ L'interface du panneau latéral adopte un thème monochrome/slate et bleu unifi�
 | Réglages (connexion &amp; comportement) | Journal &amp; Avancé (logs &amp; diagnostics) |
 | :---: | :---: |
 | ![Réglages](docs/images/screen-reglages.png) | ![Journal](docs/images/screen-journal.png) |
+
+---
+
+## Nouveautés v2.4 — Hub MCP Universel (34 connecteurs dont Roblox Studio &amp; Blender)
+
+- **`fs_mcp_hub` (`/mcp` — Hub &amp; Passerelle 34+ MCP)** : rend l'extension compatible avec **34 serveurs MCP et ponts applicatifs** organisés en 5 catégories, pilotables depuis Antigravity ou en 1 clic dans **Réglages -> Essentiel -> Hub MCP** :
+  - **Pont natif Blender (`action="blender"`)** : exécute du code Python `bpy` directement dans Blender ouvert via le socket TCP `127.0.0.1:9876` (`blender-mcp`) ou en mode headless CLI (`blender.exe --background --python-expr`).
+  - **Pont natif Roblox Studio &amp; Rojo (`action="roblox"`)** : communique avec le plugin HTTP Roblox Studio (`127.0.0.1:44755`) pour inspecter/modifier le DataModel en Luau, ou génère instantanément une architecture complète **Rojo + Luau** (`default.project.json` + `src/ServerScriptService/Main.server.luau`) via `robloxAction="scaffold_rojo"`.
+  - **Passerelle JSON-RPC 2.0 `stdio` universelle (`action="tools"` / `action="call"`)** : interroge et exécute à la volée les outils de n'importe lequel des 34 serveurs MCP (`npx` / `uvx` / `docker`) avec stockage chiffré des clés API tierces dans le Trousseau système (`Windows Credential Manager` / macOS Keychain / Linux `secret-tool`).
+  - **Détection locale (`action="probe"`) &amp; Export JSON (`action="export_config"`)** : détecte automatiquement les applications installées (Blender, Roblox Studio, Unity, Godot, Docker, Git, FFmpeg) et sonde leurs ports locaux (`9876`, `44755`, `8090`, `6007`, `6333`).
+
+### Catalogue des 34 connecteurs MCP intégrés
+
+| Catégorie | Connecteurs compatibles (`connectorId`) |
+| :--- | :--- |
+| **3D, Jeux &amp; Création (7)** | `blender` (Blender 3D TCP 9876 + CLI `bpy`), `roblox` (Roblox Studio HTTP 44755 + Rojo Luau), `unity` (Unity Editor Bridge 8090), `unreal` (Unreal Engine 5 Python/Remote 30010), `godot` (Godot Engine 4 GDScript 6007), `figma` (Figma Design &amp; UI), `aseprite` (Aseprite Pixel Art &amp; Sprites) |
+| **Bases de données &amp; Backend (8)** | `postgres` (PostgreSQL), `sqlite` (SQLite local), `mysql` (MySQL / MariaDB), `mongodb` (MongoDB Atlas/Local), `redis` (Redis Cache &amp; Streams), `supabase` (Supabase DB/Auth/Edge), `firebase` (Firebase Firestore/Hosting), `prisma` (Prisma ORM &amp; Migrations) |
+| **Code, Git &amp; Cloud DevOps (8)** | `github` (GitHub Repos/PRs/Actions), `gitlab` (GitLab Issues/MR/Pipelines), `git` (Git local), `docker` (Docker Containers &amp; Compose), `kubernetes` (Kubernetes `kubectl`), `cloudflare` (Cloudflare Workers/KV/D1/R2), `vercel` (Vercel Deployments &amp; Logs), `sentry` (Sentry Errors &amp; Stacktraces) |
+| **Web, Navigateurs &amp; Média (6)** | `playwright` (Playwright E2E Browser), `puppeteer` (Puppeteer Headless Chrome), `ffmpeg` (FFmpeg Audio/Vidéo), `youtube` (YouTube Transcript &amp; Metadata), `brave-search` (Brave Web Search API), `context7` (Context7 Library Docs) |
+| **Productivité &amp; Documentation (5)** | `notion` (Notion Workspace &amp; Databases), `obsidian` (Obsidian Vault Markdown), `discord` (Discord Bot &amp; Webhooks), `slack` (Slack Channels &amp; Messages), `linear` (Linear Issues &amp; Cycles) |
 
 ---
 
@@ -94,6 +114,10 @@ Dans l'onglet **Modèles**, chaque modèle dispose d'un sélecteur persistant (`
 | **`/undo`** | `fs_undo` | Restaure atomiquement la dernière écriture ou création de fichier de France Student. |
 | **`/remember`** | `fs_memory` | Enregistre une règle ou note persistante injectée automatiquement au 1er tour (`FRST.md` + mémoire projet). |
 | **`/quota`** | `fs_quota` + `fs_diagnostics` | Affiche le quota restant, l'état du cooldown `IA non dispo`, les modèles disponibles et le diagnostic API. |
+| **`/computer`** | `fs_computer` | Computer Use Windows : capture d'écran PNG, liste/focus des fenêtres, clics souris, saisie clavier et presse-papiers. |
+| **`/browse`** | `fs_browser` | Automatisation Chrome/Edge par CDP : ouverture d'URL, snapshot DOM interactif, clic, formulaire, screenshot et JS. |
+| **`/web`** | `fs_web` | Lecture d'URL convertie en Markdown propre, recherche web et synthèse documentaire par France Student. |
+| **`/mcp`** | `fs_mcp_hub` | Hub de 34 connecteurs MCP : ponts natifs Blender (`bpy`) et Roblox Studio (HTTP + Rojo Luau), bases SQL/NoSQL, Docker, GitHub, etc. |
 
 ---
 

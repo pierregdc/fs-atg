@@ -1,11 +1,12 @@
 {
   "name": "fs-atg",
   "displayName": "France Student [ATG]",
-  "description": "Orchestrateur France Student v2.3 pour Antigravity : 15 outils MCP dont Computer Use (écran, fenêtres, souris, clavier), Navigateur CDP (/browse), Lecture & Recherche Web (/web), Système & Ports, exécution autonome avec /undo, contrôle par modèle (Oui / À demander / Non) et mémoire projet.",
-  "version": "2.3.0",
+  "description": "Orchestrateur France Student v2.4 pour Antigravity : 16 outils MCP dont Hub 34+ MCP (Roblox Studio, Blender, Unity, Unreal, Godot, Figma, Postgres, SQLite, Docker, GitHub…), Computer Use (/computer), Navigateur CDP (/browse), Lecture & Recherche Web (/web), exécution autonome avec /undo, contrôle par modèle (Oui / À demander / Non) et mémoire projet.",
+  "version": "2.4.0",
   "logo": "assets/logo.png",
   "suggestedPrompts": [
     "Utilise /fs pour créer ou modifier directement ce module avec France Student",
+    "Utilise /mcp pour activer ou appeler Blender, Roblox Studio, Unity, Postgres, Docker…",
     "Utilise /computer pour capturer l'écran, lister les fenêtres ou cliquer/taper",
     "Utilise /browse pour ouvrir et inspecter une page web via Chrome CDP",
     "Utilise /web pour lire et résumer une documentation externe avec France Student",

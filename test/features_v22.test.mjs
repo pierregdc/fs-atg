@@ -20,6 +20,12 @@ import { COMPUTER_ACTIONS, validateComputerAction } from '../plugin/computer_use
 import { BROWSER_ACTIONS, validateBrowserUrl } from '../plugin/browser_use.mjs';
 import { htmlToCleanMarkdown } from '../plugin/web_tools.mjs';
 import { executeSystemAction } from '../plugin/system_tools.mjs';
+import {
+  MCP_HUB_CATALOG,
+  MCP_HUB_CATEGORIES,
+  executeMcpHubAction,
+  executeRobloxBridge,
+} from '../plugin/mcp_hub.mjs';
 
 test('télémétrie : agrège tok/s, TTFT, taux de succès et replis, fenêtre 7 jours', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'fs-atg-tele-'));
@@ -97,10 +103,10 @@ test('v2.2.1 : timeout outils locaux fixé à 240 s', () => {
   assert.equal(DEFAULT_TOOLS_STREAM_TIMEOUT_MS, 240_000);
 });
 
-test('v2.3.0 : catalogue MCP expose 15 outils dont fs_computer, fs_browser, fs_web et fs_system', () => {
+test('v2.4.0 : catalogue MCP expose 16 outils dont fs_computer, fs_browser, fs_web, fs_system et fs_mcp_hub', () => {
   const names = MCP_TOOL_CATALOG.map((t) => t.name);
-  assert.equal(names.length, 15);
-  for (const expected of ['fs_computer', 'fs_browser', 'fs_web', 'fs_system']) {
+  assert.equal(names.length, 16);
+  for (const expected of ['fs_computer', 'fs_browser', 'fs_web', 'fs_system', 'fs_mcp_hub']) {
     assert.ok(names.includes(expected), `Outil manquant : ${expected}`);
   }
 });
@@ -144,4 +150,39 @@ test('v2.3.0 : executeSystemAction overview retourne les métriques CPU/RAM/OS',
   assert.equal(res.ok, true);
   assert.ok(res.cpuCores >= 1);
   assert.ok(res.memory.totalMb > 0);
+});
+
+test('v2.4.0 : Hub MCP contient 34 connecteurs (dont Blender, Roblox Studio, Unity, Unreal, Godot, Figma, DB, DevOps)', async (t) => {
+  assert.ok(MCP_HUB_CATALOG.length >= 34, `Attendu >= 34 connecteurs, reçu ${MCP_HUB_CATALOG.length}`);
+  assert.equal(Object.keys(MCP_HUB_CATEGORIES).length, 5);
+  const ids = MCP_HUB_CATALOG.map((c) => c.id);
+  for (const mustHave of ['blender', 'roblox', 'unity', 'unreal', 'godot', 'figma', 'aseprite', 'postgres', 'sqlite', 'docker', 'github', 'playwright', 'ffmpeg', 'obsidian', 'discord']) {
+    assert.ok(ids.includes(mustHave), `Connecteur manquant : ${mustHave}`);
+  }
+
+  const dir = await mkdtemp(join(tmpdir(), 'fs-atg-hub-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const configFilePath = join(dir, 'mcp_hub.json');
+
+  const games = await executeMcpHubAction({ action: 'list', category: '3d-games', configFilePath });
+  assert.equal(games.ok, true);
+  assert.equal(games.count, 7);
+
+  const en1 = await executeMcpHubAction({ action: 'enable', connectorId: 'unity', configFilePath });
+  assert.equal(en1.enabled, true);
+  assert.equal(en1.enabledCount, 7);
+
+  const exported = await executeMcpHubAction({ action: 'export_config', configFilePath });
+  assert.equal(exported.count, 7);
+  assert.ok(exported.mcpServers.blender);
+  assert.ok(exported.mcpServers.roblox);
+  assert.ok(exported.mcpServers.unity);
+
+  const dis1 = await executeMcpHubAction({ action: 'disable', connectorId: 'unity', configFilePath });
+  assert.equal(dis1.enabled, false);
+  assert.equal(dis1.enabledCount, 6);
+
+  const rojo = await executeRobloxBridge({ action: 'scaffold_rojo', workspaceRoot: dir }, { configFilePath });
+  assert.equal(rojo.ok, true);
+  assert.equal(rojo.filesCreated.length, 2);
 });

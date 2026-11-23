@@ -72,6 +72,7 @@ import {
 import { executeComputerAction } from '../../computer_use.mjs';
 import { executeBrowserAction, getBrowserSessionStatus } from '../../browser_use.mjs';
 import { executeSystemAction } from '../../system_tools.mjs';
+import { MCP_HUB_CATEGORIES, MCP_HUB_CATALOG, allHubConnectors, executeMcpHubAction } from '../../mcp_hub.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -561,6 +562,11 @@ app.api('/api/state', async () => {
     useClientTools,
     computerUseEnabled: state.computerUseEnabled !== false,
     browserSession: getBrowserSessionStatus(),
+    mcpHub: {
+      total: MCP_HUB_CATALOG.length,
+      categories: MCP_HUB_CATEGORIES,
+      connectors: allHubConnectors(),
+    },
     lastWorkspaceRoot: wsRoot || null,
     undoEntries: wsRoot ? listUndoEntries(wsRoot, 15) : [],
     projectMemory: getProjectMemory(wsRoot),
@@ -770,6 +776,14 @@ app.api('/api/computer', async (data) => {
 app.api('/api/browser', async (data) => await executeBrowserAction(data));
 
 app.api('/api/system', async (data) => await executeSystemAction(data));
+
+app.api('/api/mcp-hub', async (data) => {
+  state = loadState();
+  return await executeMcpHubAction({
+    ...data,
+    workspaceRoot: data?.workspaceRoot || state.lastWorkspaceRoot || '',
+  });
+});
 
 app.api('/api/undo/diff', (data) => {
   state = loadState();
