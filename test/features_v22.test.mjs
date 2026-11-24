@@ -5,13 +5,18 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  analyzeTaskIntent,
   DEFAULT_STATE,
   DEFAULT_TOOLS_STREAM_TIMEOUT_MS,
+  enrichModelsCatalog,
+  extractModelVersion,
   getModelTelemetry,
   MCP_TOOL_CATALOG,
   parseTaskDirectives,
   pickModel,
+  rankModelsBestToWorst,
   recordModelTelemetry,
+  scoreModelPower,
   TELEMETRY_MAX_SAMPLES,
   TELEMETRY_WINDOW_MS,
 } from '../plugin/fs_core.mjs';
@@ -164,11 +169,16 @@ test('v2.3.0 : executeSystemAction overview retourne les métriques CPU/RAM/OS',
   assert.ok(res.memory.totalMb > 0);
 });
 
-test('v2.4.0 : Hub MCP contient 34 connecteurs (dont Blender, Roblox Studio, Unity, Unreal, Godot, Figma, DB, DevOps)', async (t) => {
-  assert.ok(MCP_HUB_CATALOG.length >= 34, `Attendu >= 34 connecteurs, reçu ${MCP_HUB_CATALOG.length}`);
-  assert.equal(Object.keys(MCP_HUB_CATEGORIES).length, 5);
+test('v2.4.0 / v2.6.0 : Hub MCP contient 68+ connecteurs (6 catégories, stdio/HTTP/SSE, IDE auto-detect, Blender & Roblox)', async (t) => {
+  assert.ok(MCP_HUB_CATALOG.length >= 60, `Attendu >= 60 connecteurs, reçu ${MCP_HUB_CATALOG.length}`);
+  assert.equal(Object.keys(MCP_HUB_CATEGORIES).length, 6);
   const ids = MCP_HUB_CATALOG.map((c) => c.id);
-  for (const mustHave of ['blender', 'roblox', 'unity', 'unreal', 'godot', 'figma', 'aseprite', 'postgres', 'sqlite', 'docker', 'github', 'playwright', 'ffmpeg', 'obsidian', 'discord']) {
+  for (const mustHave of [
+    'blender', 'roblox', 'unity', 'unreal', 'godot', 'figma', 'aseprite', 'minecraft', 'obs-studio', 'canva',
+    'firecrawl', 'exa', 'tavily', 'perplexity', 'playwright', 'context7',
+    'sequential-thinking', 'memory', 'qdrant', 'neo4j', 'duckdb',
+    'postgres', 'sqlite', 'docker', 'github', 'stripe', 'home-assistant', 'n8n', 'obsidian', 'discord',
+  ]) {
     assert.ok(ids.includes(mustHave), `Connecteur manquant : ${mustHave}`);
   }
 
@@ -178,21 +188,38 @@ test('v2.4.0 : Hub MCP contient 34 connecteurs (dont Blender, Roblox Studio, Uni
 
   const games = await executeMcpHubAction({ action: 'list', category: '3d-games', configFilePath });
   assert.equal(games.ok, true);
-  assert.equal(games.count, 7);
+  assert.ok(games.count >= 12);
 
   const en1 = await executeMcpHubAction({ action: 'enable', connectorId: 'unity', configFilePath });
   assert.equal(en1.enabled, true);
-  assert.equal(en1.enabledCount, 7);
+  assert.equal(en1.enabledCount, 9);
+
+  // Configuration d'un serveur MCP Streamable HTTP personnalisé
+  const httpCfg = await executeMcpHubAction({
+    action: 'configure',
+    connectorId: 'custom-remote',
+    name: 'Remote HTTP MCP',
+    transport: 'http',
+    url: 'https://mcp.example.com/v1',
+    configFilePath,
+  });
+  assert.equal(httpCfg.ok, true);
+  assert.equal(httpCfg.transport, 'http');
 
   const exported = await executeMcpHubAction({ action: 'export_config', configFilePath });
-  assert.equal(exported.count, 7);
+  assert.equal(exported.count, 10);
   assert.ok(exported.mcpServers.blender);
   assert.ok(exported.mcpServers.roblox);
   assert.ok(exported.mcpServers.unity);
+  assert.equal(exported.mcpServers['custom-remote'].url, 'https://mcp.example.com/v1');
 
   const dis1 = await executeMcpHubAction({ action: 'disable', connectorId: 'unity', configFilePath });
   assert.equal(dis1.enabled, false);
-  assert.equal(dis1.enabledCount, 6);
+  assert.equal(dis1.enabledCount, 9);
+
+  const localScan = await executeMcpHubAction({ action: 'detect_local', workspaceRoot: dir, configFilePath });
+  assert.equal(localScan.ok, true);
+  assert.ok(localScan.sourcesScanned >= 7);
 
   const rojo = await executeRobloxBridge({ action: 'scaffold_rojo', workspaceRoot: dir }, { configFilePath });
   assert.equal(rojo.ok, true);
@@ -313,3 +340,84 @@ test('v2.5.0 : Suite IA Classique (fs_data, fs_canvas, fs_vision, fs_arena, fs_d
   });
   assert.equal(removed.remaining, 0);
 });
+
+test('v2.6.0 : tri automatique universel des modèles (actuels & futurs) du plus fort au plus faible', () => {
+  assert.equal(extractModelVersion('gpt-6.2-astra'), 6.2);
+  assert.equal(extractModelVersion('claude-opus-5-5'), 5.5);
+  assert.equal(extractModelVersion('claude-opus-7'), 7);
+  assert.equal(extractModelVersion('ministral-14b-latest'), 0);
+
+  const st = { ...DEFAULT_STATE, modelPolicies: {}, blockedModels: [], allowedModels: [], knownModels: {} };
+  const unseenFuture = [
+    'ministral-14b-latest',
+    'gemini-4-flash',
+    'claude-sonnet-6',
+    'claude-haiku-6',
+    'gpt-7.1-astra',
+    'claude-opus-7',
+    'gpt-6.1-sol',
+    'gpt-6.2-sol',
+  ];
+  const catalog = enrichModelsCatalog(unseenFuture, new Map(), st, [], { persist: false });
+  const orderedIds = catalog.map((m) => m.id);
+
+  // Toujours strictement du plus puissant au plus léger (même quand un modèle léger est "Nouveau")
+  assert.equal(orderedIds[0], 'claude-opus-7');
+  assert.equal(orderedIds[1], 'gpt-7.1-astra');
+  assert.ok(orderedIds.indexOf('gpt-6.2-sol') < orderedIds.indexOf('gpt-6.1-sol'));
+  assert.ok(orderedIds.indexOf('gpt-6.1-sol') < orderedIds.indexOf('claude-sonnet-6'));
+  assert.ok(orderedIds.indexOf('claude-sonnet-6') < orderedIds.indexOf('claude-haiku-6'));
+  assert.ok(orderedIds.indexOf('claude-haiku-6') < orderedIds.indexOf('gemini-4-flash'));
+  assert.equal(orderedIds[orderedIds.length - 1], 'ministral-14b-latest');
+  assert.equal(catalog.find((m) => m.id === 'ministral-14b-latest').tier, 'light');
+  assert.equal(catalog.find((m) => m.id === 'ministral-14b-latest').isNew, true);
+  assert.equal(catalog[0].powerRank, 1);
+  assert.ok(scoreModelPower('claude-opus-7') > scoreModelPower('gpt-7.1-astra'));
+  assert.deepEqual(rankModelsBestToWorst(['gemini-4-flash', 'claude-opus-7', 'claude-sonnet-6'], st), [
+    'claude-opus-7',
+    'claude-sonnet-6',
+    'gemini-4-flash',
+  ]);
+});
+
+test('v2.6.0 : routage intelligent & déclencheurs natifs Web Search / Canvas / Images IA', () => {
+  const models = ['claude-opus-5-5', 'gpt-6.2-astra', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'gpt-6-luna'];
+  const st = { ...DEFAULT_STATE, routingProfile: 'quality', smartRouting: true, modelPolicies: {}, blockedModels: [], allowedModels: [] };
+
+  // 1. Recherche web pure -> modèle léger suffit + enableWebSearch: true !
+  const webRoute = pickModel('cherche sur internet les actualités IA 2026', models, st);
+  assert.equal(webRoute.model, 'claude-haiku-5-5');
+  assert.equal(webRoute.intent, 'web_research');
+  assert.equal(webRoute.enableWebSearch, true);
+  assert.equal(webRoute.enableCanvas, false);
+
+  // 2. Canvas / artefact interactif -> modèle équilibré + enableCanvas: true !
+  const canvasRoute = pickModel('crée un canvas interactif pour un tableau de bord ventes', models, st);
+  assert.equal(canvasRoute.model, 'claude-sonnet-5-5');
+  assert.equal(canvasRoute.intent, 'canvas_artifact');
+  assert.equal(canvasRoute.enableCanvas, true);
+
+  // 3. Refactoring architecture lourde -> modèle fort + Canvas off !
+  const heavyRoute = pickModel('refactorise l architecture sécurité multi-fichiers du backend', models, st);
+  assert.equal(heavyRoute.model, 'claude-opus-5-5');
+  assert.equal(heavyRoute.enableCanvas, false);
+
+  // 4. Génération d'image -> modèle léger + enableImageGen: true !
+  const imgRoute = pickModel('génère une image photoréaliste d un astronome', models, st);
+  assert.equal(imgRoute.model, 'claude-haiku-5-5');
+  assert.equal(imgRoute.enableImageGen, true);
+
+  // 5. Directives slash explicites (/search, /canvas, /noweb, /nocanvas, /max)
+  const d1 = parseTaskDirectives('/search /canvas crée une infographie comparative');
+  assert.equal(d1.webSearchMode, 'on');
+  assert.equal(d1.canvasMode, 'on');
+  const maxWeb = pickModel('/max /search actualités Rust 2026', models, st);
+  assert.equal(maxWeb.model, 'claude-opus-5-5');
+  assert.equal(maxWeb.enableWebSearch, true);
+
+  // 6. analyzeTaskIntent respecte les surcharges off/on
+  const forcedOff = analyzeTaskIntent('cherche sur internet les news 2026', { webSearchMode: 'off', canvasMode: 'on' });
+  assert.equal(forcedOff.enableWebSearch, false);
+  assert.equal(forcedOff.enableCanvas, true);
+});
+

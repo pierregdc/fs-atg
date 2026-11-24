@@ -1,28 +1,40 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CREDENTIAL_TARGET, readCredential, writeCredential } from './credential_store.mjs';
+import {
+  addCloudMcpServer,
+  CONNECTOR_VERSION,
+  controlDeskDock,
+  deleteCloudMcpServer,
+  fetchCloudMcpServers,
+  loadState,
+} from './fs_core.mjs';
 import { logEvent } from './logger.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const MCP_HUB_CONFIG_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_mcp_hub.json');
+export const MCP_HUB_CACHE_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_mcp_cache.json');
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export const MCP_HUB_CATEGORIES = Object.freeze({
   '3d-games': '3D, Jeux & Création',
+  'web-search': 'Web, Scraping & Média',
+  'ai-memory': 'Mémoire IA, Raisonnement & Graphes',
   databases: 'Bases de données & Backend',
   devops: 'Code, Git & Cloud DevOps',
-  'web-media': 'Web, Navigateurs & Média',
-  productivity: 'Productivité & Documentation',
+  productivity: 'Productivité, Business & Domotique',
 });
 
 /**
- * 34 pre-configured MCP connectors & local application bridges (Blender, Roblox Studio,
- * Unity, Unreal, Godot, Figma, DBs, DevOps, Web, Productivity).
+ * 66 verified GitHub & official MCP connectors + local application bridges across 6 categories.
+ * Supports stdio, Streamable HTTP, SSE, and native Blender/Roblox bridges.
  */
 export const MCP_HUB_CATALOG = Object.freeze([
-  // --- 3D, Jeux & Création (7) ---
+  // --- 3D, Jeux & Création (13) ---
   {
     id: 'blender',
     name: 'Blender 3D',
@@ -32,6 +44,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['blender-mcp'],
     defaultPort: 9876,
     bridgeType: 'blender',
+    repo: 'https://github.com/ahujasid/blender-mcp',
     envKeys: [],
   },
   {
@@ -43,6 +56,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'robloxstudio-mcp'],
     defaultPort: 44755,
     bridgeType: 'roblox',
+    repo: 'https://github.com/gmh5225/vibe-blocks-mcp',
     envKeys: ['ROBLOX_API_KEY'],
   },
   {
@@ -54,6 +68,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@unity-mcp/server'],
     defaultPort: 6400,
     bridgeType: 'tcp',
+    repo: 'https://github.com/IvanMurzak/Unity-MCP',
     envKeys: [],
   },
   {
@@ -65,6 +80,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['unreal-mcp'],
     defaultPort: 30010,
     bridgeType: 'http',
+    repo: 'https://github.com/chongdashu/unreal-mcp',
     envKeys: [],
   },
   {
@@ -76,6 +92,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@godot-mcp/server'],
     defaultPort: 6005,
     bridgeType: 'tcp',
+    repo: 'https://github.com/Coding-Solo/godot-mcp',
     envKeys: [],
   },
   {
@@ -87,6 +104,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'figma-developer-mcp', '--stdio'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/GLips/Figma-Context-MCP',
     envKeys: ['FIGMA_API_KEY'],
   },
   {
@@ -98,10 +116,327 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['aseprite-mcp'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/diivi/aseprite-mcp',
+    envKeys: [],
+  },
+  {
+    id: 'minecraft',
+    name: 'Minecraft Bot & Builder',
+    category: '3d-games',
+    description: 'Contrôle un bot Minecraft (Mineflayer) : construction 3D, inventaire, chat et exploration serveur.',
+    command: 'npx',
+    args: ['-y', 'minecraft-mcp-server'],
+    defaultPort: 25565,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/yuniko-software/minecraft-mcp-server',
+    envKeys: [],
+  },
+  {
+    id: 'obs-studio',
+    name: 'OBS Studio WebSocket',
+    category: '3d-games',
+    description: 'Pilote OBS Studio via WebSocket (scènes, sources, enregistrement, streaming et transitions sur port 4455).',
+    command: 'npx',
+    args: ['-y', 'obs-mcp'],
+    defaultPort: 4455,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/royshil/obs-mcp',
+    envKeys: ['OBS_WEBSOCKET_PASSWORD'],
+  },
+  {
+    id: 'canva',
+    name: 'Canva Design Studio',
+    category: '3d-games',
+    description: 'Crée, redimensionne, commente et exporte des designs Canva directement via le serveur MCP officiel.',
+    command: 'npx',
+    args: ['-y', 'mcp-remote', 'https://mcp.canva.com/mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/canva/canva-mcp',
+    envKeys: [],
+  },
+  {
+    id: 'excalidraw',
+    name: 'Excalidraw Diagrammes',
+    category: '3d-games',
+    description: 'Crée et édite des schémas d’architecture, wireframes et tableaux blancs Excalidraw en JSON/SVG.',
+    command: 'npx',
+    args: ['-y', 'excalidraw-mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/yctimlin/mcp_excalidraw',
+    envKeys: [],
+  },
+  {
+    id: 'sketchfab',
+    name: 'Sketchfab 3D Assets',
+    category: '3d-games',
+    description: 'Recherche et télécharge des modèles 3D glTF/FBX/OBJ depuis Sketchfab pour Blender, Unity ou Roblox.',
+    command: 'uvx',
+    args: ['sketchfab-mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
+    envKeys: ['SKETCHFAB_API_TOKEN'],
+  },
+  {
+    id: 'mermaid-mcp',
+    name: 'Mermaid Charts',
+    category: '3d-games',
+    description: 'Génère et valide des diagrammes Mermaid (flowcharts, séquences, ERD, Gantt) en SVG/PNG.',
+    command: 'npx',
+    args: ['-y', '@peng-shawn/mermaid-mcp-server'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/peng-shawn/mermaid-mcp-server',
     envKeys: [],
   },
 
-  // --- Bases de données & Backend (8) ---
+  // --- Web, Scraping & Média (12) ---
+  {
+    id: 'playwright',
+    name: 'Playwright Testing',
+    category: 'web-search',
+    description: 'Tests E2E multi-navigateurs, assertions DOM, traces réseau et captures Playwright.',
+    command: 'npx',
+    args: ['-y', '@playwright/mcp@latest'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/microsoft/playwright-mcp',
+    envKeys: [],
+  },
+  {
+    id: 'puppeteer',
+    name: 'Puppeteer Headless',
+    category: 'web-search',
+    description: 'Automatisation Chromium et génération de PDF/captures via Puppeteer.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-puppeteer'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
+    envKeys: [],
+  },
+  {
+    id: 'firecrawl',
+    name: 'Firecrawl Web Scraper',
+    category: 'web-search',
+    description: 'Crawl profond, extraction Markdown propre, recherche structurée et scraping anti-JS Firecrawl.',
+    command: 'npx',
+    args: ['-y', 'firecrawl-mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/mendableai/firecrawl-mcp-server',
+    envKeys: ['FIRECRAWL_API_KEY'],
+  },
+  {
+    id: 'exa',
+    name: 'Exa Neural Search',
+    category: 'web-search',
+    description: 'Moteur de recherche sémantique IA ultra-précis pour articles techniques, GitHub, papers et entreprises.',
+    command: 'npx',
+    args: ['-y', 'exa-mcp-server'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/exa-labs/exa-mcp-server',
+    envKeys: ['EXA_API_KEY'],
+  },
+  {
+    id: 'tavily',
+    name: 'Tavily AI Search',
+    category: 'web-search',
+    description: 'Recherche web temps réel optimisée pour agents IA avec extraction de réponses sourcées.',
+    command: 'npx',
+    args: ['-y', 'tavily-mcp@latest'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/tavily-ai/tavily-mcp',
+    envKeys: ['TAVILY_API_KEY'],
+  },
+  {
+    id: 'perplexity',
+    name: 'Perplexity Sonar',
+    category: 'web-search',
+    description: 'Interroge les modèles Perplexity Sonar (recherche web + citations en direct).',
+    command: 'npx',
+    args: ['-y', 'server-perplexity-ask'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/ppl-ai/modelcontextprotocol',
+    envKeys: ['PERPLEXITY_API_KEY'],
+  },
+  {
+    id: 'brave-search',
+    name: 'Brave Search API',
+    category: 'web-search',
+    description: 'Recherche web, images et actualités via l’API officielle Brave Search.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-brave-search'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
+    envKeys: ['BRAVE_API_KEY'],
+  },
+  {
+    id: 'fetch',
+    name: 'Fetch Officiel MCP',
+    category: 'web-search',
+    description: 'Serveur de référence officiel MCP : télécharge des pages web et les convertit en Markdown propre.',
+    command: 'uvx',
+    args: ['mcp-server-fetch'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
+    envKeys: [],
+  },
+  {
+    id: 'browserbase',
+    name: 'Browserbase Cloud',
+    category: 'web-search',
+    description: 'Navigateurs cloud isolés avec Stagehand pour automatisation web résiliente à grande échelle.',
+    command: 'npx',
+    args: ['-y', '@browserbasehq/mcp-server-browserbase'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/browserbase/mcp-server-browserbase',
+    envKeys: ['BROWSERBASE_API_KEY', 'BROWSERBASE_PROJECT_ID'],
+  },
+  {
+    id: 'context7',
+    name: 'Context7 Live Docs',
+    category: 'web-search',
+    description: 'Documentation à jour des librairies et frameworks (React, Next, Tailwind, Three.js, etc.).',
+    command: 'npx',
+    args: ['-y', '@upstash/context7-mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/upstash/context7',
+    envKeys: [],
+  },
+  {
+    id: 'ffmpeg',
+    name: 'FFmpeg Audio & Vidéo',
+    category: 'web-search',
+    description: 'Conversion vidéo/audio, découpage, extraction de pistes et compression FFmpeg.',
+    command: 'uvx',
+    args: ['ffmpeg-mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/video-creator/ffmpeg-mcp',
+    envKeys: [],
+  },
+  {
+    id: 'youtube',
+    name: 'YouTube Transcripts',
+    category: 'web-search',
+    description: 'Récupère et résume les sous-titres et chapitres de vidéos YouTube.',
+    command: 'npx',
+    args: ['-y', '@kimtaeyoon83/mcp-server-youtube-transcript'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/kimtaeyoon83/mcp-server-youtube-transcript',
+    envKeys: [],
+  },
+
+  // --- Mémoire IA, Raisonnement & Graphes (8) ---
+  {
+    id: 'sequential-thinking',
+    name: 'Sequential Thinking',
+    category: 'ai-memory',
+    description: 'Serveur officiel MCP de raisonnement structuré étape par étape avec révision d’hypothèses.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-sequential-thinking'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
+    envKeys: [],
+  },
+  {
+    id: 'memory',
+    name: 'Knowledge Graph Memory',
+    category: 'ai-memory',
+    description: 'Mémoire persistante en graphe de connaissances (entités, relations, observations) entre sessions.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-memory'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
+    envKeys: [],
+  },
+  {
+    id: 'filesystem',
+    name: 'Filesystem Officiel MCP',
+    category: 'ai-memory',
+    description: 'Lecture, écriture, recherche et gestion sécurisée de dossiers locaux autorisés.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-filesystem', '.'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
+    envKeys: [],
+  },
+  {
+    id: 'qdrant',
+    name: 'Qdrant Vector Memory',
+    category: 'ai-memory',
+    description: 'Base vectorielle sémantique Qdrant pour mémoire long-terme et recherche RAG haute vitesse.',
+    command: 'uvx',
+    args: ['mcp-server-qdrant'],
+    defaultPort: 6333,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/qdrant/mcp-server-qdrant',
+    envKeys: ['QDRANT_URL', 'QDRANT_API_KEY'],
+  },
+  {
+    id: 'neo4j',
+    name: 'Neo4j Graph DB',
+    category: 'ai-memory',
+    description: 'Requêtes Cypher, modélisation et exploration de graphes dans Neo4j.',
+    command: 'uvx',
+    args: ['mcp-neo4j-cypher'],
+    defaultPort: 7687,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/neo4j-contrib/mcp-neo4j',
+    envKeys: ['NEO4J_URI', 'NEO4J_USERNAME', 'NEO4J_PASSWORD'],
+  },
+  {
+    id: 'duckdb',
+    name: 'DuckDB Analytics SQL',
+    category: 'ai-memory',
+    description: 'Requêtes SQL analytiques ultra-rapides directement sur fichiers Parquet, CSV et JSON locaux.',
+    command: 'uvx',
+    args: ['mcp-server-duckdb'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/ktanaka101/mcp-server-duckdb',
+    envKeys: [],
+  },
+  {
+    id: 'chroma',
+    name: 'ChromaDB Embeddings',
+    category: 'ai-memory',
+    description: 'Stockage et recherche vectorielle locale/cloud sur collections ChromaDB.',
+    command: 'uvx',
+    args: ['chroma-mcp'],
+    defaultPort: 8000,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/chroma-core/chroma-mcp',
+    envKeys: [],
+  },
+  {
+    id: 'time',
+    name: 'Time & Fuseaux Horaires',
+    category: 'ai-memory',
+    description: 'Serveur officiel MCP de conversion d’heures et fuseaux horaires IANA exacts.',
+    command: 'uvx',
+    args: ['mcp-server-time'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
+    envKeys: [],
+  },
+
+  // --- Bases de données & Backend (9) ---
   {
     id: 'postgres',
     name: 'PostgreSQL',
@@ -111,6 +446,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@modelcontextprotocol/server-postgres'],
     defaultPort: 5432,
     bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
     envKeys: ['POSTGRES_URL'],
   },
   {
@@ -122,6 +458,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'mcp-server-sqlite'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
     envKeys: ['SQLITE_DB_PATH'],
   },
   {
@@ -133,6 +470,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@benborla29/mcp-server-mysql'],
     defaultPort: 3306,
     bridgeType: 'stdio',
+    repo: 'https://github.com/benborla/mcp-server-mysql',
     envKeys: ['MYSQL_HOST', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DB'],
   },
   {
@@ -144,6 +482,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'mongodb-mcp-server'],
     defaultPort: 27017,
     bridgeType: 'stdio',
+    repo: 'https://github.com/mongodb-js/mongodb-mcp-server',
     envKeys: ['MONGODB_URI'],
   },
   {
@@ -155,6 +494,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@modelcontextprotocol/server-redis'],
     defaultPort: 6379,
     bridgeType: 'stdio',
+    repo: 'https://github.com/redis/mcp-redis',
     envKeys: ['REDIS_URL'],
   },
   {
@@ -166,6 +506,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@supabase/mcp-server-supabase@latest'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/supabase-community/supabase-mcp',
     envKeys: ['SUPABASE_ACCESS_TOKEN'],
   },
   {
@@ -177,6 +518,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'firebase-tools@latest', 'experimental:mcp'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/firebase/firebase-tools',
     envKeys: [],
   },
   {
@@ -188,19 +530,33 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'prisma', 'mcp'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/prisma/prisma',
     envKeys: [],
   },
+  {
+    id: 'neon',
+    name: 'Neon Serverless Postgres',
+    category: 'databases',
+    description: 'Crée des branches Postgres instantanées, migrations SQL et projets Neon.',
+    command: 'npx',
+    args: ['-y', '@neondatabase/mcp-server-neon'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/neondatabase/mcp-server-neon',
+    envKeys: ['NEON_API_KEY'],
+  },
 
-  // --- Code, Git & Cloud DevOps (8) ---
+  // --- Code, Git & Cloud DevOps (10) ---
   {
     id: 'github',
-    name: 'GitHub',
+    name: 'GitHub Officiel',
     category: 'devops',
     description: 'Gère dépôts, Pull Requests, Issues, Actions CI/CD et revues de code GitHub.',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-github'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/github/github-mcp-server',
     envKeys: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
   },
   {
@@ -212,6 +568,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@modelcontextprotocol/server-gitlab'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
     envKeys: ['GITLAB_PERSONAL_ACCESS_TOKEN'],
   },
   {
@@ -223,6 +580,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['mcp-server-git'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
     envKeys: [],
   },
   {
@@ -234,6 +592,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@quantgeekdev/docker-mcp'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/QuantGeekDev/docker-mcp',
     envKeys: [],
   },
   {
@@ -245,6 +604,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'mcp-server-kubernetes'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/Flux159/mcp-server-kubernetes',
     envKeys: [],
   },
   {
@@ -256,6 +616,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@cloudflare/mcp-server-cloudflare'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/cloudflare/mcp-server-cloudflare',
     envKeys: ['CLOUDFLARE_API_TOKEN'],
   },
   {
@@ -267,6 +628,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'mcp-vercel'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/vercel/mcp-vercel',
     envKeys: ['VERCEL_API_TOKEN'],
   },
   {
@@ -278,78 +640,35 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@sentry/mcp-server'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/getsentry/sentry-mcp',
     envKeys: ['SENTRY_AUTH_TOKEN'],
   },
-
-  // --- Web, Navigateurs & Média (5) ---
   {
-    id: 'playwright',
-    name: 'Playwright Testing',
-    category: 'web-media',
-    description: 'Tests E2E multi-navigateurs, assertions DOM, traces réseau et captures Playwright.',
-    command: 'npx',
-    args: ['-y', '@playwright/mcp@latest'],
-    defaultPort: null,
-    bridgeType: 'stdio',
-    envKeys: [],
-  },
-  {
-    id: 'puppeteer',
-    name: 'Puppeteer Headless',
-    category: 'web-media',
-    description: 'Automatisation Chromium et génération de PDF/captures via Puppeteer.',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-puppeteer'],
-    defaultPort: null,
-    bridgeType: 'stdio',
-    envKeys: [],
-  },
-  {
-    id: 'ffmpeg',
-    name: 'FFmpeg Audio & Vidéo',
-    category: 'web-media',
-    description: 'Conversion vidéo/audio, découpage, extraction de pistes et compression FFmpeg.',
+    id: 'aws',
+    name: 'AWS Cloud & Docs',
+    category: 'devops',
+    description: 'Documentation AWS temps réel, S3, Lambda, CloudFormation et CDK via serveurs AWS Labs MCP.',
     command: 'uvx',
-    args: ['ffmpeg-mcp'],
+    args: ['awslabs.aws-documentation-mcp-server@latest'],
     defaultPort: null,
     bridgeType: 'stdio',
-    envKeys: [],
+    repo: 'https://github.com/awslabs/mcp',
+    envKeys: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
   },
   {
-    id: 'youtube',
-    name: 'YouTube Transcripts',
-    category: 'web-media',
-    description: 'Récupère et résume les sous-titres et chapitres de vidéos YouTube.',
+    id: 'terraform',
+    name: 'Terraform Registry IaC',
+    category: 'devops',
+    description: 'Recherche de providers, modules et documentation officielle HashiCorp Terraform.',
     command: 'npx',
-    args: ['-y', '@kimtaeyoon83/mcp-server-youtube-transcript'],
+    args: ['-y', '@hashicorp/terraform-mcp-server'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/hashicorp/terraform-mcp-server',
     envKeys: [],
-  },
-  {
-    id: 'brave-search',
-    name: 'Brave Search API',
-    category: 'web-media',
-    description: 'Recherche web et actualités via l’API officielle Brave Search.',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-brave-search'],
-    defaultPort: null,
-    bridgeType: 'stdio',
-    envKeys: ['BRAVE_API_KEY'],
   },
 
-  // --- Productivité & Documentation (6) ---
-  {
-    id: 'context7',
-    name: 'Context7 Live Docs',
-    category: 'productivity',
-    description: 'Documentation à jour des librairies et frameworks (React, Next, Tailwind, Three.js, etc.).',
-    command: 'npx',
-    args: ['-y', '@upstash/context7-mcp'],
-    defaultPort: null,
-    bridgeType: 'stdio',
-    envKeys: [],
-  },
+  // --- Productivité, Business & Domotique (14) ---
   {
     id: 'notion',
     name: 'Notion Workspace',
@@ -359,6 +678,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@notionhq/notion-mcp-server'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/makenotion/notion-mcp-server',
     envKeys: ['NOTION_TOKEN'],
   },
   {
@@ -370,6 +690,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'mcp-obsidian'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/MarkusPfundstein/mcp-obsidian',
     envKeys: ['OBSIDIAN_VAULT_PATH'],
   },
   {
@@ -381,6 +702,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'mcp-discord'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/v-3/discordmcp',
     envKeys: ['DISCORD_TOKEN'],
   },
   {
@@ -392,6 +714,7 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', '@modelcontextprotocol/server-slack'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
     envKeys: ['SLACK_BOT_TOKEN'],
   },
   {
@@ -403,7 +726,140 @@ export const MCP_HUB_CATALOG = Object.freeze([
     args: ['-y', 'mcp-linear'],
     defaultPort: null,
     bridgeType: 'stdio',
+    repo: 'https://github.com/jerhadf/linear-mcp-server',
     envKeys: ['LINEAR_API_KEY'],
+  },
+  {
+    id: 'stripe',
+    name: 'Stripe Paiements',
+    category: 'productivity',
+    description: 'Clients, factures, abonnements, remboursements et produits via le MCP officiel Stripe.',
+    command: 'npx',
+    args: ['-y', '@stripe/mcp', '--tools=all'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/stripe/agent-toolkit',
+    envKeys: ['STRIPE_SECRET_KEY'],
+  },
+  {
+    id: 'home-assistant',
+    name: 'Home Assistant Domotique',
+    category: 'productivity',
+    description: 'Contrôle lumières, capteurs, scènes et automatisations de votre maison connectée Home Assistant.',
+    command: 'uvx',
+    args: ['mcp-server-home-assistant'],
+    defaultPort: 8123,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/allenporter/mcp-server-home-assistant',
+    envKeys: ['HASS_URL', 'HASS_TOKEN'],
+  },
+  {
+    id: 'spotify',
+    name: 'Spotify Musique',
+    category: 'productivity',
+    description: 'Lecture/pause, playlists, recherche de titres et files d’attente Spotify.',
+    command: 'uvx',
+    args: ['spotify-mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/varunneal/spotify-mcp',
+    envKeys: ['SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET'],
+  },
+  {
+    id: 'google-drive',
+    name: 'Google Drive & Docs',
+    category: 'productivity',
+    description: 'Recherche, lecture et export de fichiers Google Drive, Docs et Sheets.',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-gdrive'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/modelcontextprotocol/servers',
+    envKeys: ['GDRIVE_CREDENTIALS_PATH'],
+  },
+  {
+    id: 'gmail',
+    name: 'Gmail Messagerie',
+    category: 'productivity',
+    description: 'Lecture, recherche, brouillons, labels et envoi d’e-mails Gmail.',
+    command: 'npx',
+    args: ['-y', '@gongrzhe/server-gmail-autoauth-mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/GongRzhe/Gmail-MCP-Server',
+    envKeys: ['GMAIL_CREDENTIALS_PATH'],
+  },
+  {
+    id: 'google-calendar',
+    name: 'Google Calendar Agenda',
+    category: 'productivity',
+    description: 'Consultation, création et gestion d’événements et disponibilités Google Calendar.',
+    command: 'npx',
+    args: ['-y', '@cocal/google-calendar-mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/nspady/google-calendar-mcp',
+    envKeys: ['GOOGLE_OAUTH_CREDENTIALS'],
+  },
+  {
+    id: 'atlassian',
+    name: 'Jira & Confluence',
+    category: 'productivity',
+    description: 'Tickets Jira, sprints, pages Confluence et wikis d’équipe Atlassian.',
+    command: 'uvx',
+    args: ['mcp-atlassian'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/sooperset/mcp-atlassian',
+    envKeys: ['JIRA_URL', 'JIRA_API_TOKEN'],
+  },
+  {
+    id: 'n8n',
+    name: 'n8n Workflows Auto',
+    category: 'productivity',
+    description: 'Crée, déclenche et inspecte des workflows d’automatisation n8n (400+ intégrations).',
+    command: 'npx',
+    args: ['-y', 'n8n-mcp'],
+    defaultPort: 5678,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/czlonkowski/n8n-mcp',
+    envKeys: ['N8N_API_URL', 'N8N_API_KEY'],
+  },
+  {
+    id: 'telegram',
+    name: 'Telegram Bot & Chats',
+    category: 'productivity',
+    description: 'Envoi de messages, alertes et lecture de canaux/groupes Telegram.',
+    command: 'uvx',
+    args: ['telegram-mcp'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/chigwell/telegram-mcp',
+    envKeys: ['TELEGRAM_BOT_TOKEN'],
+  },
+  {
+    id: 'airtable',
+    name: 'Airtable Bases',
+    category: 'productivity',
+    description: 'Lit, filtre et met à jour les tables, vues et enregistrements Airtable.',
+    command: 'npx',
+    args: ['-y', 'airtable-mcp-server'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/domdomegg/airtable-mcp-server',
+    envKeys: ['AIRTABLE_API_KEY'],
+  },
+  {
+    id: 'trello',
+    name: 'Trello Kanban',
+    category: 'productivity',
+    description: 'Gestion des tableaux, listes, cartes et checklists Trello.',
+    command: 'npx',
+    args: ['-y', '@delorenj/mcp-server-trello'],
+    defaultPort: null,
+    bridgeType: 'stdio',
+    repo: 'https://github.com/delorenj/mcp-server-trello',
+    envKeys: ['TRELLO_API_KEY', 'TRELLO_TOKEN'],
   },
 ]);
 
@@ -413,7 +869,7 @@ export function loadHubConfig(filePath = MCP_HUB_CONFIG_PATH) {
       const parsed = JSON.parse(readFileSync(filePath, 'utf-8').replace(/^\uFEFF/, ''));
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         return {
-          enabled: Array.isArray(parsed.enabled) ? parsed.enabled.map(String) : ['blender', 'roblox', 'context7', 'git', 'sqlite', 'playwright'],
+          enabled: Array.isArray(parsed.enabled) ? parsed.enabled.map(String) : ['blender', 'roblox', 'context7', 'git', 'sqlite', 'playwright', 'sequential-thinking', 'firecrawl'],
           overrides: (parsed.overrides && typeof parsed.overrides === 'object') ? parsed.overrides : {},
           customConnectors: Array.isArray(parsed.customConnectors) ? parsed.customConnectors : [],
         };
@@ -421,7 +877,7 @@ export function loadHubConfig(filePath = MCP_HUB_CONFIG_PATH) {
     }
   } catch {}
   return {
-    enabled: ['blender', 'roblox', 'context7', 'git', 'sqlite', 'playwright'],
+    enabled: ['blender', 'roblox', 'context7', 'git', 'sqlite', 'playwright', 'sequential-thinking', 'firecrawl'],
     overrides: {},
     customConnectors: [],
   };
@@ -449,24 +905,123 @@ export function saveHubConfig(config, filePath = MCP_HUB_CONFIG_PATH) {
   }
 }
 
+function loadSchemaCache() {
+  try {
+    if (existsSync(MCP_HUB_CACHE_PATH)) {
+      const parsed = JSON.parse(readFileSync(MCP_HUB_CACHE_PATH, 'utf-8').replace(/^\uFEFF/, ''));
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch {}
+  return {};
+}
+
+function saveSchemaCache(cache) {
+  try {
+    mkdirSync(dirname(MCP_HUB_CACHE_PATH), { recursive: true });
+    writeFileSync(MCP_HUB_CACHE_PATH, JSON.stringify(cache, null, 2), 'utf-8');
+  } catch {}
+}
+
 export function allHubConnectors(filePath = MCP_HUB_CONFIG_PATH) {
   const cfg = loadHubConfig(filePath);
   const enabledSet = new Set(cfg.enabled);
   const list = [...MCP_HUB_CATALOG, ...(cfg.customConnectors || [])];
   return list.map((item) => {
     const ov = cfg.overrides?.[item.id] || {};
+    const transport = ov.transport || (ov.url || item.url ? (ov.type === 'sse' || item.type === 'sse' ? 'sse' : 'http') : (item.bridgeType || 'stdio'));
     return {
       ...item,
-      command: ov.command || item.command,
-      args: Array.isArray(ov.args) ? ov.args : item.args,
+      command: ov.command || item.command || '',
+      args: Array.isArray(ov.args) ? ov.args : (item.args || []),
+      url: ov.url || item.url || null,
+      headers: ov.headers || item.headers || null,
       defaultPort: ov.port ?? item.defaultPort ?? null,
       nativeBridge: item.id === 'blender' || item.id === 'roblox',
-      transport: item.bridgeType || 'stdio',
-      package: (item.args && item.args.length ? item.args[item.args.length - 1] : item.command),
+      transport,
+      package: ov.url || item.url || (item.args && item.args.length ? item.args[item.args.length - 1] : item.command),
       enabled: enabledSet.has(item.id),
       configuredEnvKeys: Object.keys(ov.env || {}),
     };
   });
+}
+
+/**
+ * Auto-discovers MCP servers already configured on the user's PC across
+ * Claude Desktop, Claude Code, Cursor, Windsurf, Gemini CLI, Antigravity & VS Code
+ * (inspired by x3vren/fs-mcp-cli).
+ */
+export function detectLocalMcpServers(workspaceRoot = '') {
+  const home = os.homedir();
+  const appData = process.env.APPDATA || join(home, '.config');
+  const macSupport = join(home, 'Library', 'Application Support');
+  const claudeDir = process.platform === 'win32'
+    ? join(appData, 'Claude')
+    : (process.platform === 'darwin' ? join(macSupport, 'Claude') : join(home, '.config', 'Claude'));
+  const codeDir = process.platform === 'win32'
+    ? join(appData, 'Code', 'User')
+    : (process.platform === 'darwin' ? join(macSupport, 'Code', 'User') : join(home, '.config', 'Code', 'User'));
+
+  const sources = [
+    ['Claude Desktop', join(claudeDir, 'claude_desktop_config.json')],
+    ['Claude Code', join(home, '.claude.json')],
+    ['Cursor', join(home, '.cursor', 'mcp.json')],
+    ['Windsurf', join(home, '.codeium', 'windsurf', 'mcp_config.json')],
+    ['Gemini CLI', join(home, '.gemini', 'settings.json')],
+    ['Antigravity', join(home, '.gemini', 'antigravity', 'mcp_config.json')],
+    ['VS Code', join(codeDir, 'mcp.json')],
+  ];
+  if (workspaceRoot) {
+    sources.push(
+      ['Projet (.mcp.json)', join(workspaceRoot, '.mcp.json')],
+      ['Cursor (projet)', join(workspaceRoot, '.cursor', 'mcp.json')],
+      ['VS Code (projet)', join(workspaceRoot, '.vscode', 'mcp.json')],
+    );
+  }
+
+  const servers = {};
+  const found = [];
+  for (const [source, file] of sources) {
+    if (!existsSync(file)) continue;
+    let json;
+    try { json = JSON.parse(readFileSync(file, 'utf-8').replace(/^\uFEFF/, '')); } catch { continue; }
+    const block = json?.mcpServers || json?.servers || {};
+    const names = [];
+    for (const [rawName, entry] of Object.entries(block)) {
+      if (!entry || typeof entry !== 'object' || entry.disabled === true || entry.enabled === false) continue;
+      if (/^fs-atg$/i.test(rawName)) continue;
+      const url = entry.url || entry.serverUrl || entry.httpUrl || null;
+      const normalized = url
+        ? {
+          id: rawName.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
+          name: rawName,
+          source,
+          transport: (entry.type === 'sse' || (entry.serverUrl && !entry.httpUrl && /\/sse\/?$/.test(url))) ? 'sse' : 'http',
+          url,
+          headers: entry.headers || null,
+        }
+        : (entry.command
+          ? {
+            id: rawName.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
+            name: rawName,
+            source,
+            transport: 'stdio',
+            command: entry.command,
+            args: Array.isArray(entry.args) ? entry.args.map(String) : [],
+            envKeys: Object.keys(entry.env || {}),
+          }
+          : null);
+      if (!normalized) continue;
+      names.push(rawName);
+      if (!servers[normalized.id]) servers[normalized.id] = normalized;
+    }
+    if (names.length) found.push({ source, file, count: names.length, names });
+  }
+  return {
+    totalDiscovered: Object.keys(servers).length,
+    sourcesScanned: sources.length,
+    found,
+    servers: Object.values(servers),
+  };
 }
 
 function checkPortOpen(port, host = '127.0.0.1', timeoutMs = 450) {
@@ -495,24 +1050,44 @@ function findLocalBinary(candidates = []) {
   return null;
 }
 
+function findBlenderDynamic(pf) {
+  const base = join(pf, 'Blender Foundation');
+  if (existsSync(base)) {
+    try {
+      const dirs = readdirSync(base)
+        .filter((d) => /^blender/i.test(d))
+        .sort((a, b) => b.localeCompare(a));
+      for (const d of dirs) {
+        const exe = join(base, d, 'blender.exe');
+        if (existsSync(exe)) return exe;
+      }
+    } catch {}
+  }
+  return findLocalBinary([
+    join(pf, 'Blender Foundation', 'Blender 4.4', 'blender.exe'),
+    join(pf, 'Blender Foundation', 'Blender 4.3', 'blender.exe'),
+    join(pf, 'Blender Foundation', 'Blender 4.2', 'blender.exe'),
+  ]);
+}
+
 export function detectLocalApps() {
   const pf = process.env.ProgramFiles || 'C:\\Program Files';
   const local = process.env.LOCALAPPDATA || '';
-  const blenderPath = findLocalBinary([
-    join(pf, 'Blender Foundation', 'Blender 4.3', 'blender.exe'),
-    join(pf, 'Blender Foundation', 'Blender 4.2', 'blender.exe'),
-    join(pf, 'Blender Foundation', 'Blender 4.1', 'blender.exe'),
-    join(pf, 'Blender Foundation', 'Blender 4.0', 'blender.exe'),
-    join(pf, 'Blender Foundation', 'Blender 3.6', 'blender.exe'),
-  ]);
+  const blenderPath = findBlenderDynamic(pf);
 
   let robloxPath = null;
   const robloxVersionsDir = local ? join(local, 'Roblox', 'Versions') : '';
   if (robloxVersionsDir && existsSync(robloxVersionsDir)) {
-    try {
-      robloxPath = robloxVersionsDir;
-    } catch {}
+    robloxPath = robloxVersionsDir;
   }
+
+  const unityHubPath = findLocalBinary([
+    join(pf, 'Unity Hub', 'Unity Hub.exe'),
+    local ? join(local, 'Programs', 'Unity Hub', 'Unity Hub.exe') : '',
+  ]);
+  const obsPath = findLocalBinary([
+    join(pf, 'obs-studio', 'bin', '64bit', 'obs64.exe'),
+  ]);
 
   const hasCmd = (cmd) => {
     try {
@@ -523,12 +1098,16 @@ export function detectLocalApps() {
   return {
     npx: hasCmd('npx'),
     uvx: hasCmd('uvx'),
+    python: hasCmd('python'),
     git: hasCmd('git'),
     docker: hasCmd('docker'),
     ffmpeg: hasCmd('ffmpeg'),
     blender: Boolean(blenderPath) || hasCmd('blender'),
     blenderPath,
     robloxStudio: Boolean(robloxPath),
+    unity: Boolean(unityHubPath),
+    godot: hasCmd('godot') || hasCmd('godot4'),
+    obs: Boolean(obsPath),
   };
 }
 
@@ -655,7 +1234,64 @@ export async function executeRobloxBridge({ action = 'status', code = '', worksp
 }
 
 /**
- * Calls any stdio MCP server via JSON-RPC 2.0 (`tools/list` or `tools/call`).
+ * Calls a Streamable HTTP MCP server via JSON-RPC 2.0 (POST).
+ */
+export async function queryHttpMcpServer(connector, { method = 'tools/list', params = {}, timeoutMs = 15_000 } = {}) {
+  const url = String(connector.url || '').trim();
+  if (!url) throw new Error(`URL MCP manquante pour ${connector.id}.`);
+  const baseHeaders = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    ...(connector.headers || {}),
+  };
+
+  const rpcPost = async (payload, sessionId = null) => {
+    const headers = sessionId ? { ...baseHeaders, 'Mcp-Session-Id': sessionId } : baseHeaders;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const nextSession = res.headers.get('mcp-session-id') || sessionId;
+    const text = await res.text();
+    if (!res.ok) throw new Error(`HTTP ${res.status} (${connector.id}) : ${text.slice(0, 180)}`);
+    let data = null;
+    if (text.trim().startsWith('{')) {
+      data = JSON.parse(text);
+    } else {
+      // Parse SSE streamable response frames (`data: {...}`)
+      for (const line of text.split(/\r?\n/)) {
+        if (line.startsWith('data:')) {
+          try {
+            const parsed = JSON.parse(line.slice(5).trim());
+            if (parsed?.result !== undefined || parsed?.error) data = parsed;
+          } catch {}
+        }
+      }
+    }
+    return { data, sessionId: nextSession };
+  };
+
+  const init = await rpcPost({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'fs-atg-hub', version: CONNECTOR_VERSION },
+    },
+  });
+  await rpcPost({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }, init.sessionId).catch(() => {});
+  const call = await rpcPost({ jsonrpc: '2.0', id: 2, method, params }, init.sessionId);
+  if (call.data?.error) throw new Error(call.data.error.message || 'Erreur JSON-RPC HTTP MCP');
+  return call.data?.result ?? {};
+}
+
+/**
+ * Calls any stdio MCP server via JSON-RPC 2.0 (`ping`, `tools/list`, `tools/call`,
+ * `resources/list`, `resources/read`, `prompts/list`).
  */
 export async function queryStdioMcpServer(connector, { method = 'tools/list', params = {}, timeoutMs = 15_000 } = {}) {
   const cmd = process.platform === 'win32' && ['npx', 'uvx', 'npm'].includes(connector.command)
@@ -684,7 +1320,6 @@ export async function queryStdioMcpServer(connector, { method = 'tools/list', pa
     }
 
     let buffer = '';
-    let stderr = '';
     const timer = setTimeout(() => {
       try { child.kill(); } catch {}
       reject(new Error(`Timeout MCP stdio (${connector.id}, ${Math.round(timeoutMs / 1000)}s).`));
@@ -698,7 +1333,6 @@ export async function queryStdioMcpServer(connector, { method = 'tools/list', pa
     };
 
     child.on('error', (err) => finish(err));
-    child.stderr.on('data', (c) => { stderr += c.toString('utf8'); });
     child.stdout.on('data', (chunk) => {
       buffer += chunk.toString('utf8');
       for (;;) {
@@ -728,10 +1362,18 @@ export async function queryStdioMcpServer(connector, { method = 'tools/list', pa
       params: {
         protocolVersion: '2025-06-18',
         capabilities: {},
-        clientInfo: { name: 'fs-atg-hub', version: '2.4.0' },
+        clientInfo: { name: 'fs-atg-hub', version: CONNECTOR_VERSION },
       },
     }) + '\n');
   });
+}
+
+/** Dispatches JSON-RPC call across stdio or Streamable HTTP / SSE transport. */
+export async function queryMcpServer(connector, opts = {}) {
+  if (connector.url && (connector.transport === 'http' || connector.transport === 'sse')) {
+    return await queryHttpMcpServer(connector, opts);
+  }
+  return await queryStdioMcpServer(connector, opts);
 }
 
 export async function executeMcpHubAction(params = {}, { filePath = MCP_HUB_CONFIG_PATH } = {}) {
@@ -746,7 +1388,7 @@ export async function executeMcpHubAction(params = {}, { filePath = MCP_HUB_CONF
     const filtered = connectors.filter((c) => {
       if (onlyEnabled && !c.enabled) return false;
       if (category && c.category !== category) return false;
-      if (q && !`${c.id} ${c.name} ${c.description} ${c.category}`.toLowerCase().includes(q)) return false;
+      if (q && !`${c.id} ${c.name} ${c.description} ${c.category} ${c.repo || ''}`.toLowerCase().includes(q)) return false;
       return true;
     });
     return {
@@ -760,6 +1402,48 @@ export async function executeMcpHubAction(params = {}, { filePath = MCP_HUB_CONF
     };
   }
 
+  if (action === 'detect_local') {
+    const discovered = detectLocalMcpServers(params.workspaceRoot || '');
+    return { ok: true, action: 'detect_local', ...discovered };
+  }
+
+  if (action === 'import_local') {
+    const discovered = detectLocalMcpServers(params.workspaceRoot || '');
+    const targetId = String(params.connectorId || params.id || 'all').trim().toLowerCase();
+    const toImport = targetId === 'all'
+      ? discovered.servers
+      : discovered.servers.filter((s) => s.id === targetId || s.name.toLowerCase() === targetId);
+    if (!toImport.length) {
+      return { ok: false, action: 'import_local', imported: [], message: 'Aucun serveur MCP local correspondant trouvé.' };
+    }
+    const cfg = loadHubConfig(effectivePath);
+    const existingIds = new Set([...MCP_HUB_CATALOG.map((c) => c.id), ...cfg.customConnectors.map((c) => c.id)]);
+    const imported = [];
+    for (const srv of toImport) {
+      if (!existingIds.has(srv.id)) {
+        cfg.customConnectors.push({
+          id: srv.id,
+          name: `${srv.name} (${srv.source})`,
+          category: 'devops',
+          description: `Importé automatiquement depuis ${srv.source} (${srv.transport}).`,
+          command: srv.command || '',
+          args: srv.args || [],
+          url: srv.url || null,
+          headers: srv.headers || null,
+          defaultPort: null,
+          bridgeType: srv.transport || 'stdio',
+          envKeys: srv.envKeys || [],
+        });
+        existingIds.add(srv.id);
+      }
+      if (!cfg.enabled.includes(srv.id)) cfg.enabled.push(srv.id);
+      imported.push({ id: srv.id, name: srv.name, source: srv.source, transport: srv.transport });
+    }
+    saveHubConfig(cfg, effectivePath);
+    logEvent('info', 'mcp_hub', 'hub.import_local', `${imported.length} serveur(s) MCP locaux importés.`, { count: imported.length });
+    return { ok: true, action: 'import_local', importedCount: imported.length, imported };
+  }
+
   if (action === 'probe') {
     const apps = detectLocalApps();
     const withPorts = connectors.filter((c) => c.defaultPort);
@@ -767,12 +1451,15 @@ export async function executeMcpHubAction(params = {}, { filePath = MCP_HUB_CONF
     await Promise.all(withPorts.map(async (c) => {
       portResults[c.id] = { port: c.defaultPort, listening: await checkPortOpen(c.defaultPort) };
     }));
+    const localMcp = detectLocalMcpServers(params.workspaceRoot || '');
     return {
       ok: true,
       action: 'probe',
       totalCatalog: connectors.length,
       localApps: apps,
       bridges: portResults,
+      localMcpDiscovered: localMcp.totalDiscovered,
+      localMcpSources: localMcp.found,
       detected: {
         blender: {
           installed: apps.blender,
@@ -785,17 +1472,22 @@ export async function executeMcpHubAction(params = {}, { filePath = MCP_HUB_CONF
           studioPluginOpen: Boolean(portResults.roblox?.listening),
         },
         unity: {
-          installed: false,
+          installed: apps.unity,
           mcpBridgeOpen: Boolean(portResults.unity?.listening),
         },
         godot: {
-          installed: false,
+          installed: apps.godot,
           mcpBridgeOpen: Boolean(portResults.godot?.listening),
+        },
+        obs: {
+          installed: apps.obs,
+          websocketOpen: Boolean(portResults['obs-studio']?.listening),
         },
         cli: {
           node: true,
           npx: apps.npx,
-          python: apps.uvx,
+          python: apps.python,
+          uvx: apps.uvx,
           docker: apps.docker,
           git: apps.git,
           ffmpeg: apps.ffmpeg,
@@ -830,23 +1522,29 @@ export async function executeMcpHubAction(params = {}, { filePath = MCP_HUB_CONF
     const id = String(params.connectorId || params.id || '').trim().toLowerCase();
     if (!id) throw new Error('Paramètre "connectorId" requis pour configure.');
     const cfg = loadHubConfig(effectivePath);
+    const transport = ['stdio', 'http', 'sse'].includes(params.transport) ? params.transport : (params.url ? 'http' : 'stdio');
     if (!connectors.some((c) => c.id === id)) {
-      if (!params.command) throw new Error(`Connecteur "${id}" inconnu : fournis "command" et "name" pour ajouter un connecteur personnalisé.`);
+      if (!params.command && !params.url) throw new Error(`Connecteur "${id}" inconnu : fournis "command" ou "url" pour ajouter un connecteur personnalisé.`);
       cfg.customConnectors.push({
         id,
         name: String(params.name || id),
         category: String(params.category || 'devops'),
         description: String(params.description || 'Connecteur MCP personnalisé.'),
-        command: String(params.command),
+        command: params.command ? String(params.command) : '',
         args: Array.isArray(params.args) ? params.args.map(String) : [],
+        url: params.url ? String(params.url) : null,
+        headers: params.headers && typeof params.headers === 'object' ? params.headers : null,
         defaultPort: Number(params.port) || null,
-        bridgeType: 'stdio',
+        bridgeType: transport,
         envKeys: [],
       });
     }
     const ov = { ...(cfg.overrides[id] || {}) };
     if (params.command) ov.command = String(params.command);
     if (Array.isArray(params.args)) ov.args = params.args.map(String);
+    if (params.url) ov.url = String(params.url);
+    if (params.transport) ov.transport = transport;
+    if (params.headers && typeof params.headers === 'object') ov.headers = params.headers;
     if (params.port !== undefined) ov.port = Number(params.port) || null;
     if (params.env && typeof params.env === 'object') {
       ov.env = { ...(ov.env || {}) };
@@ -860,17 +1558,16 @@ export async function executeMcpHubAction(params = {}, { filePath = MCP_HUB_CONF
     cfg.overrides[id] = ov;
     if (!cfg.enabled.includes(id)) cfg.enabled.push(id);
     saveHubConfig(cfg, effectivePath);
-    return { ok: true, action: 'configure', connectorId: id, enabled: true };
+    return { ok: true, action: 'configure', connectorId: id, transport, enabled: true };
   }
 
   if (action === 'export_config') {
     const enabled = connectors.filter((c) => c.enabled);
     const mcpServers = {};
     for (const c of enabled) {
-      mcpServers[c.id] = {
-        command: c.command,
-        args: c.args,
-      };
+      mcpServers[c.id] = c.url
+        ? { url: c.url, type: c.transport === 'sse' ? 'sse' : 'http', ...(c.headers ? { headers: c.headers } : {}) }
+        : { command: c.command, args: c.args };
     }
     return {
       ok: true,
@@ -894,17 +1591,85 @@ export async function executeMcpHubAction(params = {}, { filePath = MCP_HUB_CONF
     });
   }
 
-  if (action === 'tools' || action === 'call') {
+  if (action === 'cloud_list') {
+    const st = loadState();
+    const servers = await fetchCloudMcpServers(st);
+    return { ok: true, action: 'cloud_list', count: servers.length, servers };
+  }
+
+  if (action === 'cloud_add') {
+    const st = loadState();
+    const label = String(params.name || params.connectorId || '').trim();
+    const url = String(params.url || '').trim();
+    if (!label || !url) throw new Error('Paramètres "name" (server_label) et "url" (server_url) requis pour cloud_add.');
+    const created = await addCloudMcpServer(st, {
+      server_label: label.slice(0, 64),
+      server_url: url,
+      server_description: String(params.description || `Serveur MCP ${label}`).slice(0, 500),
+      enabled: true,
+      ...(params.headers ? { headers: params.headers } : {}),
+    });
+    return { ok: true, action: 'cloud_add', server: created };
+  }
+
+  if (action === 'cloud_delete') {
+    const st = loadState();
+    const serverId = String(params.serverId || params.connectorId || '').trim();
+    if (!serverId) throw new Error('Paramètre "serverId" requis pour cloud_delete.');
+    const deleted = await deleteCloudMcpServer(st, serverId);
+    return { ok: true, action: 'cloud_delete', deleted };
+  }
+
+  if (action === 'deskdock') {
+    const st = loadState();
+    const res = await controlDeskDock(st, params.deskdockAction || 'status');
+    return { ok: res.available, action: 'deskdock', ...res };
+  }
+
+  if (['ping', 'tools', 'call', 'resources', 'read_resource', 'prompts'].includes(action)) {
     const id = String(params.connectorId || params.id || '').trim().toLowerCase();
     const conn = connectors.find((c) => c.id === id);
     if (!conn) throw new Error(`Connecteur MCP inconnu : "${id}".`);
-    if (action === 'tools') {
-      const res = await queryStdioMcpServer(conn, { method: 'tools/list', params: {} });
-      return { ok: true, connectorId: id, tools: res?.tools || [] };
+
+    if (action === 'ping') {
+      const t0 = Date.now();
+      await queryMcpServer(conn, { method: 'ping', params: {}, timeoutMs: 10_000 });
+      return { ok: true, action: 'ping', connectorId: id, transport: conn.transport, latencyMs: Date.now() - t0 };
     }
+
+    if (action === 'tools') {
+      const cache = loadSchemaCache();
+      const cached = cache[id];
+      if (!params.forceRefresh && cached && (Date.now() - Number(cached.at || 0) < CACHE_TTL_MS)) {
+        return { ok: true, connectorId: id, cached: true, tools: cached.tools || [] };
+      }
+      const res = await queryMcpServer(conn, { method: 'tools/list', params: {} });
+      const tools = res?.tools || [];
+      cache[id] = { at: Date.now(), tools };
+      saveSchemaCache(cache);
+      return { ok: true, connectorId: id, cached: false, tools };
+    }
+
+    if (action === 'resources') {
+      const res = await queryMcpServer(conn, { method: 'resources/list', params: {} });
+      return { ok: true, connectorId: id, resources: res?.resources || [] };
+    }
+
+    if (action === 'read_resource') {
+      const uri = String(params.uri || '').trim();
+      if (!uri) throw new Error('Paramètre "uri" requis pour read_resource.');
+      const res = await queryMcpServer(conn, { method: 'resources/read', params: { uri } });
+      return { ok: true, connectorId: id, uri, contents: res?.contents || [] };
+    }
+
+    if (action === 'prompts') {
+      const res = await queryMcpServer(conn, { method: 'prompts/list', params: {} });
+      return { ok: true, connectorId: id, prompts: res?.prompts || [] };
+    }
+
     const toolName = String(params.toolName || '').trim();
     if (!toolName) throw new Error('Paramètre "toolName" requis pour call.');
-    const res = await queryStdioMcpServer(conn, {
+    const res = await queryMcpServer(conn, {
       method: 'tools/call',
       params: { name: toolName, arguments: params.toolArgs || {} },
     });

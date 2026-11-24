@@ -10,11 +10,13 @@ import {
   MCP_TOOL_CATALOG,
   MODEL_POLICIES,
   REASONING_EFFORTS,
+  TRIGGER_MODES,
   acquireGlobalSlot,
   apiCredentialStatus,
   buildReasoningDirective,
   clearGlobalCooldown,
   compactChatContext,
+  controlDeskDock,
   enrichModelsCatalog,
   estimateAntigravityJobSavings,
   estimateTokens,
@@ -22,6 +24,7 @@ import {
   fetchChatContext,
   fetchModelCatalog,
   fetchQuotaSnapshot,
+  fetchUserPersonalization,
   fsJson,
   getGlobalCooldown,
   getModelCooldown,
@@ -32,6 +35,7 @@ import {
   loadState,
   normalizeProviderTokenUsage,
   normalizeReasoningEffort,
+  normalizeTriggerMode,
   parseTaskDirectives,
   pickModel,
   readLiveJobs,
@@ -44,6 +48,7 @@ import {
   saveState,
   streamGenerationWithRefusalFallback,
   syncAgentsRule,
+  updateUserPersonalization,
   webAccessExpiresInMs,
 } from '../../fs_core.mjs';
 import { clearLogs, countRecentErrors, logEvent, readLogs } from '../../logger.mjs';
@@ -100,6 +105,8 @@ const PANEL_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis 
 const PANEL_INSTRUCTIONS = `Réponds clairement et directement en français (ou dans la langue de la demande).
 Si du code est demandé, fournis un code complet, propre et directement utilisable dans des blocs Markdown standards, sans blabla inutile.`;
 
+const PANEL_CANVAS_INSTRUCTIONS = `Mode Canvas & Artefact actif : crée un artefact visuel ou document structuré complet et autonome (page HTML/CSS/JS complète dans un bloc \`\`\`html, graphique \`\`\`svg, diagramme \`\`\`mermaid ou document Markdown riche). Soigne l'esthétique et la lisibilité.`;
+
 const PANEL_PLAN_INSTRUCTIONS = `Propose un plan clair, concret et concis : étapes, fichiers concernés et points d'attention, sans rédiger le code complet.`;
 
 const PANEL_PATCH_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Ne réécris JAMAIS le fichier complet : formate CHAQUE modification exactement avec TARGET: suivi d'un bloc de code et REPLACE: suivi d'un bloc de code.`;
@@ -113,12 +120,14 @@ function profileState(st, profile) {
   return { ...st, routingProfile };
 }
 
-function panelInstructions(executionMode, { useTools = false, reasoningEffort = 'deep' } = {}) {
+function panelInstructions(executionMode, { useTools = false, reasoningEffort = 'deep', enableCanvas = false } = {}) {
   const base = useTools
     ? PANEL_TOOLS_INSTRUCTIONS
-    : (executionMode === 'plan'
-      ? PANEL_PLAN_INSTRUCTIONS
-      : (executionMode === 'patch' ? PANEL_PATCH_INSTRUCTIONS : PANEL_INSTRUCTIONS));
+    : (enableCanvas
+      ? PANEL_CANVAS_INSTRUCTIONS
+      : (executionMode === 'plan'
+        ? PANEL_PLAN_INSTRUCTIONS
+        : (executionMode === 'patch' ? PANEL_PATCH_INSTRUCTIONS : PANEL_INSTRUCTIONS)));
   return base + buildReasoningDirective(reasoningEffort, executionMode);
 }
 
@@ -306,6 +315,10 @@ function publicView(j) {
     slot: j.slot,
     refusals: j.refusals ?? [],
     attemptedModels: j.attemptedModels ?? (j.model ? [j.model] : []),
+    triggeredCapabilities: j.triggeredCapabilities ?? null,
+    webSearchSources: j.webSearchSources ?? [],
+    generatedImages: j.generatedImages ?? [],
+    canvasPreview: j.canvasPreview ?? null,
     antigravitySavings: j.antigravitySavings ?? null,
   };
 }
@@ -363,11 +376,21 @@ async function runJob(job) {
     if (q?.remainingPct !== null && q?.remainingPct < state.cutoffPercent) {
       throw new Error(`Coupe-circuit : il reste ${q.remainingPct.toFixed(0)} % (seuil ${state.cutoffPercent} %).`);
     }
-    const { ids, agentMap } = await fetchModels();
+    const { ids, agentMap, metaMap } = await fetchModels();
     state = profileState(loadState(), job.routingProfile);
     const effectiveEffort = normalizeReasoningEffort(job.reasoningEffort || state.reasoningEffort, 'deep');
     state.reasoningEffort = effectiveEffort;
-    const route = pickModel(job.rawTask ?? job.task, ids, state, job.explicitModel, { approvedModel: job.approveModel || null });
+    const wsRoot = job.workspaceRoot || state.lastWorkspaceRoot || '';
+    const preUseTools = Boolean(state.useClientTools !== false && wsRoot && job.executionMode !== 'patch');
+    const route = pickModel(job.rawTask ?? job.task, ids, state, job.explicitModel, {
+      approvedModel: job.approveModel || null,
+      metaMap,
+      workspaceRoot: wsRoot,
+      useClientTools: preUseTools,
+      webSearchMode: job.webSearchMode ?? null,
+      canvasMode: job.canvasMode ?? null,
+      imageGenMode: job.imageGenMode ?? null,
+    });
     if (route.needsApproval) {
       throw new Error(`Confirmation requise avant d'utiliser ${route.model} (« À demander »).`);
     }
@@ -377,13 +400,19 @@ async function runJob(job) {
     job.executionMode = job.executionMode ?? route.executionMode ?? 'generate';
     job.permissionMode = job.permissionMode ?? route.permissionMode ?? (PERMISSION_MODES.includes(state.permissionMode) ? state.permissionMode : 'acceptEdits');
     job.reasoningEffort = route.reasoningEffort ?? effectiveEffort;
+    job.triggeredCapabilities = {
+      intent: route.intent || 'general',
+      webSearch: Boolean(route.enableWebSearch),
+      canvas: Boolean(route.enableCanvas),
+      imageGen: Boolean(route.enableImageGen),
+    };
     job.contextMode = 'minimal';
 
-    const wsRoot = job.workspaceRoot || state.lastWorkspaceRoot || '';
     const useTools = Boolean(
       state.useClientTools !== false &&
       wsRoot &&
-      job.executionMode !== 'patch'
+      job.executionMode !== 'patch' &&
+      !route.enableCanvas
     );
     const clientTools = useTools ? toolsForPermissionMode(job.permissionMode, job.executionMode) : [];
     const runner = clientTools.length
@@ -396,7 +425,7 @@ async function runJob(job) {
       })
       : null;
 
-    logEvent('info', 'panel', 'panel.job.start', `Démarrage job panneau ${job.id} (${route.model}).`, { jobId: job.id, model: route.model, tools: clientTools.length, reasoningEffort: job.reasoningEffort });
+    logEvent('info', 'panel', 'panel.job.start', `Démarrage job panneau ${job.id} (${route.model}).`, { jobId: job.id, model: route.model, tools: clientTools.length, reasoningEffort: job.reasoningEffort, triggers: job.triggeredCapabilities });
 
     const usePersistent = job.executionMode !== 'plan' && job.executionMode !== 'dry-run';
     const chatId = usePersistent ? await preparePanelChat(state) : undefined;
@@ -425,14 +454,26 @@ async function runJob(job) {
           approvedModel: job.approveModel || null,
           availableModels: ids,
           agentMap,
-          instructions: panelInstructions(job.executionMode, { useTools: clientTools.length > 0, reasoningEffort: job.reasoningEffort }),
+          instructions: panelInstructions(job.executionMode, { useTools: clientTools.length > 0, reasoningEffort: job.reasoningEffort, enableCanvas: Boolean(route.enableCanvas) }),
           prompt: finalPrompt,
           chatId,
           clientTools,
+          enableWebSearch: Boolean(route.enableWebSearch),
+          enableCanvas: Boolean(route.enableCanvas),
+          enableImageGen: route.enableImageGen ? true : undefined,
           executeToolCall: runner ? (call) => runner.execute(call) : null,
           maxToolTurns: 18,
           onToolCall: ({ turn, name }) => {
             job.thoughts.push(`Outil #${turn} : ${name}`);
+            job.thoughts = job.thoughts.slice(-20);
+          },
+          onWebSearch: ({ status, queries, sourcesCount }) => {
+            const label = queries?.length ? `Recherche Web : ${queries[0].slice(0, 60)}` : `Recherche Web (${status || 'actif'})`;
+            job.thoughts.push(sourcesCount ? `${label} · ${sourcesCount} sources` : label);
+            job.thoughts = job.thoughts.slice(-20);
+          },
+          onImageGenerated: (img) => {
+            job.thoughts.push(`Image IA générée (${img.status || 'ok'})`);
             job.thoughts = job.thoughts.slice(-20);
           },
           signal: ac.signal,
@@ -464,10 +505,12 @@ async function runJob(job) {
             approvedModel: job.approveModel || null,
             availableModels: ids,
             agentMap,
-            instructions: panelInstructions(job.executionMode, { useTools: false, reasoningEffort: job.reasoningEffort }),
+            instructions: panelInstructions(job.executionMode, { useTools: false, reasoningEffort: job.reasoningEffort, enableCanvas: Boolean(route.enableCanvas) }),
             prompt: route.prompt,
             chatId: undefined,
             clientTools: [],
+            enableWebSearch: Boolean(route.enableWebSearch),
+            enableCanvas: Boolean(route.enableCanvas),
             executeToolCall: null,
             signal: ac.signal,
             onChatId: (cid) => { job.chatId = cid; },
@@ -495,6 +538,8 @@ async function runJob(job) {
     job.refusals = result.refusals ?? job.refusals ?? [];
     job.attemptedModels = result.attemptedModels ?? job.attemptedModels;
     job.toolTurns = result.toolTurns ?? 0;
+    job.webSearchSources = result.webSearchSources ?? [];
+    job.generatedImages = result.generatedImages ?? [];
     if (runner) {
       job.filesWritten = runner.getFilesWritten();
       job.commandsRun = runner.getCommandsRun();
@@ -504,6 +549,25 @@ async function runJob(job) {
       providerUsage: normalizeProviderTokenUsage(result.usage),
     };
     job.response = String(result.text ?? '').trim().slice(0, 30_000);
+    if (route.enableCanvas && job.response) {
+      const htmlMatch = /```html\s*\n([\s\S]+?)```/i.exec(job.response);
+      const svgMatch = !htmlMatch ? /```svg\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+      const mmdMatch = (!htmlMatch && !svgMatch) ? /```mermaid\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+      const artContent = htmlMatch?.[1] || svgMatch?.[1] || mmdMatch?.[1] || null;
+      const artType = htmlMatch ? 'html' : (svgMatch ? 'svg' : (mmdMatch ? 'mermaid' : null));
+      if (artContent && artType) {
+        try {
+          const cv = await executeCanvasAction({
+            action: 'create',
+            id: `panel-${job.id}`,
+            title: job.title.replace(/^\[ATG\]\s*/, '').slice(0, 60),
+            type: artType,
+            content: artContent.trim(),
+          });
+          if (cv?.url) job.canvasPreview = { id: cv.id, type: artType, url: cv.url };
+        } catch { /* non-blocking */ }
+      }
+    }
     job.summary = job.response.slice(0, 400);
     job.usage = result.usage;
     quotaCache = null;
@@ -572,6 +636,10 @@ app.api('/api/state', async () => {
     permissionMode: permMode,
     useClientTools,
     computerUseEnabled: state.computerUseEnabled !== false,
+    webSearchMode: normalizeTriggerMode(state.webSearchMode ?? (state.enableWebSearch === false ? 'off' : 'auto'), 'auto'),
+    canvasMode: normalizeTriggerMode(state.canvasMode ?? 'auto', 'auto'),
+    imageGenMode: normalizeTriggerMode(state.imageGenMode ?? 'auto', 'auto'),
+    smartRouting: state.smartRouting !== false,
     browserSession: getBrowserSessionStatus(),
     mcpHub: {
       total: MCP_HUB_CATALOG.length,
@@ -726,6 +794,19 @@ app.api('/api/settings', (data) => {
   if (typeof data.computerUseEnabled === 'boolean') {
     state.computerUseEnabled = data.computerUseEnabled;
   }
+  if (data.webSearchMode !== undefined) {
+    state.webSearchMode = normalizeTriggerMode(data.webSearchMode, 'auto');
+    state.enableWebSearch = state.webSearchMode !== 'off';
+  }
+  if (data.canvasMode !== undefined) {
+    state.canvasMode = normalizeTriggerMode(data.canvasMode, 'auto');
+  }
+  if (data.imageGenMode !== undefined) {
+    state.imageGenMode = normalizeTriggerMode(data.imageGenMode, 'auto');
+  }
+  if (typeof data.smartRouting === 'boolean') {
+    state.smartRouting = data.smartRouting;
+  }
   if (typeof data.autoDelegate === 'boolean' || PERMISSION_MODES.includes(data.permissionMode)) {
     syncAgentsRule(state.autoDelegate !== false, state.permissionMode);
     logEvent('info', 'panel', 'settings.policy', `Règles mises à jour : ${state.autoDelegate !== false ? 'Auto' : 'Manuel'} (${state.permissionMode || 'acceptEdits'}).`);
@@ -795,6 +876,56 @@ app.api('/api/mcp-hub', async (data) => {
     ...data,
     workspaceRoot: data?.workspaceRoot || state.lastWorkspaceRoot || '',
   });
+});
+
+app.api('/api/fs-personalization', async (data) => {
+  state = loadState();
+  const action = String(data?.action || 'get').toLowerCase();
+  if (action === 'update' || action === 'patch') {
+    const allowed = {};
+    if (typeof data.documentToolsEnabled === 'boolean') allowed.documentToolsEnabled = data.documentToolsEnabled;
+    if (typeof data.imageGenerationToolEnabled === 'boolean') allowed.imageGenerationToolEnabled = data.imageGenerationToolEnabled;
+    if (typeof data.memoryEnabled === 'boolean') allowed.memoryEnabled = data.memoryEnabled;
+    if (['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(data.gptReasoning)) allowed.gptReasoning = data.gptReasoning;
+    if (['open', 'filtered', 'disabled'].includes(data.webSearchMode)) allowed.webSearchMode = data.webSearchMode;
+    if (['off', 'lite', 'standard', 'ultra'].includes(data.promptCompression)) allowed.promptCompression = data.promptCompression;
+    if (['gpt-image-2', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2.6-sunburst', 'gpt-image-2.6-flare'].includes(data.imageGenerationModel)) {
+      allowed.imageGenerationModel = data.imageGenerationModel;
+    }
+    const updated = await updateUserPersonalization(state, allowed);
+    return { ok: true, personalization: updated };
+  }
+  const cur = await fetchUserPersonalization(state, { force: Boolean(data?.force) });
+  return { ok: true, personalization: cur };
+});
+
+app.api('/api/chats', async (data) => {
+  state = loadState();
+  const action = String(data?.action || 'list').toLowerCase();
+  if (action === 'search' && data?.query) {
+    const res = await fsJson(state, 'GET', `/chats/search?q=${encodeURIComponent(String(data.query))}`);
+    const list = Array.isArray(res) ? res : (res?.data || res?.items || res?.chats || []);
+    return { ok: true, chats: list.slice(0, 20) };
+  }
+  if (action === 'resume' && data?.chatId) {
+    state.directChats = { ...(state.directChats || {}), panel: String(data.chatId) };
+    saveState(state);
+    return { ok: true, chatId: String(data.chatId), message: 'Conversation reprise sur le panneau.' };
+  }
+  const res = await fsJson(state, 'GET', '/chats');
+  const list = Array.isArray(res) ? res : (res?.data || res?.items || res?.chats || []);
+  return { ok: true, chats: list.slice(0, 20), activePanelChatId: state.directChats?.panel || null };
+});
+
+app.api('/api/token-activity', async () => {
+  state = loadState();
+  const res = await fsJson(state, 'GET', '/user/tokenusage');
+  return { ok: true, activity: res };
+});
+
+app.api('/api/deskdock', async (data) => {
+  state = loadState();
+  return await controlDeskDock(state, data?.action || 'status');
 });
 
 app.api('/api/classic-ai', async (data) => {
@@ -956,6 +1087,9 @@ app.api('/api/delegate', async (data) => {
     permissionMode: delegation.permissionMode,
     reasoningEffort: delegation.reasoningEffort,
     routingProfile: delegation.routingProfile,
+    webSearchMode: data.webSearch ?? undefined,
+    canvasMode: data.canvas ?? undefined,
+    imageGenMode: data.imageGen ?? undefined,
     status: 'queued',
     createdAt: Date.now(),
     receivedChars: 0,

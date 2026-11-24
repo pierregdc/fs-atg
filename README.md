@@ -6,33 +6,65 @@
   </picture>
 </p>
 
-<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.5.0)</h1>
+<h1 align="center">France Student pour Antigravity (<code>fs-atg</code> v2.6.0)</h1>
 
 <p align="center">
-  <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> (24 outils + Hub de 34 connecteurs MCP + Suite IA Classique) pour Antigravity</strong><br>
-  Exécution autonome sur le workspace, Suite IA Classique (Code Interpreter <code>/data</code>, Deep Research <code>/research</code>, Live Canvas <code>/canvas</code>, Vision OCR <code>/vision</code>, Consensus Multi-IA <code>/arena</code>, Lecteur PDF/Office <code>/doc</code>, Voix TTS <code>/voice</code>, Watchers <code>/watch</code>), Hub 34+ MCP (Roblox Studio, Blender, Unity, DB, DevOps…), Computer Use (<code>/computer</code>) et Navigateur CDP (<code>/browse</code>).
+  <strong>Orchestrateur France Student &amp; serveur MCP <code>stdio</code> (24 outils + Hub universel de 68 connecteurs MCP + Suite IA Classique) pour Antigravity</strong><br>
+  Tri automatique universel des modèles du plus fort au plus faible, routage intelligent avec déclencheurs natifs France Student (<code>Web Search</code>, <code>Canvas / documentToolsEnabled</code>, <code>Images IA</code>), Hub 68+ MCP (<code>stdio</code>, <code>Streamable HTTP</code>, <code>SSE</code>, auto-détection IDE, Cloud MCP <code>/mcp/servers</code>, Blender, Roblox Studio, Firecrawl, Stripe, n8n…), Suite IA Classique et panneau latéral interactif.
 </p>
 
 <p align="center">
-  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.5.0-2563eb?style=flat-square" alt="Version 2.5.0"></a>
+  <a href="plugin/plugin.json"><img src="https://img.shields.io/badge/version-2.6.0-2563eb?style=flat-square" alt="Version 2.6.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-334155?style=flat-square" alt="Licence MIT"></a>
   <a href="#commandes-slash-officielles"><img src="https://img.shields.io/badge/commandes-20%20slash-2563eb?style=flat-square" alt="20 commandes slash"></a>
-  <a href="#nouveautes-v25--suite-ia-classique-8-outils-integres"><img src="https://img.shields.io/badge/MCP-24%20outils%20%2B%2034%20connecteurs-475569?style=flat-square" alt="24 outils MCP + 34 connecteurs"></a>
+  <a href="#nouveautes-v26--routage-intelligent-tri-auto-puissance-et-hub-68-mcp"><img src="https://img.shields.io/badge/MCP-24%20outils%20%2B%2068%20connecteurs-475569?style=flat-square" alt="24 outils MCP + 68 connecteurs"></a>
 </p>
 
 ---
 
 ## Aperçu de l'interface
 
-L'interface du panneau latéral adopte un thème monochrome/slate et bleu unifié sans surcharge visuelle, structuré en **3 onglets principaux** (**Accueil**, **Modèles**, **Réglages**) avec indicateurs clarifiés : pastilles de gamme (`Fort`, `Équilibré`, `Léger`), badge émeraude `Nouveau` (< 14 jours), barres d'intensité du raisonnement et sélecteur d'autorisation par modèle.
+L'interface du panneau latéral adopte un thème monochrome/slate, bleu royal et émeraude unifié, structuré en **3 onglets principaux** (**Accueil**, **Modèles**, **Réglages**) avec aperçus visuels interactifs intégrés (graphiques SVG, captures écran + puces OCR WinRT, lecteur audio WAV HTML5, prévisualisation Canvas Live en iframe, grille visuelle de sonde PC &amp; Bridges).
 
-| Accueil (jauge unique, permissions &amp; raisonnement) | Modèles (contrôle Oui / À demander / Non &amp; badges) |
+| Accueil (jauge unique, déclencheurs Web/Canvas &amp; commandes) | Modèles (tri auto fort -> faible &amp; contrôle Oui / À demander / Non) |
 | :---: | :---: |
 | ![Accueil](docs/images/screen-accueil.png) | ![Modèles](docs/images/screen-modeles.png) |
 
-| Réglages (connexion &amp; comportement) | Journal &amp; Avancé (logs &amp; diagnostics) |
+| Réglages (Studio IA visuel &amp; Hub 68+ MCP) | Journal &amp; Avancé (logs &amp; diagnostics) |
 | :---: | :---: |
 | ![Réglages](docs/images/screen-reglages.png) | ![Journal](docs/images/screen-journal.png) |
+
+---
+
+## Nouveautés v2.6 — Routage intelligent, tri auto puissance et Hub 68+ MCP
+
+1. **Tri automatique universel des modèles (du plus fort au plus faible)** :
+   - Chaque modèle actuel ou futur apparu sur France Student (ex. `claude-opus-7`, `gpt-7.1-astra`, `claude-sonnet-6`, `gemini-4-flash`, `ministral-14b-latest`) est analysé automatiquement (`scoreModelPower` : gamme + famille + version sémantique + taille en paramètres + fenêtre de contexte) pour rester **toujours classé du plus puissant au plus léger** dans le catalogue (`#1`, `#2`, `#3`...) et dans les cascades de repli, tout en conservant son badge émeraude `Nouveau` (< 14 jours).
+2. **Délégation intelligente &amp; déclencheurs natifs France Student (API Swagger officielle)** :
+   - **Recherche Web (`enableWebSearch`)** : détecte automatiquement les demandes d'actualités, comparatifs, prix ou documentations récentes, choisit un modèle léger/rapide suffisant (ex. `claude-haiku-5-5`) pour économiser le quota, enclenche la recherche web native France Student (`POST /chats/stream` / `POST /v1/responses`) et affiche les sources citées en direct dans l'historique.
+   - **Canvas &amp; Artefacts (`enableCanvas` + `documentToolsEnabled`)** : détecte automatiquement les demandes d'artefacts visuels, maquettes, tableaux de bord ou schémas, synchronise `documentToolsEnabled` sur le compte France Student (`PATCH /user/instructions`), route sur un modèle équilibré (`claude-sonnet-5-5`) et publie instantanément tout bloc HTML/SVG/Mermaid sur le serveur local **Live Canvas**.
+   - **Génération d'images IA (`imageGenerationToolEnabled`)** : détecte les demandes de création d'images et synchronise l'outil natif d'images France Student.
+   - **Contrôles dédiés &amp; Synchronisation compte** : sélecteurs `Auto / Oui / Non` pour **Web Search** et **Canvas** sur l'onglet **Accueil**, commandes slash locales (`/search`, `/noweb`, `/canvas`, `/nocanvas`, `/image`), et section **Compte France Student** dans **Réglages** (`gptReasoning`, `promptCompression`, `documentToolsEnabled`, `imageGenerationToolEnabled`, reprise des conversations Cloud `/chats` et activité tokens `/user/tokenusage`).
+3. **Hub MCP Universel étendu à 68+ connecteurs &amp; 3 transports complets** :
+   - **68 serveurs MCP pré-configurés** répartis en **6 catégories** (3D &amp; Jeux, Web &amp; Scraping, Mémoire IA &amp; Raisonnement, Bases DB, DevOps, Productivité &amp; Business).
+   - **Transports complets** : `stdio`, **`Streamable HTTP`** et **`SSE`**, méthodes protocole MCP (`ping` avec latence ms, `tools/list` avec cache disque 24 h, `tools/call`, `resources/list`, `resources/read`, `prompts/list`).
+   - **Auto-détection IDE en 1 clic (`detect_local` / `import_local`)** : scanne automatiquement les serveurs MCP déjà installés dans Claude Desktop, Claude Code, Cursor, Windsurf, Gemini CLI, Antigravity et VS Code.
+   - **Pont virtuel `mcp-call`** dans `run_command` : permet aux modèles France Student délégués d'appeler directement un serveur MCP activé dans le Hub.
+   - **Serveurs MCP Cloud France Student (`/mcp/servers`) &amp; DeskDock (`/deskdock`)** : listage, ajout et suppression de serveurs MCP distants sur le compte France Student.
+4. **Refonte visuelle &amp; aperçus riches dans le panneau latéral** :
+   - Barre de commandes réorganisée en 2 lignes (`Core` + `Studio`) avec icône Microphone SVG.
+   - **Scène visuelle interactive (`#mcpVisualStage`)** : rendu inline des graphiques SVG (`/data`), miniatures de captures écran + puces OCR WinRT (`/vision`), lecteur HTML5 `<audio controls>` WAV (`/voice`), prévisualisation Live Canvas en `<iframe>` (`/canvas`), cartes VS (`/arena`) et grille visuelle **Sonde PC &amp; Bridges**.
+
+### Catalogue des 68 connecteurs MCP intégrés
+
+| Catégorie | Connecteurs compatibles (`connectorId`) |
+| :--- | :--- |
+| **3D, Jeux &amp; Création (13)** | `blender` (TCP 9876 + CLI `bpy`), `roblox` (Studio HTTP 44755 + Rojo Luau), `unity`, `unreal`, `godot`, `figma`, `aseprite`, `minecraft`, `obs-studio`, `canva`, `excalidraw`, `sketchfab`, `mermaid-mcp` |
+| **Web, Scraping &amp; Média (12)** | `playwright`, `puppeteer`, `firecrawl`, `exa`, `tavily`, `perplexity`, `brave-search`, `fetch`, `browserbase`, `context7`, `ffmpeg`, `youtube` |
+| **Mémoire IA, Raisonnement &amp; Graphes (8)** | `sequential-thinking`, `memory`, `filesystem`, `qdrant`, `neo4j`, `duckdb`, `chroma`, `time` |
+| **Bases de données &amp; Backend (9)** | `postgres`, `sqlite`, `mysql`, `mongodb`, `redis`, `supabase`, `firebase`, `prisma`, `neon` |
+| **Code, Git &amp; Cloud DevOps (10)** | `github`, `gitlab`, `git`, `docker`, `kubernetes`, `cloudflare`, `vercel`, `sentry`, `aws`, `terraform` |
+| **Productivité, Business &amp; Domotique (16)** | `notion`, `obsidian`, `discord`, `slack`, `linear`, `stripe`, `home-assistant`, `spotify`, `google-drive`, `gmail`, `google-calendar`, `atlassian`, `n8n`, `telegram`, `airtable`, `trello` |
 
 ---
 

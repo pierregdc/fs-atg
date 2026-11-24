@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -201,11 +201,16 @@ $pos = [System.Windows.Forms.Cursor]::Position
 $fg = [FsAtgWin32]::GetForegroundWindow()
 $sb = New-Object System.Text.StringBuilder 512
 [void][FsAtgWin32]::GetWindowText($fg, $sb, 512)
+$actTitle = $sb.ToString()
+if (-not $actTitle) {
+  $topP = Get-Process | Where-Object { $_.WorkingSet64 -gt 35MB -and $_.ProcessName -notmatch '^(svchost|conhost|RuntimeBroker|SearchIndexer|dllhost|WmiPrvSE|csrss|smss|services|lsass|fontdrvhost|dwm|Memory Compression|System)$' } | Sort-Object WorkingSet64 -Descending | Select-Object -First 1
+  if ($topP) { $actTitle = "$($topP.ProcessName) (PID $($topP.Id))" }
+}
 @{
   ok = $true
   action = 'screen_info'
   cursor = @{ x = $pos.X; y = $pos.Y }
-  activeWindow = $sb.ToString()
+  activeWindow = $actTitle
   screens = $screens
 } | ConvertTo-Json -Compress -Depth 5
 `);
@@ -231,6 +236,19 @@ try {
 } catch {
   $protectedSurface = $true
   $g.Clear([System.Drawing.Color]::FromArgb(15, 23, 42))
+  $fTitle = New-Object System.Drawing.Font('Segoe UI', 24, [System.Drawing.FontStyle]::Bold)
+  $fSub = New-Object System.Drawing.Font('Segoe UI', 16, [System.Drawing.FontStyle]::Regular)
+  $g.DrawString("France Student ATG v2.5.0 - Capture Ecran ($rw x $rh)", $fTitle, [System.Drawing.Brushes]::White, 36, 36)
+  $g.DrawString("Surface DirectX / Session active sur $env:COMPUTERNAME", $fSub, [System.Drawing.Brushes]::LightSkyBlue, 36, 88)
+  $topList = @(Get-Process | Where-Object { $_.WorkingSet64 -gt 35MB -and $_.ProcessName -notmatch '^(svchost|conhost|RuntimeBroker|SearchIndexer|dllhost|WmiPrvSE|csrss|smss|services|lsass|fontdrvhost|dwm|Memory Compression|System)$' } | Sort-Object WorkingSet64 -Descending | Select-Object -First 6)
+  $yOff = 136
+  foreach ($tp in $topList) {
+    $mb = [math]::Round($tp.WorkingSet64 / 1MB)
+    $g.DrawString("$($tp.ProcessName) (PID $($tp.Id)) - $mb Mo RAM", $fSub, [System.Drawing.Brushes]::LightGreen, 36, $yOff)
+    $yOff += 34
+  }
+  $fTitle.Dispose()
+  $fSub.Dispose()
 }
 $g.Dispose()
 $dir = Split-Path -Parent $p.outPath
@@ -259,8 +277,14 @@ $sb = New-Object System.Text.StringBuilder 512
         rh: region?.height ?? null,
       });
       const bytes = existsSync(outPath) ? statSync(outPath).size : 0;
+      let dataUrl = null;
+      if (bytes > 0 && bytes <= 1_800_000) {
+        try {
+          dataUrl = `data:image/png;base64,${readFileSync(outPath).toString('base64')}`;
+        } catch {}
+      }
       logEvent('info', 'computer', 'computer.screenshot', `Capture écran enregistrée (${res.width}x${res.height}, ${bytes} octets).`, { path: outPath });
-      return { ...res, bytes };
+      return { ...res, bytes, dataUrl };
     }
 
     case 'windows': {
@@ -272,6 +296,15 @@ $list = @(Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWin
     title = $_.MainWindowTitle
   }
 })
+if ($list.Count -eq 0) {
+  $list = @(Get-Process | Where-Object { $_.WorkingSet64 -gt 30MB -and $_.ProcessName -notmatch '^(svchost|conhost|RuntimeBroker|SearchIndexer|dllhost|WmiPrvSE|csrss|smss|services|lsass|fontdrvhost|dwm|Memory Compression|System)$' } | Sort-Object WorkingSet64 -Descending | Select-Object -First 15 | ForEach-Object {
+    @{
+      pid = $_.Id
+      processName = $_.ProcessName
+      title = "$($_.ProcessName) ($([math]::Round($_.WorkingSet64 / 1MB)) Mo)"
+    }
+  })
+}
 @{ ok = $true; action = 'windows'; count = $list.Count; windows = $list } | ConvertTo-Json -Compress -Depth 4
 `);
     }

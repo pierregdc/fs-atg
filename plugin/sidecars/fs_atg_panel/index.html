@@ -242,7 +242,7 @@
     .synth-pill strong { color: var(--fs-fg); font-weight: 650; }
     .pill-select {
       border: 0; background: transparent; color: var(--fs-fg); font-weight: 650; font-size: 10.5px;
-      padding: 0; width: 100%; min-width: 0; cursor: pointer; text-overflow: ellipsis;
+      line-height: 1.4; padding: 0; margin: 0; width: 100%; min-width: 0; cursor: pointer; text-overflow: ellipsis;
     }
     .pill-select:focus { outline: none; box-shadow: none; }
     .pill-select option { background: var(--fs-card); color: var(--fs-fg); }
@@ -366,16 +366,160 @@
     .reasoning-box .seg-3 button { gap: 5px; }
 
     /* Composer */
-    .cmd-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
+    .cmd-groups { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+    .cmd-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .cmd-row.studio {
+      padding: 5px 6px; border-radius: 8px;
+      background: rgba(255, 255, 255, .02);
+      border: 1px solid var(--fs-line-soft);
+    }
+    .cmd-row-lbl {
+      font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--fs-faint); margin-right: 2px; flex-shrink: 0;
+    }
     .cmd-pill {
       font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-      font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 5px;
+      font-size: 10px; font-weight: 600; padding: 2px 6.5px; border-radius: 5px;
       background: rgba(255, 255, 255, .03);
       border: 1px solid var(--fs-line); color: var(--fs-muted);
-      cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 3px;
+      transition: background .15s, border-color .15s, color .15s;
     }
     .cmd-pill:hover { background: rgba(255, 255, 255, .07); color: var(--fs-fg); }
     .cmd-pill.on { background: rgba(59, 130, 246, .16); border-color: rgba(59, 130, 246, .45); color: var(--fs-fg); }
+    .cmd-pill.mic-on { background: rgba(16, 185, 129, .16); border-color: rgba(16, 185, 129, .45); color: #34d399; }
+
+    /* Smart Native Triggers (Web Search & Canvas) */
+    .triggers-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;
+      margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--fs-line-soft);
+    }
+    .trig-card {
+      background: rgba(255, 255, 255, .02); border: 1px solid var(--fs-line-soft);
+      border-radius: 8px; padding: 5px 6px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .trig-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 4px;
+      font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fs-muted);
+    }
+    .trig-seg {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px;
+      background: color-mix(in srgb, var(--fs-bg) 78%, #000);
+      border: 1px solid var(--fs-line); border-radius: 6px; padding: 2px;
+    }
+    .trig-seg button {
+      border: 0; background: transparent; color: var(--fs-muted);
+      padding: 2.5px 2px; border-radius: 4px; cursor: pointer; font-size: 9.5px; font-weight: 600;
+      transition: background .14s, color .14s;
+    }
+    .trig-seg button:hover { color: var(--fs-fg); }
+    .trig-seg button.on[data-val="auto"] { background: rgba(59, 130, 246, .18); color: #93c5fd; }
+    .trig-seg button.on[data-val="on"] { background: rgba(16, 185, 129, .18); color: #34d399; }
+    .trig-seg button.on[data-val="off"] { background: rgba(255, 255, 255, .08); color: var(--fs-fg); }
+
+    /* Model power rank badge */
+    .rank-pill {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 5px;
+      background: rgba(59, 130, 246, .12); border: 1px solid rgba(59, 130, 246, .28); color: #93c5fd;
+    }
+    .cap-chip {
+      font-size: 9px; font-weight: 650; padding: 1px 5.5px; border-radius: 5px;
+      background: rgba(59, 130, 246, .14); border: 1px solid rgba(59, 130, 246, .35); color: #93c5fd;
+    }
+    .cap-chip.canvas {
+      background: rgba(16, 185, 129, .14); border-color: rgba(16, 185, 129, .35); color: #34d399;
+    }
+    .source-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .source-pill {
+      font-size: 9.5px; padding: 2px 6px; border-radius: 5px;
+      background: rgba(59, 130, 246, .08); border: 1px solid rgba(59, 130, 246, .25);
+      color: #93c5fd; text-decoration: none; max-width: 185px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block;
+    }
+    .source-pill:hover { background: rgba(59, 130, 246, .18); }
+
+    /* Studio Tool Grid & Rich Visual Output Stage */
+    .studio-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-bottom: 9px;
+    }
+    .studio-btn {
+      display: flex; align-items: center; gap: 6px; text-align: left;
+      padding: 6.5px 8px; border-radius: 8px; cursor: pointer;
+      background: rgba(255, 255, 255, .025); border: 1px solid var(--fs-line);
+      color: var(--fs-fg); font-size: 10.5px; font-weight: 600;
+      transition: background .15s, border-color .15s, transform .1s;
+    }
+    .studio-btn:hover { background: rgba(59, 130, 246, .10); border-color: rgba(59, 130, 246, .40); }
+    .studio-btn.on { background: rgba(59, 130, 246, .16); border-color: rgba(59, 130, 246, .55); }
+    .studio-btn .ico { color: var(--fs-accent); }
+    .studio-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .visual-stage {
+      margin-top: 8px; background: var(--fs-input); border: 1px solid var(--fs-line);
+      border-radius: 9px; padding: 9px; overflow: hidden;
+    }
+    .visual-stage[hidden] { display: none; }
+    .stage-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      margin-bottom: 7px; font-size: 10.5px; font-weight: 650; color: var(--fs-fg);
+    }
+    .stage-img {
+      width: 100%; border-radius: 6px; border: 1px solid var(--fs-line); display: block; background: #000;
+    }
+    .stage-svg { width: 100%; overflow: hidden; border-radius: 6px; border: 1px solid var(--fs-line); background: #0b0f16; padding: 4px; }
+    .stage-svg svg { width: 100%; height: auto; display: block; }
+    .stage-iframe { width: 100%; height: 170px; border: 1px solid var(--fs-line); border-radius: 6px; background: #0f172a; }
+    .stage-audio { width: 100%; height: 32px; margin-top: 4px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .metric-tile {
+      background: rgba(255, 255, 255, .03); border: 1px solid var(--fs-line-soft);
+      border-radius: 7px; padding: 6px 8px;
+    }
+    .metric-k { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fs-faint); }
+    .metric-v { font-size: 12px; font-weight: 700; color: var(--fs-fg); margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .arena-vs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .arena-card {
+      background: rgba(59, 130, 246, .06); border: 1px solid rgba(59, 130, 246, .26);
+      border-radius: 8px; padding: 8px; text-align: center;
+    }
+    .ocr-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .ocr-chip {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9.5px;
+      padding: 2px 6px; border-radius: 5px; background: rgba(16, 185, 129, .10);
+      border: 1px solid rgba(16, 185, 129, .28); color: #a7f3d0;
+    }
+
+    /* Hub MCP Category Pills & Visual Probe Grid */
+    .hub-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
+    .hub-pill {
+      border: 1px solid var(--fs-line); background: rgba(255, 255, 255, .025); color: var(--fs-muted);
+      border-radius: 999px; padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer;
+      transition: background .15s, border-color .15s, color .15s;
+    }
+    .hub-pill:hover { color: var(--fs-fg); background: rgba(255, 255, 255, .06); }
+    .hub-pill.on { background: rgba(59, 130, 246, .18); border-color: rgba(59, 130, 246, .48); color: #fff; }
+    .hub-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 7px 9px; border: 1px solid var(--fs-line); border-radius: 8px;
+      background: var(--fs-card-elev); transition: border-color .15s;
+    }
+    .hub-row.enabled { border-color: rgba(59, 130, 246, .35); background: rgba(59, 130, 246, .04); }
+    .probe-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 7px;
+    }
+    .probe-pill {
+      display: flex; align-items: center; justify-content: space-between; gap: 5px;
+      padding: 5px 7px; border-radius: 7px; font-size: 10px;
+      background: var(--fs-input); border: 1px solid var(--fs-line-soft); color: var(--fs-muted);
+    }
+    .probe-pill.ok { border-color: rgba(16, 185, 129, .32); color: var(--fs-fg); }
+    .probe-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fs-faint); flex-shrink: 0; }
+    .probe-pill.ok .probe-dot { background: var(--fs-ok); }
+    .cloud-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      padding: 6px 8px; border-radius: 7px; background: var(--fs-input); border: 1px solid var(--fs-line);
+      font-size: 10.5px; margin-top: 5px;
+    }
     textarea, select, input[type="text"], input[type="password"], input[type="number"] {
       width: 100%; background: var(--fs-input); color: var(--fs-fg);
       border: 1px solid var(--fs-line); border-radius: var(--fs-r-sm);
@@ -438,8 +582,8 @@
     .link-btn:hover { color: var(--fs-fg); text-decoration: underline; }
 
     /* Section Header */
-    .sec-head { display: flex; justify-content: space-between; align-items: center; margin: 12px 2px 6px; }
-    .sec-title { font-size: 10px; font-weight: 700; letter-spacing: .07em; color: var(--fs-muted); text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
+    .sec-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 12px 2px 6px; }
+    .sec-title { font-size: 10px; font-weight: 700; letter-spacing: .07em; color: var(--fs-muted); text-transform: uppercase; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .cnt { background: color-mix(in srgb, var(--fs-fg) 9%, transparent); border-radius: var(--fs-pill); padding: 0 6px; font-size: 10px; color: var(--fs-fg); }
     .empty-txt { font-size: 11px; color: var(--fs-faint); padding: 10px 4px; }
 
@@ -697,7 +841,7 @@
         <div class="brand">
           <img class="brand-logo" alt="France Student" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASzSURBVGhD7VhbjF1jFP6m1dZdoo2G0NaYurTSqHPO3mudkRiioWlKCEGlLuGJEiIRlxeJNwkRqTQVjBAVE52aObP/9Z/21GSIoYJU6INbiw6pUGXKVMt0ZK2953bOmenLXM7D/pL1cvbeZ3/f/r/1r7V+IEWKFClSpEhRBcuKJyGI1iDouAncfUL55VpFnZFldzlI3gfLf2B/BCwlUDFEU+fxdk9NQskF0fmg6HWQ/AWWgZi8CRgAu16E7kVkO+qx0s0pf3z6sKRlNoLiuWB5DOT2xWTlX7DrActrYNkElp/j1bBre0HRQ8i0L0Bm46zyv5tCDMxAxp8J9reD5bOYtBwFy+9gvwWhv8LygP3p4ML1IBGQ/DG0MiQ7EMotCNvmA0/OKP/3yUQdQncqAr8K7Apg+dOIkxwGy3sgdxsyhXnAgN53Nsg9AXIbQO2XIpC7Qe4jsKitjoLdAZBsRhitQGPbKeUvmnjokoeyDOReActPZgty/SD3NUL/IEgW2crYvYV5YFkPloNg+Qfk3kTQOhfc1oBQHgXJbrD028qR/AjyG0DbLkJT53Hlr50YZD6ZhdDfB3J7jBB7/eq/gqIXwIUL0eDmgPzjCISNfChPJ6ujvtck7gNFz5qtNOFzfinYvRxbzmx1CCzfguSOyRHBLbo9qmWUkL5su3k451bbFqlJyfJ5ksiaE38Pkx+KPrDvQl5ythpqG9tyXWf8USyHNqGpWbfbCYYK0ESMiXSD/FUJURXTl2ydgzuNEiknPxj9thr6tdlfg6A0F2FhMVg+teskbyX1YoIxSoDvQrZUH3tcyfjxCI8XmgMlBFEWLDumVkBYmm8FKV+8ESzfH+OrjxW9yMu9aDT7TYOAQZBcm1ipnOAxwv2ArFuO3DvnTK+AzLbTwO6LSoJjhe1gWtQ2WqGbdgEKcivNEhVkq4ZW4qdMuKImBOhL456nnGxlkOsFddyAJV/OtmdrQkC4dTHIWoRKwpWhK7DTeilFbQjwa6sQHS9+Q7Z4sT1bEwLYvVqF5FihSbzLqrFi2gUsalb/f1OF6Hjxi80RiqkXIN1o3LZgqI8P/XXDU1jV0CKnVXfEb9rcyTPxFtzWMDWtBEcdCYFDIO9AUWjdpSYjyUvW38eDzUjy2krvAkkrSHrATps8/W0f2K9D4K4Eu+1DHa41c5MhQNtpcveDZQ/IHR5up+V5ZOUCE6K1gNzbcaNmheoIyG81q2iLvHzzwuQ/1iNw65K5Yv+QUHbfIfR3TU47rVARuegSkCVsPOfGA81XIHkA+WihtcIZdx4ougfsnrP+XlfP0DITl5XqQe4RULQblAw0OidrVc61L5088sOoM9+SWw0WtVQ8UsZfsAuB3Gotsh2faI5oDNQh33oGSO4EuQ+HR0p/AOy2IJCrp2akHIWWmWhsOysmJTtHDPX7ze86qGQKJ5q1wuIKkA5DSljtYkctH4OjNfFuNrVD/WgMHqvo8M5eE1NF6Jy7FyTNIPdGYrfB5O5B6B42u03vsUoZ1OeazEqYhsbJEQdbchChzsBtDZMzMk4M6sw2eiZE8kEyYupqvItcRz5J5ho9WixHU+fJCKO1IHeziUqRIkWKFClSVOJ/3Vji70GskJcAAAAASUVORK5CYII=" />
           <div class="brand-txt">
-            <h1>France Student <span class="badge">ATG</span> <span class="ver-badge">v2.5.0</span></h1>
+            <h1>France Student <span class="badge">ATG</span> <span class="ver-badge">v2.6.0</span></h1>
             <div class="ws-line" id="heroWsBadge" hidden>
               <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
               <span id="heroWsName"></span>
@@ -797,29 +941,38 @@
     </div>
 
     <div class="card">
-      <div class="cmd-bar" id="cmdBar" aria-label="Commandes rapides">
-        <button type="button" class="cmd-pill" data-cmd="/fs" title="Déléguer à France Student (écriture directe + /undo)">/fs</button>
-        <button type="button" class="cmd-pill" data-cmd="/max" title="Raisonnement Maximum + modèle Fort">/max</button>
-        <button type="button" class="cmd-pill" data-cmd="/patch" title="Modification ciblée">/patch</button>
-        <button type="button" class="cmd-pill" data-cmd="/plan" title="Plan sans écriture">/plan</button>
-        <button type="button" class="cmd-pill" data-cmd="/eco" title="Profil Éco">/eco</button>
-        <button type="button" class="cmd-pill" data-cmd="/computer" title="Computer Use : écran, fenêtres, souris, clavier">/computer</button>
-        <button type="button" class="cmd-pill" data-cmd="/browse" title="Automatisation navigateur CDP">/browse</button>
-        <button type="button" class="cmd-pill" data-cmd="/web" title="Lecture URL Markdown &amp; recherche web">/web</button>
-        <button type="button" class="cmd-pill" data-cmd="/mcp" title="Hub 34+ MCP : Roblox Studio, Blender, Unity, DB, DevOps…">/mcp</button>
-        <button type="button" class="cmd-pill" data-cmd="/data" title="Code Interpreter, profilage CSV/JSON &amp; graphiques SVG">/data</button>
-        <button type="button" class="cmd-pill" data-cmd="/research" title="Deep Research multi-sources sourcée">/research</button>
-        <button type="button" class="cmd-pill" data-cmd="/canvas" title="Artifacts interactifs HTML/SVG/Mermaid en live">/canvas</button>
-        <button type="button" class="cmd-pill" data-cmd="/vision" title="Vision &amp; OCR écran natif Windows">/vision</button>
-        <button type="button" class="cmd-pill" data-cmd="/arena" title="Consensus multi-modèles en parallèle">/arena</button>
-        <button type="button" class="cmd-pill" data-cmd="/doc" title="Lecteur universel PDF, Word, Excel, PowerPoint, ZIP">/doc</button>
-        <button type="button" class="cmd-pill" data-cmd="/voice" title="Synthèse vocale TTS Windows">/voice</button>
-        <button type="button" class="cmd-pill" data-cmd="/watch" title="Tâches planifiées &amp; watchers">/watch</button>
-        <button type="button" class="cmd-pill" data-cmd="/model" title="Forcer un modèle précis : /model gpt-6.2-astra ...">/model</button>
-        <button type="button" class="cmd-pill" data-cmd="/remember" title="Mémoriser une règle projet">/remember</button>
-        <button type="button" class="cmd-pill" id="dictateTaskBtn" title="Dictée vocale dans le champ de tâche">Micro</button>
+      <div class="cmd-groups" id="cmdBar" aria-label="Commandes rapides">
+        <div class="cmd-row">
+          <span class="cmd-row-lbl">Core</span>
+          <button type="button" class="cmd-pill" data-cmd="/fs" title="Déléguer à France Student (écriture directe + /undo)">/fs</button>
+          <button type="button" class="cmd-pill" data-cmd="/max" title="Raisonnement Maximum + modèle Fort">/max</button>
+          <button type="button" class="cmd-pill" data-cmd="/patch" title="Modification ciblée">/patch</button>
+          <button type="button" class="cmd-pill" data-cmd="/plan" title="Plan sans écriture">/plan</button>
+          <button type="button" class="cmd-pill" data-cmd="/eco" title="Profil Éco">/eco</button>
+          <button type="button" class="cmd-pill" data-cmd="/model" title="Forcer un modèle précis">/model</button>
+          <button type="button" class="cmd-pill" data-cmd="/remember" title="Mémoriser une règle projet">/remember</button>
+          <button type="button" class="cmd-pill" id="dictateTaskBtn" title="Dictée vocale dans le champ de tâche">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            <span id="dictateLabel">Micro</span>
+          </button>
+        </div>
+        <div class="cmd-row studio">
+          <span class="cmd-row-lbl">Studio</span>
+          <button type="button" class="cmd-pill" data-cmd="/mcp" title="Hub 68+ MCP : Roblox, Blender, Firecrawl, Stripe, Cloud…">/mcp</button>
+          <button type="button" class="cmd-pill" data-cmd="/computer" title="Computer Use : écran, fenêtres, souris, clavier">/computer</button>
+          <button type="button" class="cmd-pill" data-cmd="/browse" title="Automatisation navigateur CDP">/browse</button>
+          <button type="button" class="cmd-pill" data-cmd="/web" title="Lecture URL Markdown &amp; recherche web">/web</button>
+          <button type="button" class="cmd-pill" data-cmd="/canvas" title="Artifacts interactifs HTML/SVG/Mermaid &amp; Canvas natif">/canvas</button>
+          <button type="button" class="cmd-pill" data-cmd="/research" title="Deep Research multi-sources sourcée">/research</button>
+          <button type="button" class="cmd-pill" data-cmd="/data" title="Code Interpreter, profilage CSV/JSON &amp; graphiques SVG">/data</button>
+          <button type="button" class="cmd-pill" data-cmd="/vision" title="Vision &amp; OCR écran natif Windows">/vision</button>
+          <button type="button" class="cmd-pill" data-cmd="/arena" title="Consensus multi-modèles en parallèle">/arena</button>
+          <button type="button" class="cmd-pill" data-cmd="/doc" title="Lecteur universel PDF, Word, Excel, PowerPoint, ZIP">/doc</button>
+          <button type="button" class="cmd-pill" data-cmd="/voice" title="Synthèse vocale TTS Windows">/voice</button>
+          <button type="button" class="cmd-pill" data-cmd="/watch" title="Tâches planifiées &amp; watchers">/watch</button>
+        </div>
       </div>
-      <textarea id="task" placeholder="Ex : /fs ajoute les tests, /max corrige le bug, /patch trie les items…"></textarea>
+      <textarea id="task" placeholder="Ex : cherche sur internet la dernière LTS Node, crée un canvas dashboard, /fs ajoute les tests…"></textarea>
       <div class="ctx-gauge" id="ctxGauge" hidden><span id="ctxLbl"></span><span class="ctx-bar"><i id="ctxFill"></i></span></div>
       <div class="tier-row" id="tierRow">
         <button class="chip on" data-choice="">
@@ -835,6 +988,34 @@
         <button class="chip" data-choice="tier:light" data-tier="light">
           <span class="tier-dot light"></span> Léger <span class="chip-cnt" id="cnt-light">—</span>
         </button>
+      </div>
+      <div class="triggers-grid" aria-label="Déclencheurs natifs France Student">
+        <div class="trig-card">
+          <div class="trig-head">
+            <span style="display:inline-flex;align-items:center;gap:4px">
+              <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              Web Search
+            </span>
+          </div>
+          <div class="trig-seg" id="webSearchSeg" title="Auto : active la recherche web native France Student sur les questions d’actualité ou de recherche">
+            <button type="button" data-val="auto" class="on">Auto</button>
+            <button type="button" data-val="on">Oui</button>
+            <button type="button" data-val="off">Non</button>
+          </div>
+        </div>
+        <div class="trig-card">
+          <div class="trig-head">
+            <span style="display:inline-flex;align-items:center;gap:4px">
+              <svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+              Canvas
+            </span>
+          </div>
+          <div class="trig-seg" id="canvasSeg" title="Auto : active les artefacts Canvas France Student + aperçu live sur les demandes visuelles">
+            <button type="button" data-val="auto" class="on">Auto</button>
+            <button type="button" data-val="on">Oui</button>
+            <button type="button" data-val="off">Non</button>
+          </div>
+        </div>
       </div>
       <div class="reasoning-box">
         <div class="perm-top">
@@ -894,7 +1075,7 @@
       <button class="btn ghost sm" id="refreshModelsBtn" title="Actualiser le catalogue">Actualiser</button>
     </div>
     <div class="sec-head" style="margin-top:4px">
-      <div class="sec-title">Modèles disponibles <span class="cnt" id="modelsTotalCnt">0</span></div>
+      <div class="sec-title">Modèles <span class="cnt" id="modelsTotalCnt">0</span> <span class="hchip" style="text-transform:none;letter-spacing:0;white-space:nowrap" title="Tri automatique du plus puissant au plus léger, y compris pour les nouveaux modèles">Tri : fort → faible</span></div>
       <span style="font-size:10px;color:var(--fs-faint)" id="modelsNewCnt"></span>
     </div>
     <div class="toast" id="modelsToast" style="margin:2px 0 4px"></div>
@@ -1011,6 +1192,12 @@
         </div>
         <div class="field">
           <div class="toggle-row">
+            <span>Routage intelligent (Web/Image → léger, Canvas → équilibré)</span>
+            <label class="switch"><input type="checkbox" id="smartRoutingInput" disabled /><span class="slider"></span></label>
+          </div>
+        </div>
+        <div class="field">
+          <div class="toggle-row">
             <span>Résumé de raisonnement</span>
             <label class="switch"><input type="checkbox" id="showReasoningInput" disabled /><span class="slider"></span></label>
           </div>
@@ -1022,53 +1209,143 @@
         </div>
       </div>
 
+      <details class="card settings-fold" id="fsNativeFold">
+        <summary>
+          <span style="display:inline-flex;align-items:center;gap:6px;color:var(--fs-fg)">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            Compte France Student (Canvas, Images IA, Conversations)
+          </span>
+        </summary>
+        <div class="settings-inner">
+          <div class="f-help" style="margin-bottom:8px">Synchronisé en direct avec l’API officielle France Student (<code>/user/instructions</code>, <code>/chats</code>, <code>/user/tokenusage</code>).</div>
+          <div class="grid-2" style="margin-bottom:8px">
+            <div class="field" style="margin-bottom:0">
+              <label>Raisonnement serveur GPT</label>
+              <select id="fsGptReasoningSelect">
+                <option value="none">Aucun (none)</option>
+                <option value="minimal">Minimal</option>
+                <option value="low">Bas (low)</option>
+                <option value="medium">Moyen (medium)</option>
+                <option value="high">Élevé (high)</option>
+                <option value="xhigh">Maximum (xhigh)</option>
+              </select>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Compression prompt</label>
+              <select id="fsPromptCompSelect">
+                <option value="off">Désactivée (off)</option>
+                <option value="lite">Légère (lite)</option>
+                <option value="standard">Standard</option>
+                <option value="ultra">Ultra</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <div class="toggle-row">
+              <span>Outils Canvas / Documents natifs (<code>documentToolsEnabled</code>)</span>
+              <label class="switch"><input type="checkbox" id="fsDocToolsInput" /><span class="slider"></span></label>
+            </div>
+          </div>
+          <div class="field">
+            <div class="toggle-row">
+              <span>Génération d’images IA native (<code>imageGenerationToolEnabled</code>)</span>
+              <label class="switch"><input type="checkbox" id="fsImgToolsInput" /><span class="slider"></span></label>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn sm" id="syncFsNativeBtn">Appliquer au compte</button>
+            <button type="button" class="btn ghost sm" id="loadCloudChatsBtn">Conversations Cloud</button>
+            <button type="button" class="btn ghost sm" id="loadTokenActivityBtn">Activité tokens</button>
+            <span class="toast" id="fsNativeToast"></span>
+          </div>
+          <div id="fsNativeStage" class="visual-stage" hidden></div>
+        </div>
+      </details>
+
       <div class="card">
-        <div class="settings-title">
-          <svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          Suite IA Classique &amp; Computer Use (24 outils MCP)
+        <div class="settings-title" style="justify-content:space-between">
+          <span style="display:inline-flex;align-items:center;gap:7px">
+            <svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Studio IA Classique &amp; Computer Use
+          </span>
+          <span class="hchip">24 outils MCP</span>
         </div>
-        <div class="f-help" style="margin-bottom:8px">Outils exposés à Antigravity : <code>fs_computer</code> (/computer), <code>fs_browser</code> (/browse), <code>fs_web</code> (/web), <code>fs_data</code> (/data), <code>fs_research</code> (/research), <code>fs_canvas</code> (/canvas), <code>fs_vision</code> (/vision), <code>fs_arena</code> (/arena), <code>fs_doc</code> (/doc), <code>fs_voice</code> (/voice) et <code>fs_schedule</code> (/watch).</div>
-        <div class="actions">
-          <button type="button" class="btn ghost sm" id="quickScreenInfoBtn">Infos écran &amp; fenêtres</button>
-          <button type="button" class="btn ghost sm" id="quickScreenshotBtn">Capturer écran</button>
-          <button type="button" class="btn ghost sm" id="quickOcrScreenBtn">OCR Écran (/vision)</button>
-          <button type="button" class="btn ghost sm" id="quickDataChartBtn">Data &amp; SVG (/data)</button>
-          <button type="button" class="btn ghost sm" id="quickCanvasBtn">Canvas Live (/canvas)</button>
-          <button type="button" class="btn ghost sm" id="quickArenaBtn">Arena Multi-IA (/arena)</button>
-          <button type="button" class="btn ghost sm" id="quickVoiceBtn">Voix TTS (/voice)</button>
-          <button type="button" class="btn ghost sm" id="quickWatchBtn">Watchers (/watch)</button>
-          <button type="button" class="btn ghost sm" id="quickBrowserStatusBtn">Browser CDP</button>
-          <button type="button" class="btn ghost sm" id="quickSysInfoBtn">Bilan PC</button>
+        <div class="studio-grid">
+          <button type="button" class="studio-btn" id="quickDataChartBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <span>Data &amp; SVG (/data)</span>
+          </button>
+          <button type="button" class="studio-btn" id="quickCanvasBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+            <span>Canvas Live (/canvas)</span>
+          </button>
+          <button type="button" class="studio-btn" id="quickScreenshotBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <span>Capturer écran</span>
+          </button>
+          <button type="button" class="studio-btn" id="quickOcrScreenBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span>OCR Écran (/vision)</span>
+          </button>
+          <button type="button" class="studio-btn" id="quickVoiceBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            <span>Voix TTS (/voice)</span>
+          </button>
+          <button type="button" class="studio-btn" id="quickArenaBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span>Arena Multi-IA (/arena)</span>
+          </button>
+          <button type="button" class="studio-btn" id="quickScreenInfoBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+            <span>Écran &amp; Fenêtres</span>
+          </button>
+          <button type="button" class="studio-btn" id="quickSysInfoBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+            <span>Bilan PC &amp; RAM</span>
+          </button>
+          <button type="button" class="studio-btn" id="quickBrowserStatusBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span>Browser CDP</span>
+          </button>
+          <button type="button" class="studio-btn" id="quickWatchBtn">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>Watchers (/watch)</span>
+          </button>
         </div>
-        <div class="diagnostic-body" id="mcpToolsQuickOut">Prêt — clique sur un bouton pour tester en direct la Suite IA Classique &amp; Computer Use.</div>
+        <div class="visual-stage" id="mcpVisualStage" hidden></div>
+        <div class="diagnostic-body" id="mcpToolsQuickOut">Prêt — clique sur un module du Studio pour afficher un aperçu interactif en direct.</div>
       </div>
 
       <div class="card">
         <div class="settings-title" style="justify-content:space-between">
           <span style="display:inline-flex;align-items:center;gap:7px">
             <svg class="ico" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-            Hub MCP (34 connecteurs : Roblox, Blender, Unity, DB…)
+            Hub MCP Universel (68+ serveurs)
           </span>
-          <span class="hchip" id="mcpHubCountTag">0 / 34 actifs</span>
+          <span class="hchip" id="mcpHubCountTag">0 / 68 actifs</span>
         </div>
-        <div class="f-help" style="margin-bottom:8px">Passerelle universelle <code>fs_mcp_hub</code> (/mcp) : ponts natifs Blender (TCP 9876 + Python CLI) et Roblox Studio (HTTP 44755 + Rojo Luau), plus 32 serveurs MCP stdio externes.</div>
-        <div class="grid2" style="margin-bottom:8px">
-          <select id="mcpHubCatSelect" aria-label="Filtrer par catégorie MCP">
-            <option value="">Toutes catégories (34)</option>
-            <option value="3d-games">3D, Jeux &amp; Création (7)</option>
-            <option value="databases">Bases de données &amp; Backend (8)</option>
-            <option value="devops">Code, Git &amp; Cloud DevOps (8)</option>
-            <option value="web-media">Web, Navigateurs &amp; Média (6)</option>
-            <option value="productivity">Productivité &amp; Docs (5)</option>
-          </select>
-          <input type="text" id="mcpHubSearch" placeholder="Filtrer (ex: roblox, blender, sql…)" />
+        <div class="f-help" style="margin-bottom:8px">Transports <code>stdio</code>, <code>Streamable HTTP</code> &amp; <code>SSE</code> · ponts natifs Blender/Roblox · auto-détection IDE · serveurs Cloud France Student.</div>
+        <div class="hub-pills" id="mcpHubCatPills" role="group" aria-label="Catégories Hub MCP">
+          <button type="button" class="hub-pill on" data-cat="">Tous</button>
+          <button type="button" class="hub-pill" data-cat="3d-games">3D &amp; Jeux</button>
+          <button type="button" class="hub-pill" data-cat="web-search">Web &amp; Search</button>
+          <button type="button" class="hub-pill" data-cat="ai-memory">Mémoire IA</button>
+          <button type="button" class="hub-pill" data-cat="databases">Bases DB</button>
+          <button type="button" class="hub-pill" data-cat="devops">DevOps</button>
+          <button type="button" class="hub-pill" data-cat="productivity">Productivité</button>
+        </div>
+        <div style="margin-bottom:8px">
+          <input type="text" id="mcpHubSearch" placeholder="Filtrer 68+ MCP (roblox, blender, firecrawl, stripe…)" />
         </div>
         <div class="actions" style="margin-bottom:8px">
-          <button type="button" class="btn ghost sm" id="probeMcpHubBtn">Sonder PC &amp; Ports (Blender/Roblox…)</button>
-          <button type="button" class="btn ghost sm" id="exportMcpHubBtn">Exporter JSON MCP</button>
+          <button type="button" class="btn ghost sm" id="probeMcpHubBtn">Sonder PC &amp; Ports</button>
+          <button type="button" class="btn ghost sm" id="detectIdeMcpBtn">Détecter IDE</button>
+          <button type="button" class="btn ghost sm" id="cloudMcpBtn">MCP Cloud FS</button>
+          <button type="button" class="btn ghost sm" id="exportMcpHubBtn">Exporter JSON</button>
         </div>
-        <div id="mcpHubList" style="max-height:230px;overflow-y:auto;display:flex;flex-direction:column;gap:5px"></div>
-        <div class="diagnostic-body" id="mcpHubOut" style="margin-top:8px">Clique sur « Activer » sur un connecteur ou sur « Sonder PC &amp; Ports » pour détecter Blender, Roblox Studio, Unity, Godot, Docker et Git.</div>
+        <div id="mcpHubProbeStage" class="visual-stage" hidden style="margin-bottom:8px"></div>
+        <div id="mcpHubList" style="max-height:245px;overflow-y:auto;display:flex;flex-direction:column;gap:5px"></div>
+        <div class="diagnostic-body" id="mcpHubOut" style="margin-top:8px">Clique sur « Activer » sur n’importe quel connecteur ou sur « Sonder PC &amp; Ports » / « Détecter IDE ».</div>
       </div>
     </div>
 
@@ -1496,7 +1773,11 @@
         const fwCount = filesArr.length;
         const cmdCount = cmdsArr.length;
         const savedTok = j.antigravitySavings?.totalTokensSavedEst;
+        const trig = j.triggeredCapabilities || null;
         const badges = [
+          trig?.webSearch ? '<span class="cap-chip">Web</span>' : '',
+          trig?.canvas ? '<span class="cap-chip canvas">Canvas</span>' : '',
+          trig?.imageGen ? '<span class="cap-chip">Image</span>' : '',
           fwCount ? `<span class="hchip">${fwCount} fichier(s)</span>` : '',
           cmdCount ? `<span class="hchip">${cmdCount} cmd</span>` : '',
         ].filter(Boolean).join('');
@@ -1506,6 +1787,9 @@
           savedTok > 0 ? `~${fmtNum(savedTok)} tok` : '',
         ].filter(Boolean).join(' · ');
         const open = expandedHistory.has(jId);
+        const sourcesArr = Array.isArray(j.webSearchSources) ? j.webSearchSources : [];
+        const sourcesHtml = open && sourcesArr.length ? `<div class="hist-sec"><div class="hist-sec-lbl">Sources Web (${sourcesArr.length})</div><div class="source-list">${sourcesArr.slice(0, 8).map((s) => `<a class="source-pill" href="${esc(s.url)}" target="_blank" rel="noopener" title="${esc(s.url)}">${esc(s.title || s.url)}</a>`).join('')}</div></div>` : '';
+        const canvasHtml = open && j.canvasPreview?.url ? `<div class="hist-sec"><div class="hist-sec-lbl">Aperçu Canvas Live (${esc(j.canvasPreview.type || 'html')})</div><iframe class="stage-iframe" sandbox="allow-scripts" src="${esc(j.canvasPreview.url)}"></iframe></div>` : '';
         const thoughtsArr = Array.isArray(j.thoughts) && j.thoughts.length
           ? j.thoughts
           : (Array.isArray(j.lastThoughts) ? j.lastThoughts : []);
@@ -1532,7 +1816,7 @@
           </div>
           ${open ? `<div class="hist-detail">
             <pre class="hist-pre">${esc(respText || 'Aucun contenu.')}</pre>
-            ${thoughtsHtml}${filesHtml}${cmdsHtml}
+            ${canvasHtml}${sourcesHtml}${thoughtsHtml}${filesHtml}${cmdsHtml}
             <div class="hist-actions">
               ${respText && j.status === 'done' ? `<button type="button" class="btn sm" data-copy-resp="${esc(jId)}">Copier</button>` : ''}
               ${j.task ? `<button type="button" class="btn ghost sm" data-rerun-id="${esc(jId)}">Relancer</button>` : ''}
@@ -1591,6 +1875,7 @@
           : (policy === 'deny' ? '<span>Désactivé pour Antigravity</span>' : '');
         return `<div class="model-card ${m.isNew ? 'is-new' : ''} policy-${esc(policy)}">
           <div class="mc-top">
+            ${m.powerRank ? `<span class="rank-pill" title="Rang de puissance automatique (score ${esc(m.powerScore ?? '')})">#${esc(m.powerRank)}</span>` : ''}
             <span class="mc-name">${esc(m.name)}</span>
             <span class="tier-badge ${esc(m.tier)}"><span class="tier-dot ${esc(m.tier)}"></span>${tierLabels[m.tier] || m.tier}</span>
             ${m.isNew ? '<span class="new-badge">Nouveau</span>' : ''}
@@ -1662,7 +1947,7 @@
 
     function syncSettingsForm() {
       const configIds = [
-        'cutoffInput', 'maxParallelInput', 'showReasoningInput', 'reuseChatInput', 'useClientToolsInput', 'computerUseInput',
+        'cutoffInput', 'maxParallelInput', 'showReasoningInput', 'reuseChatInput', 'useClientToolsInput', 'computerUseInput', 'smartRoutingInput',
         'prepromptInput', 'savePrepromptBtn', 'memNoteInput', 'addMemNoteBtn', 'clearMemBtn',
         'contextCompactInput', 'routingProfileInput', 'tierLightInput', 'tierMediumInput',
         'tierHeavyInput', 'allowedInput', 'blockedInput', 'useAllBtn', 'saveEssentialBtn', 'saveSettingsBtn'
@@ -1681,6 +1966,7 @@
       $('reuseChatInput').checked = S.reuseChat === true;
       $('useClientToolsInput').checked = S.useClientTools !== false;
       if ($('computerUseInput')) $('computerUseInput').checked = S.computerUseEnabled !== false;
+      if ($('smartRoutingInput')) $('smartRoutingInput').checked = S.smartRouting !== false;
       $('prepromptInput').value = S.projectMemory?.preprompt || '';
       $('contextCompactInput').value = S.contextCompactPercent ?? 80;
       $('routingProfileInput').value = normalizeUiProfile(S.routingProfile);
@@ -1720,24 +2006,28 @@
       renderMcpHub();
     }
 
+    let mcpHubCategory = '';
+
     function renderMcpHub() {
       const listEl = $('mcpHubList');
       if (!listEl) return;
       const all = S.mcpHub?.connectors || [];
       const enabledCount = all.filter((c) => c.enabled).length;
       if ($('mcpHubCountTag')) {
-        $('mcpHubCountTag').textContent = `${enabledCount} / ${all.length || 34} actifs`;
+        $('mcpHubCountTag').textContent = `${enabledCount} / ${all.length || 68} actifs`;
       }
-      const cat = ($('mcpHubCatSelect')?.value || '').trim();
+      document.querySelectorAll('#mcpHubCatPills .hub-pill').forEach((b) => {
+        b.classList.toggle('on', (b.dataset.cat || '') === mcpHubCategory);
+      });
       const q = ($('mcpHubSearch')?.value || '').trim().toLowerCase();
       const filtered = all.filter((c) => {
-        if (cat && c.category !== cat) return false;
+        if (mcpHubCategory && c.category !== mcpHubCategory) return false;
         if (!q) return true;
         return (
           c.id.toLowerCase().includes(q) ||
           c.name.toLowerCase().includes(q) ||
           c.description.toLowerCase().includes(q) ||
-          (c.tags || []).some((t) => String(t).toLowerCase().includes(q))
+          String(c.repo || '').toLowerCase().includes(q)
         );
       });
       if (!filtered.length) {
@@ -1746,16 +2036,18 @@
       }
       listEl.innerHTML = filtered.map((c) => {
         const badge = c.nativeBridge
-          ? `<span class="hchip" style="border-color:var(--fs-ok);color:var(--fs-ok)">Pont natif${c.defaultPort ? ' :' + c.defaultPort : ''}</span>`
-          : `<span class="hchip">${esc(c.package || c.transport)}</span>`;
-        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid var(--fs-border);border-radius:6px;background:var(--fs-surface-2)">
+          ? `<span class="hchip" style="border-color:rgba(16,185,129,.45);color:#34d399">Pont natif${c.defaultPort ? ' :' + c.defaultPort : ''}</span>`
+          : (c.transport === 'http' || c.transport === 'sse'
+            ? `<span class="hchip" style="border-color:rgba(59,130,246,.45);color:#93c5fd">${esc(c.transport.toUpperCase())}</span>`
+            : `<span class="hchip">${esc(c.package || c.transport)}</span>`);
+        return `<div class="hub-row ${c.enabled ? 'enabled' : ''}">
           <div style="min-width:0;flex:1">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <strong style="font-size:11.5px;color:var(--fs-text)">${esc(c.name)}</strong>
-              <code style="font-size:10px;color:var(--fs-faint)">${esc(c.id)}</code>
+            <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+              <strong style="font-size:11.5px;color:var(--fs-fg)">${esc(c.name)}</strong>
+              <code style="font-size:9.5px;color:var(--fs-faint)">${esc(c.id)}</code>
               ${badge}
             </div>
-            <div style="font-size:10.5px;color:var(--fs-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(c.description)}">${esc(c.description)}</div>
+            <div style="font-size:10px;color:var(--fs-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px" title="${esc(c.description)}">${esc(c.description)}</div>
           </div>
           <button type="button" class="btn ${c.enabled ? '' : 'ghost'} sm" data-hub-toggle="${esc(c.id)}" data-hub-enabled="${c.enabled ? '1' : '0'}" style="flex-shrink:0">
             ${c.enabled ? 'Actif' : 'Activer'}
@@ -1895,6 +2187,10 @@
       $('reasoningTag').textContent = effort === 'max'
         ? 'Maximum · Modèles forts'
         : (effort === 'standard' ? 'Standard' : 'Approfondi');
+      const wsMode = S.webSearchMode || 'auto';
+      const cvMode = S.canvasMode || 'auto';
+      document.querySelectorAll('#webSearchSeg button').forEach((b) => b.classList.toggle('on', b.dataset.val === wsMode));
+      document.querySelectorAll('#canvasSeg button').forEach((b) => b.classList.toggle('on', b.dataset.val === cvMode));
       const undoList = Array.isArray(S.undoEntries) ? S.undoEntries : [];
       $('undoWrap').hidden = undoList.length === 0;
       $('undoQuickBtn').hidden = undoList.length === 0;
@@ -2285,6 +2581,24 @@
         } catch (e) { flash(e.message, 'toast', true); }
       };
     });
+    document.querySelectorAll('#webSearchSeg button').forEach((b) => {
+      b.onclick = async () => {
+        try {
+          await api('/api/settings', { webSearchMode: b.dataset.val });
+          flash(`Web Search : ${b.textContent.trim()}`);
+          await poll();
+        } catch (e) { flash(e.message, 'toast', true); }
+      };
+    });
+    document.querySelectorAll('#canvasSeg button').forEach((b) => {
+      b.onclick = async () => {
+        try {
+          await api('/api/settings', { canvasMode: b.dataset.val });
+          flash(`Canvas : ${b.textContent.trim()}`);
+          await poll();
+        } catch (e) { flash(e.message, 'toast', true); }
+      };
+    });
     $('clearCooldownBtn').onclick = async () => {
       try {
         await api('/api/refresh', {});
@@ -2377,11 +2691,113 @@
           showReasoning: $('showReasoningInput').checked,
           useClientTools: $('useClientToolsInput').checked,
           computerUseEnabled: $('computerUseInput') ? $('computerUseInput').checked : true,
+          smartRouting: $('smartRoutingInput') ? $('smartRoutingInput').checked : true,
         });
         flash('Réglages enregistrés', 'essentialToast');
         await poll();
       } catch (e) { flash(e.message, 'essentialToast', true); }
     };
+
+    // Native France Student Account Personalization, Cloud Conversations & Token Activity (Swagger)
+    let fsNativeLoaded = false;
+    async function loadFsPersonalization(force = false) {
+      if (!S.hasKey) return;
+      try {
+        const res = await api('/api/fs-personalization', { action: 'get', force });
+        const p = res.personalization || {};
+        if ($('fsGptReasoningSelect') && p.gptReasoning) $('fsGptReasoningSelect').value = p.gptReasoning;
+        if ($('fsPromptCompSelect') && p.promptCompression) $('fsPromptCompSelect').value = p.promptCompression;
+        if ($('fsDocToolsInput')) $('fsDocToolsInput').checked = p.documentToolsEnabled !== false;
+        if ($('fsImgToolsInput')) $('fsImgToolsInput').checked = p.imageGenerationToolEnabled !== false;
+        fsNativeLoaded = true;
+      } catch (e) {
+        flash(e.message, 'fsNativeToast', true);
+      }
+    }
+    if ($('fsNativeFold')) {
+      $('fsNativeFold').addEventListener('toggle', () => {
+        if ($('fsNativeFold').open && !fsNativeLoaded) void loadFsPersonalization(false);
+      });
+    }
+    if ($('syncFsNativeBtn')) {
+      $('syncFsNativeBtn').onclick = async () => {
+        try {
+          await api('/api/fs-personalization', {
+            action: 'update',
+            gptReasoning: $('fsGptReasoningSelect')?.value,
+            promptCompression: $('fsPromptCompSelect')?.value,
+            documentToolsEnabled: Boolean($('fsDocToolsInput')?.checked),
+            imageGenerationToolEnabled: Boolean($('fsImgToolsInput')?.checked),
+          });
+          flash('Compte France Student synchronisé', 'fsNativeToast');
+        } catch (e) { flash(e.message, 'fsNativeToast', true); }
+      };
+    }
+    if ($('loadCloudChatsBtn')) {
+      $('loadCloudChatsBtn').onclick = async () => {
+        const stage = $('fsNativeStage');
+        if (!stage) return;
+        stage.hidden = false;
+        stage.innerHTML = '<div class="f-help">Chargement des conversations France Student…</div>';
+        try {
+          const res = await api('/api/chats', { action: 'list' });
+          const chats = res.chats || [];
+          if (!chats.length) {
+            stage.innerHTML = '<div class="f-help">Aucune conversation récente trouvée.</div>';
+            return;
+          }
+          stage.innerHTML = `<div class="stage-head"><span>Conversations Cloud (${chats.length})</span><span class="hchip">Clic pour reprendre</span></div>` +
+            chats.slice(0, 8).map((c) => {
+              const cid = c.id || c.chatId || '';
+              const title = c.title || c.name || cid.slice(0, 12);
+              const isCur = cid && cid === res.activePanelChatId;
+              return `<div class="cloud-card">
+                <div style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(title)}">${esc(title)}</div>
+                <button type="button" class="btn ${isCur ? '' : 'ghost'} sm" data-resume-chat="${esc(cid)}">${isCur ? 'Actif' : 'Reprendre'}</button>
+              </div>`;
+            }).join('');
+          stage.querySelectorAll('[data-resume-chat]').forEach((btn) => {
+            btn.onclick = async () => {
+              try {
+                await api('/api/chats', { action: 'resume', chatId: btn.dataset.resumeChat });
+                flash('Conversation reprise sur Accueil', 'fsNativeToast');
+                switchTab('dash');
+              } catch (err) { flash(err.message, 'fsNativeToast', true); }
+            };
+          });
+        } catch (e) { stage.innerHTML = `<div class="f-help">Erreur : ${esc(e.message)}</div>`; }
+      };
+    }
+    if ($('loadTokenActivityBtn')) {
+      $('loadTokenActivityBtn').onclick = async () => {
+        const stage = $('fsNativeStage');
+        if (!stage) return;
+        stage.hidden = false;
+        stage.innerHTML = '<div class="f-help">Lecture de l’activité tokens…</div>';
+        try {
+          const res = await api('/api/token-activity', {});
+          const a = res.activity || {};
+          const tot = a.totalTokenCount ?? a.totalTokens ?? 0;
+          const reas = a.reasoningTokenCount ?? a.reasoningTokens ?? 0;
+          const days = Array.isArray(a.dailyUsage || a.daily || a.days) ? (a.dailyUsage || a.daily || a.days).slice(-7) : [];
+          stage.innerHTML = `<div class="stage-head"><span>Activité Tokens France Student</span><span class="hchip">Live API</span></div>
+            <div class="metric-grid">
+              <div class="metric-tile"><div class="metric-k">Total Tokens</div><div class="metric-v">${esc(fmtNum(tot))}</div></div>
+              <div class="metric-tile"><div class="metric-k">Raisonnement</div><div class="metric-v">${esc(fmtNum(reas))}</div></div>
+            </div>
+            ${days.length ? `<div class="ocr-chips">${days.map((d) => `<span class="ocr-chip">${esc(String(d.date || '').slice(5))}: ${esc(fmtNum(d.totalTokens ?? d.totalTokenCount ?? d.tokens ?? 0))}</span>`).join('')}</div>` : ''}`;
+        } catch (e) { stage.innerHTML = `<div class="f-help">Erreur : ${esc(e.message)}</div>`; }
+      };
+    }
+
+    function showVisualStage(html, activeBtnId = '') {
+      const stage = $('mcpVisualStage');
+      document.querySelectorAll('.studio-btn').forEach((b) => b.classList.toggle('on', Boolean(activeBtnId && b.id === activeBtnId)));
+      if (!stage) return;
+      stage.hidden = !html;
+      stage.innerHTML = html || '';
+    }
+
     if ($('quickScreenInfoBtn')) {
       $('quickScreenInfoBtn').onclick = async () => {
         $('mcpToolsQuickOut').textContent = 'Lecture écran et fenêtres…';
@@ -2391,9 +2807,17 @@
             api('/api/computer', { action: 'windows' }),
           ]);
           const s0 = scr.screens?.[0] || {};
-          const topWins = (wins.windows || []).slice(0, 5).map((w) => `  • [${w.processName}] ${w.title}`).join('\n');
-          $('mcpToolsQuickOut').textContent = `Écran : ${s0.width || '?'}x${s0.height || '?'} · Curseur : (${scr.cursor?.x}, ${scr.cursor?.y})\nFenêtre active : ${scr.activeWindow || '—'}\nFenêtres ouvertes (${wins.count || 0}) :\n${topWins}`;
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          const list = (wins.windows || []).slice(0, 6);
+          showVisualStage(`
+            <div class="stage-head"><span>Écran &amp; Fenêtres actives</span><span class="hchip">${esc(wins.count || 0)} détectées</span></div>
+            <div class="metric-grid">
+              <div class="metric-tile"><div class="metric-k">Résolution</div><div class="metric-v">${esc(s0.width || '?')} × ${esc(s0.height || '?')}</div></div>
+              <div class="metric-tile"><div class="metric-k">Curseur</div><div class="metric-v">(${esc(scr.cursor?.x ?? 0)}, ${esc(scr.cursor?.y ?? 0)})</div></div>
+            </div>
+            <div class="ocr-chips">${list.map((w) => `<span class="ocr-chip">${esc(w.processName || w.title)}</span>`).join('')}</div>
+          `);
+          $('mcpToolsQuickOut').textContent = `Fenêtre active : ${scr.activeWindow || '—'} · ${wins.count || 0} applications détectées.`;
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('quickScreenshotBtn')) {
@@ -2401,8 +2825,14 @@
         $('mcpToolsQuickOut').textContent = 'Capture écran en cours…';
         try {
           const res = await api('/api/computer', { action: 'screenshot' });
-          $('mcpToolsQuickOut').textContent = `Capture PNG enregistrée (${res.width}x${res.height}, ${Math.round((res.bytes || 0) / 1024)} Ko) :\n${res.path}`;
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          if (res.dataUrl) {
+            showVisualStage(`
+              <div class="stage-head"><span>Capture écran Windows</span><span class="hchip">${esc(res.width)}×${esc(res.height)} · ${Math.round((res.bytes || 0) / 1024)} Ko</span></div>
+              <img class="stage-img" src="${res.dataUrl}" alt="Capture écran" />
+            `);
+          }
+          $('mcpToolsQuickOut').textContent = `Capture PNG enregistrée : ${res.path}`;
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('quickBrowserStatusBtn')) {
@@ -2410,10 +2840,15 @@
         $('mcpToolsQuickOut').textContent = 'Vérification Browser CDP…';
         try {
           const res = await api('/api/browser', { action: 'status' });
-          $('mcpToolsQuickOut').textContent = res.active
-            ? `Browser CDP actif (${res.browserName}, ${res.headless ? 'headless' : 'visible'}) · URL : ${res.currentUrl}`
-            : 'Browser CDP en veille (prêt au premier appel fs_browser / /browse).';
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          showVisualStage(`
+            <div class="stage-head"><span>Navigateur CDP</span><span class="hchip" style="color:${res.active ? '#34d399' : 'var(--fs-muted)'}">${res.active ? 'ACTIF' : 'VEILLE'}</span></div>
+            <div class="metric-grid">
+              <div class="metric-tile"><div class="metric-k">Moteur</div><div class="metric-v">${esc(res.browserName || 'Chrome/Edge')}</div></div>
+              <div class="metric-tile"><div class="metric-k">Mode</div><div class="metric-v">${res.active ? (res.headless ? 'Headless' : 'Visible') : 'Prêt'}</div></div>
+            </div>
+          `);
+          $('mcpToolsQuickOut').textContent = res.active ? `URL active : ${res.currentUrl}` : 'Prêt au premier appel fs_browser / /browse.';
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('quickSysInfoBtn')) {
@@ -2421,8 +2856,17 @@
         $('mcpToolsQuickOut').textContent = 'Lecture système…';
         try {
           const res = await api('/api/system', { action: 'overview' });
-          $('mcpToolsQuickOut').textContent = `${res.hostname} (${res.platform}/${res.arch}) · ${res.cpuModel} (${res.cpuCores} cœurs)\nRAM : ${res.memory?.freeMb} Mo libres / ${res.memory?.totalMb} Mo (${res.memory?.usedPct}% utilisés) · Node ${res.nodeVersion}`;
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          const freeGb = ((res.memory?.freeMb || 0) / 1024).toFixed(1);
+          const totGb = ((res.memory?.totalMb || 0) / 1024).toFixed(1);
+          showVisualStage(`
+            <div class="stage-head"><span>${esc(res.hostname || 'PC Local')}</span><span class="hchip">${esc(res.platform)}/${esc(res.arch)}</span></div>
+            <div class="metric-grid">
+              <div class="metric-tile"><div class="metric-k">CPU</div><div class="metric-v">${esc(res.cpuCores || '?')} cœurs</div></div>
+              <div class="metric-tile"><div class="metric-k">RAM Utilisée</div><div class="metric-v">${esc(res.memory?.usedPct ?? '?')} % (${freeGb}/${totGb} Go)</div></div>
+            </div>
+          `);
+          $('mcpToolsQuickOut').textContent = `${res.cpuModel || ''} · Node ${res.nodeVersion || ''}`;
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('quickOcrScreenBtn')) {
@@ -2430,9 +2874,14 @@
         $('mcpToolsQuickOut').textContent = 'Capture écran + reconnaissance de texte OCR Windows WinRT…';
         try {
           const res = await api('/api/classic-ai', { tool: 'vision', action: 'ocr_screen' });
-          const preview = (res.lines || []).slice(0, 6).join(' | ') || res.text?.slice(0, 260) || '(aucun texte détecté)';
-          $('mcpToolsQuickOut').textContent = `OCR (${res.engine}, ${res.width}x${res.height}, ${(res.lines || []).length} lignes) :\n${preview}`;
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          const lines = (res.lines || []).slice(0, 8);
+          showVisualStage(`
+            <div class="stage-head"><span>OCR Natif (${esc(res.engine || 'WinRT')})</span><span class="hchip">${lines.length} lignes</span></div>
+            ${res.dataUrl ? `<img class="stage-img" src="${res.dataUrl}" alt="Aperçu OCR" style="max-height:140px;object-fit:cover;margin-bottom:6px" />` : ''}
+            <div class="ocr-chips">${lines.length ? lines.map((l) => `<span class="ocr-chip">${esc(l.slice(0, 48))}</span>`).join('') : '<span class="f-help">Aucun texte détecté</span>'}</div>
+          `);
+          $('mcpToolsQuickOut').textContent = `OCR terminé (${res.width}×${res.height}, moteur ${res.engine}).`;
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('quickDataChartBtn')) {
@@ -2442,12 +2891,16 @@
           const res = await api('/api/classic-ai', {
             tool: 'data',
             action: 'chart',
-            title: 'Économie de tokens Antigravity',
+            title: 'Coût relatif Antigravity (tokens)',
             labels: ['Natif', 'FS Auto', '/patch', '/data'],
             values: [100, 35, 6, 4],
           });
-          $('mcpToolsQuickOut').textContent = `Graphique SVG généré (${res.points} barres) :\n${res.path}`;
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          showVisualStage(`
+            <div class="stage-head"><span>Graphique SVG Data Analyst</span><span class="hchip">${esc(res.points || 4)} séries</span></div>
+            ${res.svg ? `<div class="stage-svg">${res.svg}</div>` : ''}
+          `);
+          $('mcpToolsQuickOut').textContent = `SVG sauvegardé : ${res.path}`;
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('quickCanvasBtn')) {
@@ -2458,12 +2911,16 @@
             tool: 'canvas',
             action: 'create',
             id: 'demo-canvas',
-            title: 'Artifact France Student Live',
+            title: 'Artifact France Student v2.6',
             type: 'html',
-            content: '<h2>Artifact France Student v2.5.0</h2><p>Serveur Live Canvas opérationnel.</p>',
+            content: '<div style="font-family:system-ui;padding:12px;background:#0e1116;color:#e6edf3;box-sizing:border-box;width:100%"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="font-size:13px;color:#60a5fa">Live Canvas v2.6.0</strong><span style="font-size:10px;padding:2px 7px;border-radius:99px;background:rgba(16,185,129,.18);color:#34d399">EN LIGNE</span></div><p style="margin:0 0 10px;font-size:11px;line-height:1.4;color:#94a3b8">Aperçu local HTML, SVG &amp; Mermaid.</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"><div style="background:#161b22;padding:7px;border-radius:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#60a5fa">68+</div><div style="font-size:9.5px;color:#94a3b8">MCP Hub</div></div><div style="background:#161b22;padding:7px;border-radius:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#34d399">24</div><div style="font-size:9.5px;color:#94a3b8">Outils</div></div><div style="background:#161b22;padding:7px;border-radius:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#e6edf3">Auto</div><div style="font-size:9.5px;color:#94a3b8">Tri IA</div></div></div></div>',
           });
-          $('mcpToolsQuickOut').textContent = `Artifact Canvas actif (${res.bytes} o) :\nURL Live : ${res.previewUrl}`;
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          showVisualStage(`
+            <div class="stage-head"><span>Aperçu Live Canvas</span><a class="source-pill" href="${esc(res.previewUrl)}" target="_blank" rel="noopener">Ouvrir ↗</a></div>
+            <iframe class="stage-iframe" sandbox="allow-scripts" src="${esc(res.previewUrl)}"></iframe>
+          `);
+          $('mcpToolsQuickOut').textContent = `Canvas actif (${res.bytes} o) : ${res.previewUrl}`;
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('quickArenaBtn')) {
@@ -2475,34 +2932,53 @@
             prompt: 'Vérification conseil multi-modèles',
             dryRun: true,
           });
-          $('mcpToolsQuickOut').textContent = `Conseil Arena prêt : ${(res.selectedModels || []).join(' vs ')}\n${res.message || ''}`;
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          const picked = res.selectedModels || [];
+          showVisualStage(`
+            <div class="stage-head"><span>Conseil Arena Multi-Modèles</span><span class="hchip">${picked.length} modèles</span></div>
+            <div class="arena-vs">
+              ${picked.slice(0, 2).map((m, i) => `<div class="arena-card"><div class="metric-k">Modèle #${i + 1}</div><div class="metric-v" style="font-size:11px;margin-top:4px">${esc(m)}</div></div>`).join('')}
+            </div>
+          `);
+          $('mcpToolsQuickOut').textContent = `Conseil prêt : ${picked.join(' vs ')} — utilise /arena dans le chat pour comparer en parallèle.`;
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('quickVoiceBtn')) {
       $('quickVoiceBtn').onclick = async () => {
-        $('mcpToolsQuickOut').textContent = 'Synthèse vocale Windows TTS…';
+        $('mcpToolsQuickOut').textContent = 'Génération audio WAV Windows TTS…';
         try {
-          const voicesRes = await api('/api/classic-ai', { tool: 'voice', action: 'voices' });
-          await api('/api/classic-ai', { tool: 'voice', action: 'speak', text: 'France Student version 2.5 opérationnelle.' });
-          const vNames = (voicesRes.voices || []).map((v) => `${v.name} (${v.culture})`).join(', ') || 'Voix système';
-          $('mcpToolsQuickOut').textContent = `Annonce vocale lancée · Voix installées : ${vNames}`;
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          const [voicesRes, wavRes] = await Promise.all([
+            api('/api/classic-ai', { tool: 'voice', action: 'voices' }),
+            api('/api/classic-ai', { tool: 'voice', action: 'to_wav', text: 'France Student version 2.6 est opérationnelle.' }),
+          ]);
+          const voices = voicesRes.voices || [];
+          showVisualStage(`
+            <div class="stage-head"><span>Synthèse Vocale Windows TTS</span><span class="hchip">${voices.length} voix</span></div>
+            ${wavRes.dataUrl ? `<audio class="stage-audio" controls src="${wavRes.dataUrl}"></audio>` : ''}
+            <div class="ocr-chips">${voices.map((v) => `<span class="ocr-chip">${esc(v.name)} (${esc(v.culture)})</span>`).join('')}</div>
+          `);
+          $('mcpToolsQuickOut').textContent = `Fichier WAV prêt (${Math.round((wavRes.bytes || 0) / 1024)} Ko) · clique sur Lecture ci-dessus.`;
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('quickWatchBtn')) {
       $('quickWatchBtn').onclick = async () => {
         try {
           const res = await api('/api/classic-ai', { tool: 'schedule', action: 'list' });
-          $('mcpToolsQuickOut').textContent = res.count
-            ? `Watchers actifs (${res.count}) :\n` + res.schedules.map((s) => `• [${s.kind}] ${s.name} (${s.intervalSec}s) -> ${s.lastSummary}`).join('\n')
-            : 'Aucun watcher actif — utilise /watch dans le chat pour surveiller un fichier, un port HTTP ou une commande.';
-        } catch (e) { $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
+          showVisualStage(`
+            <div class="stage-head"><span>Watchers &amp; Veilles actives</span><span class="hchip">${esc(res.count || 0)}</span></div>
+            ${res.count
+              ? `<div class="ocr-chips">${res.schedules.map((s) => `<span class="ocr-chip">[${esc(s.kind)}] ${esc(s.name)} (${esc(s.intervalSec)}s)</span>`).join('')}</div>`
+              : '<div class="f-help">Aucun watcher actif — utilise /watch dans le chat pour surveiller un fichier, un port HTTP ou une commande.</div>'}
+          `);
+          $('mcpToolsQuickOut').textContent = res.count ? `${res.count} veille(s) active(s).` : 'Planificateur prêt.';
+        } catch (e) { showVisualStage(''); $('mcpToolsQuickOut').textContent = `Erreur : ${e.message}`; }
       };
     }
     if ($('dictateTaskBtn')) {
       $('dictateTaskBtn').onclick = () => {
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const lbl = $('dictateLabel');
         if (!SR) {
           $('task').value = ($('task').value ? $('task').value + ' ' : '') + '/voice ';
           $('task').focus();
@@ -2511,7 +2987,8 @@
         const rec = new SR();
         rec.lang = 'fr-FR';
         rec.interimResults = false;
-        $('dictateTaskBtn').textContent = 'Écoute…';
+        $('dictateTaskBtn').classList.add('mic-on');
+        if (lbl) lbl.textContent = 'Écoute…';
         rec.onresult = (ev) => {
           const transcript = ev.results?.[0]?.[0]?.transcript || '';
           if (transcript) {
@@ -2519,28 +2996,85 @@
             $('task').dispatchEvent(new Event('input'));
           }
         };
-        rec.onend = () => { $('dictateTaskBtn').textContent = 'Micro'; };
-        rec.onerror = () => { $('dictateTaskBtn').textContent = 'Micro'; };
+        const resetMic = () => { $('dictateTaskBtn').classList.remove('mic-on'); if (lbl) lbl.textContent = 'Micro'; };
+        rec.onend = resetMic;
+        rec.onerror = resetMic;
         rec.start();
       };
     }
-    if ($('mcpHubCatSelect')) $('mcpHubCatSelect').onchange = () => renderMcpHub();
+    document.querySelectorAll('#mcpHubCatPills .hub-pill').forEach((btn) => {
+      btn.onclick = () => {
+        mcpHubCategory = btn.dataset.cat || '';
+        renderMcpHub();
+      };
+    });
     if ($('mcpHubSearch')) $('mcpHubSearch').oninput = () => renderMcpHub();
     if ($('probeMcpHubBtn')) {
       $('probeMcpHubBtn').onclick = async () => {
-        $('mcpHubOut').textContent = 'Détection des applications 3D/Dev locales et des ports TCP…';
+        const stage = $('mcpHubProbeStage');
+        $('mcpHubOut').textContent = 'Sonde des applications 3D/Dev locales et des ports TCP…';
         try {
           const res = await api('/api/mcp-hub', { action: 'probe' });
           const d = res.detected || {};
-          const lines = [
-            `Blender : ${d.blender?.installed ? 'Installé (' + d.blender.executable + ')' : 'Non détecté sur disque'} · Socket MCP :9876 ${d.blender?.mcpSocketOpen ? 'OUVERT' : 'fermé'}`,
-            `Roblox Studio : ${d.robloxStudio?.installed ? 'Installé (' + d.robloxStudio.executable + ')' : 'Non détecté sur disque'} · Bridge :44755 ${d.robloxStudio?.studioPluginOpen ? 'OUVERT' : 'fermé'}`,
-            `Unity : ${d.unity?.installed ? 'Installé' : 'Non détecté'} · Bridge :8090 ${d.unity?.mcpBridgeOpen ? 'OUVERT' : 'fermé'}`,
-            `Godot : ${d.godot?.installed ? 'Installé' : 'Non détecté'} · Bridge :6007 ${d.godot?.mcpBridgeOpen ? 'OUVERT' : 'fermé'}`,
-            `Outils CLI : Node ${d.cli?.node ? 'OK' : '—'} · npx ${d.cli?.npx ? 'OK' : '—'} · Python ${d.cli?.python ? 'OK' : '—'} · Docker ${d.cli?.docker ? 'OK' : '—'} · Git ${d.cli?.git ? 'OK' : '—'} · FFmpeg ${d.cli?.ffmpeg ? 'OK' : '—'}`,
+          const items = [
+            { name: 'Roblox Studio', ok: Boolean(d.robloxStudio?.installed), sub: d.robloxStudio?.studioPluginOpen ? 'Port :44755' : (d.robloxStudio?.installed ? 'Installé' : 'Absent') },
+            { name: 'Blender 3D', ok: Boolean(d.blender?.installed || d.blender?.mcpSocketOpen), sub: d.blender?.mcpSocketOpen ? 'Port :9876' : (d.blender?.installed ? 'Installé' : 'Absent') },
+            { name: 'Unity Hub', ok: Boolean(d.unity?.installed || d.unity?.mcpBridgeOpen), sub: d.unity?.mcpBridgeOpen ? 'Port :6400' : (d.unity?.installed ? 'Installé' : 'Absent') },
+            { name: 'Godot / OBS', ok: Boolean(d.godot?.installed || d.obs?.installed), sub: d.obs?.installed ? 'OBS OK' : (d.godot?.installed ? 'Godot OK' : 'Absent') },
+            { name: 'Node / npx', ok: Boolean(d.cli?.npx), sub: d.cli?.npx ? 'Prêt' : 'Absent' },
+            { name: 'Python', ok: Boolean(d.cli?.python), sub: d.cli?.python ? 'Prêt' : 'Absent' },
+            { name: 'Git CLI', ok: Boolean(d.cli?.git), sub: d.cli?.git ? 'Prêt' : 'Absent' },
+            { name: 'Docker / FFmpeg', ok: Boolean(d.cli?.docker || d.cli?.ffmpeg), sub: [d.cli?.docker ? 'Docker' : '', d.cli?.ffmpeg ? 'FFmpeg' : ''].filter(Boolean).join('+') || 'Absent' },
           ];
-          $('mcpHubOut').textContent = lines.join('\n');
+          if (stage) {
+            stage.hidden = false;
+            stage.innerHTML = `<div class="stage-head"><span>Sonde PC &amp; Bridges</span><span class="hchip">${res.totalCatalog || 68} MCP · ${res.localMcpDiscovered || 0} IDE</span></div>
+              <div class="probe-grid">${items.map((it) => `<div class="probe-pill ${it.ok ? 'ok' : ''}"><span style="display:inline-flex;align-items:center;gap:5px"><span class="probe-dot"></span>${esc(it.name)}</span><span style="font-size:9px;opacity:.85">${esc(it.sub)}</span></div>`).join('')}</div>`;
+          }
+          $('mcpHubOut').textContent = `Sonde terminée : ${items.filter((i) => i.ok).length}/${items.length} environnements prêts sur ce PC.`;
         } catch (e) { $('mcpHubOut').textContent = `Erreur : ${e.message}`; }
+      };
+    }
+    if ($('detectIdeMcpBtn')) {
+      $('detectIdeMcpBtn').onclick = async () => {
+        const stage = $('mcpHubProbeStage');
+        $('mcpHubOut').textContent = 'Scan des configs MCP locales (Claude, Cursor, Windsurf, Gemini, Antigravity, VS Code)…';
+        try {
+          const res = await api('/api/mcp-hub', { action: 'detect_local' });
+          if (stage) {
+            stage.hidden = false;
+            stage.innerHTML = `<div class="stage-head"><span>MCP locaux détectés (${res.totalDiscovered || 0})</span>${res.totalDiscovered ? '<button type="button" class="btn sm" id="importAllIdeMcpBtn">Importer tout</button>' : `<span class="hchip">${res.sourcesScanned || 0} emplacements</span>`}</div>` +
+              (res.servers?.length
+                ? res.servers.slice(0, 10).map((s) => `<div class="cloud-card"><span><strong>${esc(s.name)}</strong> <code style="font-size:9.5px;color:var(--fs-faint)">${esc(s.source)}</code></span><span class="hchip">${esc(s.transport)}</span></div>`).join('')
+                : '<div class="f-help">Aucun autre serveur MCP détecté dans les IDE locaux (Claude, Cursor, Windsurf, VS Code…).</div>');
+            if ($('importAllIdeMcpBtn')) {
+              $('importAllIdeMcpBtn').onclick = async () => {
+                const imp = await api('/api/mcp-hub', { action: 'import_local', connectorId: 'all' });
+                $('mcpHubOut').textContent = `${imp.importedCount || 0} serveur(s) MCP importés et activés dans le Hub !`;
+                await poll();
+              };
+            }
+          }
+          $('mcpHubOut').textContent = `Scan terminé (${res.sourcesScanned} sources IDE scannées, ${res.totalDiscovered} serveur(s) trouvé(s)).`;
+        } catch (e) { $('mcpHubOut').textContent = `Erreur : ${e.message}`; }
+      };
+    }
+    if ($('cloudMcpBtn')) {
+      $('cloudMcpBtn').onclick = async () => {
+        const stage = $('mcpHubProbeStage');
+        $('mcpHubOut').textContent = 'Lecture des serveurs MCP Cloud France Student (/mcp/servers)…';
+        try {
+          const res = await api('/api/mcp-hub', { action: 'cloud_list' });
+          const list = res.servers || [];
+          if (stage) {
+            stage.hidden = false;
+            stage.innerHTML = `<div class="stage-head"><span>Serveurs MCP Cloud France Student</span><span class="hchip">${list.length} connecté(s)</span></div>` +
+              (list.length
+                ? list.map((s) => `<div class="cloud-card"><span><strong>${esc(s.server_label || s.id)}</strong> <code style="font-size:9.5px;color:var(--fs-faint)">${esc(s.server_url || '')}</code></span><span class="hchip" style="color:${s.enabled ? '#34d399' : 'var(--fs-muted)'}">${s.enabled ? 'Actif' : 'Pause'}</span></div>`).join('')
+                : '<div class="f-help">Aucun serveur MCP distant enregistré sur ton compte France Student (/mcp/servers). Utilise <code>fs_mcp_hub(action="cloud_add")</code> pour en connecter un.</div>');
+          }
+          $('mcpHubOut').textContent = `${list.length} serveur(s) MCP Cloud sur ton compte France Student.`;
+        } catch (e) { $('mcpHubOut').textContent = `Erreur MCP Cloud : ${e.message}`; }
       };
     }
     if ($('exportMcpHubBtn')) {

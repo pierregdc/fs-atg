@@ -1,16 +1,17 @@
 ---
 name: mcp
-description: Explorer, activer et appeler les 34+ connecteurs du Hub MCP (Blender, Roblox Studio, Unity, Unreal, Godot, Figma, Postgres, SQLite, Docker, GitHub, Playwright, Context7…) via fs_mcp_hub.
+description: Explorer, auto-détecter, activer et appeler les 68+ connecteurs du Hub MCP (stdio, Streamable HTTP, SSE, Blender, Roblox Studio, Firecrawl, Stripe, Qdrant, n8n, Cloud MCP France Student…) via fs_mcp_hub.
 ---
 
 Appelle immédiatement l'outil MCP `fs_mcp_hub` de France Student (`fs-atg`) :
 
-1. **Explorer ou sonder les 34+ connecteurs** :
-   - `fs_mcp_hub({ action: "list", category: "3d-games" })` (catégories : `3d-games`, `databases`, `devops`, `web-media`, `productivity`) ou `action: "search", query: "roblox"`.
-   - `fs_mcp_hub({ action: "probe" })` pour détecter les applications installées (`blender`, `Roblox Studio`, `docker`, `git`, `ffmpeg`, `npx`, `uvx`) et les ports locaux actifs (`9876`, `44755`, `6400`, `30010`, `6005`, `5432`, `6379`, `27017`).
-2. **Ponts directs Blender & Roblox Studio** :
-   - **Blender** : `fs_mcp_hub({ action: "blender", code: "import bpy; ..." })` exécute du Python `bpy` sur le socket Blender-MCP (`127.0.0.1:9876`) ou via `blender --background`.
-   - **Roblox Studio / Rojo** : `fs_mcp_hub({ action: "roblox", robloxAction: "status" })`, `robloxAction: "scaffold_rojo"` (crée `default.project.json` + architecture Luau `ServerScriptService` / `ReplicatedStorage` / `StarterPlayerScripts`), ou `robloxAction: "execute_luau"` sur le pont `127.0.0.1:44755`.
-3. **Activer, configurer ou appeler n'importe quel serveur MCP** :
-   - `fs_mcp_hub({ action: "enable", connectorId: "blender" })` / `action: "disable"`.
-   - `fs_mcp_hub({ action: "tools", connectorId: "context7" })` puis `fs_mcp_hub({ action: "call", connectorId: "...", toolName: "...", toolArgs: { ... } })`.
+1. **Explorer, auto-détecter ou sonder les 68+ connecteurs** :
+   - `fs_mcp_hub({ action: "list", category: "3d-games" })` (catégories : `3d-games`, `web-search`, `ai-memory`, `databases`, `devops`, `productivity`) ou `action: "search", query: "firecrawl"`.
+   - `fs_mcp_hub({ action: "detect_local" })` scanne les serveurs MCP déjà installés dans Claude Desktop, Claude Code, Cursor, Windsurf, Gemini CLI, Antigravity et VS Code, puis `action: "import_local", connectorId: "all"` les importe en 1 clic.
+   - `fs_mcp_hub({ action: "probe" })` détecte les applications locales (`Roblox Studio`, `Blender`, `Unity Hub`, `Godot`, `OBS`, `Python`, `Node/npx`, `Docker`, `Git`, `FFmpeg`) et les ports locaux ouverts.
+2. **Ponts directs Blender, Roblox Studio & Cloud France Student** :
+   - **Blender** : `fs_mcp_hub({ action: "blender", code: "import bpy; ..." })` sur socket `127.0.0.1:9876` ou `blender --background`.
+   - **Roblox Studio / Rojo** : `fs_mcp_hub({ action: "roblox", robloxAction: "status" | "scaffold_rojo" | "execute_luau" })`.
+   - **MCP Cloud France Student** : `fs_mcp_hub({ action: "cloud_list" | "cloud_add" | "cloud_delete" })` sur `/mcp/servers`, et `action: "deskdock"` pour le PC virtuel.
+3. **Transports complets (stdio, HTTP, SSE) & protocole MCP** :
+   - `fs_mcp_hub({ action: "ping" | "tools" | "call" | "resources" | "read_resource" | "prompts", connectorId: "..." })` avec cache schémas 24h.

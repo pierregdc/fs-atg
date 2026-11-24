@@ -647,6 +647,7 @@ export async function executeVisionAction(params = {}) {
       ok: true,
       action: 'ocr_screen',
       screenshotPath: shot.path,
+      dataUrl: shot.dataUrl || null,
       width: shot.width,
       height: shot.height,
       protectedSurface: Boolean(shot.protectedSurface),
@@ -980,7 +981,16 @@ export async function executeVoiceAction(params = {}) {
       } else {
         writeFileSync(outPath, Buffer.from('RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00D\xac\x00\x00\x88X\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00', 'binary'));
       }
-      return { ok: true, action: 'to_wav', path: outPath, chars: text.length };
+      let dataUrl = null;
+      let bytes = 0;
+      if (existsSync(outPath)) {
+        const buf = readFileSync(outPath);
+        bytes = buf.length;
+        if (buf.length <= 600_000) {
+          dataUrl = `data:audio/wav;base64,${buf.toString('base64')}`;
+        }
+      }
+      return { ok: true, action: 'to_wav', path: outPath, chars: text.length, bytes, dataUrl };
     }
 
     if (process.platform === 'win32' && params.dryRun !== true) {

@@ -82,6 +82,8 @@ const CLIENT_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis
 const NATURAL_INSTRUCTIONS = `Réponds en français (ou langue de la demande) de façon ultra-concise et dense : zéro introduction, zéro conclusion, zéro reformulation.
 Si du code est demandé : N'UTILISE JAMAIS create_artifact / artefact / canvas. Écris uniquement le bloc de code ou patch ciblé directement en Markdown, sans commentaires évidents ni texte superflu autour.`;
 
+const CANVAS_INSTRUCTIONS = `Mode Canvas & Artefact actif : crée un document ou artefact visuel complet, autonome et soigné (HTML/CSS/JS complet en un seul bloc \`\`\`html, SVG en \`\`\`svg, diagramme \`\`\`mermaid, ou document Markdown structuré prêt à afficher). Donne un titre clair puis l'artefact complet directement utilisable.`;
+
 const PLAN_INSTRUCTIONS = `Réponds en style télégraphique (15 lignes max) : fichiers exacts, étapes clés et risques majeurs uniquement. Zéro code complet, zéro blabla.`;
 
 const PATCH_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Ne réécris JAMAIS le fichier complet : formate CHAQUE modification exactement ainsi (sans texte autour) :
@@ -339,6 +341,10 @@ function publicView(j) {
     slot: j.slot,
     refusals: j.refusals ?? [],
     attemptedModels: j.attemptedModels ?? (j.model ? [j.model] : []),
+    triggeredCapabilities: j.triggeredCapabilities ?? null,
+    webSearchSources: j.webSearchSources ?? [],
+    generatedImages: j.generatedImages ?? [],
+    canvasPreview: j.canvasPreview ?? null,
     antigravitySavings: j.antigravitySavings ?? null,
   };
 }
@@ -367,6 +373,10 @@ function mcpCompactView(j, verbose = false) {
     model: j.model,
     ...(j.permissionMode ? { permissionMode: j.permissionMode } : {}),
     ...(j.toolTurns ? { toolTurns: j.toolTurns } : {}),
+    ...(j.triggeredCapabilities ? { triggeredCapabilities: j.triggeredCapabilities } : {}),
+    ...(j.webSearchSources?.length ? { webSearchSources: j.webSearchSources.slice(0, 8) } : {}),
+    ...(j.generatedImages?.length ? { generatedImages: j.generatedImages } : {}),
+    ...(j.canvasPreview ? { canvasPreview: j.canvasPreview } : {}),
     ...(filesWritten ? { filesWritten } : {}),
     ...(commandsRun ? { commandsRun } : {}),
     ...(j.planB ? { planB: true } : {}),
@@ -445,16 +455,31 @@ async function runJob(job) {
       throw quotaErr;
     }
 
-    const { ids, agentMap } = await fetchAgentsAndModels(st);
+    const { ids, agentMap, metaMap } = await fetchAgentsAndModels(st);
     const effectiveEffort = normalizeReasoningEffort(job.reasoningEffort || st.reasoningEffort, 'deep');
     st.reasoningEffort = effectiveEffort;
-    const route = pickModel(job.rawTask ?? job.task, ids, st, job.explicitModel, { approvedModel: job.approveModel || null });
+    const preUseTools = Boolean(st.useClientTools !== false && job.workspaceRoot && !job.planB && job.executionMode !== 'patch');
+    const route = pickModel(job.rawTask ?? job.task, ids, st, job.explicitModel, {
+      approvedModel: job.approveModel || null,
+      metaMap,
+      workspaceRoot: job.workspaceRoot || '',
+      useClientTools: preUseTools,
+      webSearchMode: job.webSearchMode ?? null,
+      canvasMode: job.canvasMode ?? null,
+      imageGenMode: job.imageGenMode ?? null,
+    });
     job.model = route.model;
     job.routeReason = route.reason;
     job.routingProfile = route.profile === 'auto' ? null : route.profile;
     job.executionMode = job.executionMode ?? route.executionMode ?? 'generate';
     job.permissionMode = job.permissionMode ?? route.permissionMode ?? undefined;
     job.reasoningEffort = route.reasoningEffort ?? effectiveEffort;
+    job.triggeredCapabilities = {
+      intent: route.intent || 'general',
+      webSearch: Boolean(route.enableWebSearch),
+      canvas: Boolean(route.enableCanvas),
+      imageGen: Boolean(route.enableImageGen),
+    };
     job.contextMode = contextModeOf(job, st);
 
     if (route.needsApproval) {
@@ -589,7 +614,8 @@ async function runJob(job) {
         st.useClientTools !== false &&
         job.workspaceRoot &&
         !job.planB &&
-        job.executionMode !== 'patch'
+        job.executionMode !== 'patch' &&
+        !route.enableCanvas
       );
       const clientTools = useTools ? toolsForPermissionMode(effectivePerm, job.executionMode) : [];
       const runner = clientTools.length
@@ -612,11 +638,13 @@ async function runJob(job) {
       job.inputEstimateTokens = estimateTokens(local.prompt);
       const baseInstructions = clientTools.length
         ? CLIENT_TOOLS_INSTRUCTIONS
-        : (job.executionMode === 'plan'
-          ? PLAN_INSTRUCTIONS
-          : (job.executionMode === 'patch'
-            ? PATCH_INSTRUCTIONS
-            : (job.planB ? PLAN_B_PART_INSTRUCTIONS : NATURAL_INSTRUCTIONS)));
+        : (route.enableCanvas
+          ? CANVAS_INSTRUCTIONS
+          : (job.executionMode === 'plan'
+            ? PLAN_INSTRUCTIONS
+            : (job.executionMode === 'patch'
+              ? PATCH_INSTRUCTIONS
+              : (job.planB ? PLAN_B_PART_INSTRUCTIONS : NATURAL_INSTRUCTIONS))));
       const instructions = baseInstructions + buildReasoningDirective(job.reasoningEffort, job.executionMode);
 
       let result;
@@ -631,10 +659,24 @@ async function runJob(job) {
           prompt: local.prompt,
           chatId,
           clientTools,
+          enableWebSearch: Boolean(route.enableWebSearch),
+          enableCanvas: Boolean(route.enableCanvas),
+          enableImageGen: route.enableImageGen ? true : undefined,
           executeToolCall: runner ? (call) => runner.execute(call) : null,
           maxToolTurns: 18,
           onToolCall: ({ turn, name }) => {
             job.thoughts.push(`Outil #${turn} : ${name}`);
+            job.thoughts = job.thoughts.slice(-20);
+            notify();
+          },
+          onWebSearch: ({ status, queries, sourcesCount }) => {
+            const label = queries?.length ? `Recherche Web : ${queries[0].slice(0, 60)}` : `Recherche Web (${status || 'actif'})`;
+            job.thoughts.push(sourcesCount ? `${label} · ${sourcesCount} sources` : label);
+            job.thoughts = job.thoughts.slice(-20);
+            notify();
+          },
+          onImageGenerated: (img) => {
+            job.thoughts.push(`Image IA générée (${img.status || 'ok'})`);
             job.thoughts = job.thoughts.slice(-20);
             notify();
           },
@@ -657,10 +699,12 @@ async function runJob(job) {
           approvedModel: job.approveModel || null,
           availableModels: ids,
           agentMap,
-          instructions: PLAN_B_PART_INSTRUCTIONS,
+          instructions: route.enableCanvas ? CANVAS_INSTRUCTIONS : PLAN_B_PART_INSTRUCTIONS,
           prompt: freshPrompt,
           chatId: undefined,
           clientTools: [],
+          enableWebSearch: Boolean(route.enableWebSearch),
+          enableCanvas: Boolean(route.enableCanvas),
           executeToolCall: null,
           signal: ac.signal,
           ...makeStreamCallbacks('[Plan B] '),
@@ -674,6 +718,8 @@ async function runJob(job) {
       job.refusals = result.refusals ?? job.refusals ?? [];
       job.attemptedModels = result.attemptedModels ?? job.attemptedModels;
       job.toolTurns = result.toolTurns ?? 0;
+      job.webSearchSources = result.webSearchSources ?? [];
+      job.generatedImages = result.generatedImages ?? [];
       if (runner) {
         job.filesWritten = runner.getFilesWritten();
         job.commandsRun = runner.getCommandsRun();
@@ -683,6 +729,26 @@ async function runJob(job) {
         providerUsage: normalizeProviderTokenUsage(result.usage),
       };
       job.response = String(result.text ?? '').trim().slice(0, 60_000);
+      // Auto-publish Canvas HTML/SVG/Mermaid artifacts to live local Canvas preview when Canvas mode triggered!
+      if (route.enableCanvas && job.response) {
+        const htmlMatch = /```html\s*\n([\s\S]+?)```/i.exec(job.response);
+        const svgMatch = !htmlMatch ? /```svg\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+        const mmdMatch = (!htmlMatch && !svgMatch) ? /```mermaid\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+        const artContent = htmlMatch?.[1] || svgMatch?.[1] || mmdMatch?.[1] || null;
+        const artType = htmlMatch ? 'html' : (svgMatch ? 'svg' : (mmdMatch ? 'mermaid' : null));
+        if (artContent && artType) {
+          try {
+            const cv = await executeCanvasAction({
+              action: 'create',
+              id: `artifact-${job.id}`,
+              title: job.title.replace(/^\[ATG\]\s*/, '').slice(0, 60),
+              type: artType,
+              content: artContent.trim(),
+            });
+            if (cv?.url) job.canvasPreview = { id: cv.id, type: artType, url: cv.url };
+          } catch { /* non-blocking live preview */ }
+        }
+      }
       job.summary = job.response.slice(0, 400);
       job.usage = result.usage;
       finishJob(job, 'done');
@@ -753,6 +819,9 @@ server.registerTool('fs_delegate', {
     permissionMode: z.enum(['plan', 'acceptEdits', 'full']).optional().describe('Surcharge ponctuelle : plan (lecture seule), acceptEdits (lecture + écriture/édition avec /undo), full (+ run_command sécurisé).'),
     reasoningEffort: z.enum(['standard', 'deep', 'max']).optional().describe('Niveau de raisonnement : standard, deep (approfondi, défaut), ou max (raisonnement maximal + priorité modèles forts).'),
     routingProfile: z.enum(['auto', 'eco', 'fast', 'quality', 'security', 'refactor']).optional(),
+    webSearch: z.enum(['auto', 'on', 'off']).optional().describe('Déclencheur Recherche Web natif France Student : auto (défaut intelligent), on (forcé), off (désactivé).'),
+    canvas: z.enum(['auto', 'on', 'off']).optional().describe('Déclencheur Canvas / Artefacts natif France Student (documentToolsEnabled + aperçu live) : auto (défaut intelligent), on, off.'),
+    imageGen: z.enum(['auto', 'on', 'off']).optional().describe('Déclencheur génération d’images IA native France Student : auto, on, off.'),
     planB: z.boolean().optional().describe('Active le Plan B (chat neuf isolé ou découpage via parts) en cas d’échec du Plan A.'),
     parts: z.array(z.string().min(3)).max(6).optional().describe('Plan B : 2 à 6 petites sous-demandes simples générées séparément.'),
     waitSeconds: z.number().min(0).max(180).optional().describe('Attente intégrée (défaut 120s, max 180s) pour répondre en 1 appel.'),
@@ -787,6 +856,9 @@ server.registerTool('fs_delegate', {
     permissionMode: delegation.permissionMode,
     reasoningEffort: delegation.reasoningEffort,
     routingProfile: delegation.routingProfile,
+    webSearchMode: a.webSearch ?? undefined,
+    canvasMode: a.canvas ?? undefined,
+    imageGenMode: a.imageGen ?? undefined,
     planB: Boolean(a.planB || a.parts?.length),
     parts: Array.isArray(a.parts) && a.parts.length ? a.parts.slice(0, 6) : undefined,
     waitedInline: waitSec > 0,
@@ -1106,25 +1178,37 @@ server.registerTool('fs_system', {
 }, async (params) => asCompactText(await executeSystemAction(params)));
 
 server.registerTool('fs_mcp_hub', {
-  title: 'Hub 34+ MCP — Roblox, Blender, Unity, Unreal, Godot, DB, DevOps (/mcp) [ATG]',
-  description: 'Passerelle universelle vers 34+ serveurs MCP et ponts applicatifs (blender, roblox, unity, unreal, godot, figma, aseprite, postgres, sqlite, mysql, mongodb, redis, supabase, firebase, prisma, github, gitlab, git, docker, kubernetes, cloudflare, vercel, sentry, playwright, puppeteer, ffmpeg, youtube, brave-search, context7, notion, obsidian, discord, slack, linear). Actions : list, search, probe (détecte les apps et ports ouverts), enable, disable, configure, export_config, blender (exécute du Python bpy sur le port 9876 ou via blender CLI), roblox (pont Studio 44755 ou génération projet Rojo/Luau), tools (liste les outils JSON-RPC d’un MCP), call (appelle un outil d’un MCP).',
+  title: 'Hub 64+ MCP — Roblox, Blender, Firecrawl, Stripe, Cloud, IDE Auto-Detect (/mcp) [ATG]',
+  description: 'Passerelle universelle vers 64+ serveurs MCP (stdio, Streamable HTTP et SSE) + auto-détection des serveurs MCP locaux (Claude Desktop, Claude Code, Cursor, Windsurf, Gemini CLI, Antigravity, VS Code) + serveurs MCP Cloud France Student (/mcp/servers) + DeskDock. Actions : list, search, probe, detect_local, import_local, enable, disable, configure, export_config, ping, tools, call, resources, read_resource, prompts, blender, roblox, cloud_list, cloud_add, cloud_delete, deskdock.',
   inputSchema: {
-    action: z.enum(['list', 'search', 'probe', 'enable', 'disable', 'configure', 'export_config', 'blender', 'roblox', 'tools', 'call']).default('list').describe('Action du Hub MCP.'),
-    connectorId: z.string().optional().describe('ID du connecteur (ex: blender, roblox, unity, postgres, github, playwright, context7…).'),
-    category: z.enum(['3d-games', 'databases', 'devops', 'web-media', 'productivity']).optional().describe('Filtre catégorie pour list/search.'),
-    query: z.string().optional().describe('Recherche texte dans les 34+ connecteurs.'),
+    action: z.enum([
+      'list', 'search', 'probe', 'detect_local', 'import_local',
+      'enable', 'disable', 'configure', 'export_config',
+      'ping', 'tools', 'call', 'resources', 'read_resource', 'prompts',
+      'blender', 'roblox', 'cloud_list', 'cloud_add', 'cloud_delete', 'deskdock',
+    ]).default('list').describe('Action du Hub MCP.'),
+    connectorId: z.string().optional().describe('ID du connecteur (ex: blender, roblox, firecrawl, stripe, sequential-thinking, github, playwright, context7…).'),
+    category: z.enum(['3d-games', 'web-search', 'ai-memory', 'databases', 'devops', 'productivity']).optional().describe('Filtre catégorie pour list/search.'),
+    query: z.string().optional().describe('Recherche texte dans les 64+ connecteurs.'),
     onlyEnabled: z.boolean().optional().describe('Afficher uniquement les connecteurs activés.'),
+    transport: z.enum(['stdio', 'http', 'sse']).optional().describe('Transport MCP (stdio, http Streamable, sse) pour configure.'),
+    url: z.string().optional().describe('URL distante HTTP/SSE du serveur MCP (pour configure ou cloud_add).'),
+    headers: z.record(z.string()).optional().describe('En-têtes HTTP personnalisés pour transport http/sse ou cloud_add.'),
+    uri: z.string().optional().describe('URI de ressource MCP pour action="read_resource".'),
+    serverId: z.string().optional().describe('ID du serveur MCP Cloud France Student (pour cloud_delete).'),
+    deskdockAction: z.enum(['status', 'create', 'start', 'stop', 'delete']).optional().describe('Sous-action pour action="deskdock".'),
+    forceRefresh: z.boolean().optional().describe('Ignorer le cache 24h des schémas MCP pour action="tools".'),
     code: z.string().optional().describe('Script Python bpy (pour action="blender") ou script Luau (pour action="roblox").'),
     robloxAction: z.enum(['status', 'scaffold_rojo', 'execute_luau', 'query_studio']).optional().describe('Sous-action pour action="roblox".'),
-    workspaceRoot: z.string().optional().describe('Chemin du projet (utilisé par roblox scaffold_rojo).'),
+    workspaceRoot: z.string().optional().describe('Chemin du projet (utilisé par roblox scaffold_rojo et detect_local).'),
     toolName: z.string().optional().describe('Nom de l’outil distant à appeler (pour action="call").'),
     toolArgs: z.record(z.any()).optional().describe('Arguments JSON de l’outil distant (pour action="call").'),
     command: z.string().optional().describe('Commande personnalisée pour configure (ex: npx, uvx).'),
     args: z.array(z.string()).optional().describe('Arguments de commande pour configure.'),
     port: z.number().optional().describe('Port local du pont applicatif (ex: 9876 pour Blender, 44755 pour Roblox).'),
     env: z.record(z.string()).optional().describe('Clés API / secrets du connecteur (chiffrés dans le trousseau système).'),
-    name: z.string().optional().describe('Nom d’affichage pour un connecteur personnalisé.'),
-    description: z.string().optional().describe('Description pour un connecteur personnalisé.'),
+    name: z.string().optional().describe('Nom d’affichage pour un connecteur personnalisé ou cloud_add.'),
+    description: z.string().optional().describe('Description pour un connecteur personnalisé ou cloud_add.'),
   },
 }, async (params) => {
   const ws = params.workspaceRoot || loadState().lastWorkspaceRoot || '';

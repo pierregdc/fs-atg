@@ -848,6 +848,28 @@ export function createWorkspaceToolRunner({ workspaceRoot, permissionMode = 'acc
   }
 
   async function runShellSafe({ command, cwd, timeout_ms }) {
+    // Virtual in-process bridge (inspired by project-frstcli): lets delegated France Student models
+    // call any enabled Hub MCP server directly via `mcp-call <connectorId> <toolName> [jsonArgs]`.
+    const rawCmd = String(command || '').trim();
+    if (/^mcp-call\b/i.test(rawCmd)) {
+      const m = /^mcp-call\s+([\w.\-]+)\s+([\w.\-:\/]+)(?:\s+([\s\S]+))?$/i.exec(rawCmd);
+      if (!m) throw new Error('Syntaxe : mcp-call <serveur> <outil> [jsonArgs]');
+      const [, connectorId, toolName, jsonPart] = m;
+      let toolArgs = {};
+      if (jsonPart && jsonPart.trim()) {
+        try { toolArgs = JSON.parse(jsonPart.trim()); }
+        catch { throw new Error('Arguments JSON invalides pour mcp-call.'); }
+      }
+      const t0 = Date.now();
+      const { executeMcpHubAction } = await import('./mcp_hub.mjs');
+      const res = await executeMcpHubAction({ action: 'call', connectorId, toolName, toolArgs, workspaceRoot });
+      const durationMs = Date.now() - t0;
+      const digested = redactSecrets(digestCommandOutput(JSON.stringify(res, null, 2), 12_000));
+      commandsRun.push({ command: rawCmd.slice(0, 140), exitCode: res?.ok === false ? 1 : 0, durationMs });
+      onCommand?.([...commandsRun]);
+      return `exit=${res?.ok === false ? 1 : 0} (${durationMs}ms)\n${digested}`;
+    }
+
     const policy = evaluateCommandPolicy(command, cwd, workspaceRoot);
     const timeout = Math.min(120_000, Math.max(1_000, Number(timeout_ms) || 30_000));
     const t0 = Date.now();

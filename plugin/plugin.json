@@ -1,8 +1,8 @@
 {
   "name": "fs-atg",
   "displayName": "France Student [ATG]",
-  "description": "Orchestrateur France Student v2.5 pour Antigravity : 24 outils MCP + Hub de 34 connecteurs (Roblox Studio, Blender, Unity, DB, DevOps…) + Suite IA Classique (Code Interpreter /data, Deep Research /research, Live Canvas /canvas, Vision OCR /vision, Consensus Multi-IA /arena, Lecteur PDF/Office /doc, Voix TTS /voice, Tâches Planifiées /watch), Computer Use (/computer) et Navigateur CDP (/browse).",
-  "version": "2.5.0",
+  "description": "Orchestrateur France Student v2.6 pour Antigravity : 24 outils MCP + Hub universel de 68+ serveurs MCP (stdio/HTTP/SSE, auto-détection IDE, Cloud MCP, Roblox Studio, Blender, Firecrawl, Stripe, n8n…) + Tri automatique des modèles du plus fort au plus faible + Routage intelligent & déclencheurs natifs Web Search / Canvas / Images IA + Suite IA Classique (Data, Research, Canvas, Vision OCR, Arena, Doc, Voice, Watch), Computer Use et Navigateur CDP.",
+  "version": "2.6.0",
   "logo": "assets/logo.png",
   "suggestedPrompts": [
     "Utilise /fs pour créer ou modifier directement ce module avec France Student",

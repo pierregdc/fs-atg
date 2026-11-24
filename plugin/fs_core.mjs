@@ -25,17 +25,28 @@ if (typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertif
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ATG = '[ATG]';
-export const CONNECTOR_VERSION = '2.5.0';
+export const CONNECTOR_VERSION = '2.6.0';
 export const OFFICIAL_API_BASE_URL = 'https://api.francestudent.ai';
 export const OFFICIAL_WEB_ORIGIN = 'https://ia.francestudent.org';
 export const SESSION_COOKIE_NAMES = Object.freeze(['__Secure-next-auth.session-token', 'next-auth.session-token']);
 const TOKEN_REFRESH_MARGIN_MS = 60_000;
 export const RULES_PATH = join(__dirname, 'rules', 'AGENTS.md');
 export const RECENT_MODEL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
-export const HEAVY_PRIORITY = Object.freeze(['opus', 'gpt-6.2-astra', 'gpt-6.2-sol', 'astra', 'gpt-6.1-sol', 'gpt-6-sol', 'fable', 'kimi-k3']);
-export const MEDIUM_PRIORITY = Object.freeze(['sonnet', 'gpt-5.6-sol', 'terra']);
-export const LIGHT_PRIORITY = Object.freeze(['haiku', 'gpt-6-luna', 'luna']);
+export const HEAVY_PRIORITY = Object.freeze(['opus', 'ultra', 'gpt-6.2-astra', 'gpt-6.2-sol', 'astra', 'o4', 'o3', 'gpt-6.1-sol', 'gpt-6-sol', 'fable', 'kimi-k3']);
+export const MEDIUM_PRIORITY = Object.freeze(['sonnet', 'gpt-5.6-sol', 'terra', 'plus']);
+export const LIGHT_PRIORITY = Object.freeze(['haiku', 'flash', 'mini', 'gpt-6-luna', 'luna', 'ministral', 'nano']);
 const TIER_PRIORITY = { heavy: HEAVY_PRIORITY, medium: MEDIUM_PRIORITY, light: LIGHT_PRIORITY };
+export const TRIGGER_MODES = Object.freeze(['auto', 'on', 'off']);
+
+export function normalizeTriggerMode(val, fallback = 'auto') {
+  if (val === true) return 'on';
+  if (val === false) return 'off';
+  const v = String(val ?? '').trim().toLowerCase();
+  if (v === 'on' || v === 'true' || v === 'oui' || v === 'yes' || v === '1') return 'on';
+  if (v === 'off' || v === 'false' || v === 'non' || v === 'no' || v === '0') return 'off';
+  if (v === 'auto' || v === 'smart') return 'auto';
+  return TRIGGER_MODES.includes(fallback) ? fallback : 'auto';
+}
 
 export const COOLDOWN_DURATION_MS = 10 * 60 * 1000;
 export const UNAVAILABLE_REASON = 'IA non dispo';
@@ -169,54 +180,124 @@ export function modelIsAllowed(id, state, { allowAsk = false } = {}) {
   return allowAsk ? p !== 'deny' : p === 'allow';
 }
 
-export function rankModelsBestToWorst(models = [], state = null, { includeAsk = false, approvedModel = null } = {}) {
+/**
+ * Extracts a numeric semantic version from any model ID (present or future),
+ * ignoring parameter sizes (14b, 70b, 405b) and build dates (20250514).
+ * Examples: gpt-6.2-astra -> 6.2, claude-opus-5-5 -> 5.5, claude-opus-7 -> 7.0, kimi-k3 -> 3.0.
+ */
+export function extractModelVersion(id) {
+  const cleaned = String(id || '')
+    .toLowerCase()
+    .replace(/\b20\d{6}\b/g, ' ')
+    .replace(/\b20\d{2}[-_]\d{2}(?:[-_]\d{2})?\b/g, ' ')
+    .replace(/\b\d+(?:\.\d+)?b\b/g, ' ');
+  const dec = /\b(\d{1,2})\.(\d{1,2})\b/.exec(cleaned);
+  if (dec) return Number(dec[1]) + Number(dec[2]) / (dec[2].length === 1 ? 10 : 100);
+  const hyph = /(?:^|[-_\s])(\d{1,2})-(\d{1,2})(?:$|[-_\s])/.exec(cleaned);
+  if (hyph) return Number(hyph[1]) + Number(hyph[2]) / (hyph[2].length === 1 ? 10 : 100);
+  const pref = /(?:gpt|claude|opus|sonnet|haiku|fable|gemini|grok|llama|qwen|mistral|deepseek|kimi|o|k|v|r)[-_\s]?(\d{1,2})(?:\b|[-_])/.exec(cleaned);
+  if (pref) return Number(pref[1]);
+  const lone = /(?:^|[-_\s])(\d{1,2})(?:$|[-_\s])/.exec(cleaned);
+  if (lone) return Number(lone[1]);
+  return 0;
+}
+
+function extractParamBillions(id) {
+  const m = /\b(\d+(?:\.\d+)?)b\b/i.exec(String(id || ''));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Computes a universal power score (higher = stronger) so ANY current or unseen
+ * future model is automatically sorted strongest -> weakest across heavy -> medium -> light.
+ */
+export function scoreModelPower(id, { meta = null, state = null, telemetry = null } = {}) {
+  const s = String(id || '').toLowerCase();
+  const tier = classifyTier(id, state, meta);
+  const base = tier === 'heavy' ? 3000 : (tier === 'medium' ? 2000 : 1000);
+
+  let familyBonus = tier === 'heavy' ? 220 : (tier === 'medium' ? 200 : 170);
+  if (tier === 'heavy') {
+    if (s.includes('opus')) familyBonus = 440;
+    else if (s.includes('ultra')) familyBonus = 420;
+    else if (s.includes('pro-max') || s.includes('promax')) familyBonus = 405;
+    else if (s.includes('astra')) familyBonus = 390;
+    else if (/\bo4\b/.test(s)) familyBonus = 385;
+    else if (/\bo3\b/.test(s)) familyBonus = 365;
+    else if (s.includes('max')) familyBonus = 355;
+    else if (s.includes('sol')) familyBonus = 330;
+    else if (s.includes('fable')) familyBonus = 310;
+    else if (s.includes('reasoner') || /\br[12]\b/.test(s) || s.includes('thinking')) familyBonus = 300;
+    else if (s.includes('pro') || s.includes('large')) familyBonus = 285;
+    else if (s.includes('kimi')) familyBonus = 260;
+  } else if (tier === 'medium') {
+    if (s.includes('sonnet')) familyBonus = 380;
+    else if (s.includes('sol')) familyBonus = 310;
+    else if (s.includes('terra')) familyBonus = 280;
+    else if (s.includes('plus')) familyBonus = 260;
+    else if (s.includes('medium') || s.includes('maverick')) familyBonus = 240;
+    else if (s.includes('4o') || s.includes('codestral')) familyBonus = 225;
+  } else {
+    if (s.includes('haiku')) familyBonus = 330;
+    else if (s.includes('flash')) familyBonus = 300;
+    else if (s.includes('mini') && !s.includes('ministral')) familyBonus = 285;
+    else if (s.includes('luna')) familyBonus = 270;
+    else if (s.includes('lite') || s.includes('small')) familyBonus = 220;
+    else if (s.includes('instant') || s.includes('fast') || s.includes('scout')) familyBonus = 200;
+    else if (s.includes('ministral')) familyBonus = 155;
+    else if (s.includes('nano') || s.includes('tiny') || s.includes('micro')) familyBonus = 140;
+  }
+
+  const version = Math.min(15, Math.max(0, extractModelVersion(id)));
+  const versionBonus = Math.round(version * 40);
+
+  const paramsB = extractParamBillions(id);
+  const paramBonus = paramsB ? Math.min(60, Math.round(Math.log2(Math.max(1, paramsB)) * 7)) : 0;
+
+  const ctx = Number(meta?.contextWindow || 0);
+  const ctxBonus = ctx >= 32000 ? Math.min(30, Math.round(Math.log2(ctx / 32000) * 6)) : 0;
+
+  let reliabilityAdj = 0;
+  if (telemetry && telemetry.samples >= 3 && typeof telemetry.successRate === 'number') {
+    if (telemetry.successRate < 40) reliabilityAdj = -35;
+    else if (telemetry.successRate >= 90) reliabilityAdj = 5;
+  }
+
+  return base + familyBonus + versionBonus + paramBonus + ctxBonus + reliabilityAdj;
+}
+
+export function rankModelsBestToWorst(models = [], state = null, { includeAsk = false, approvedModel = null, metaMap = null } = {}) {
   const unique = [...new Set(models || [])].filter((id) => {
     const p = getModelPolicy(id, state);
     return p === 'allow' || (p === 'ask' && (includeAsk || approvedModel === id));
   });
-  const ordered = [];
-  const seen = new Set();
-  for (const tier of ['heavy', 'medium', 'light']) {
-    const tierPool = unique.filter((id) => classifyTier(id, state) === tier);
-    const prio = TIER_PRIORITY[tier] || [];
-    for (const kw of prio) {
-      for (const id of tierPool) {
-        if (!seen.has(id) && id.toLowerCase().includes(kw)) {
-          seen.add(id);
-          ordered.push(id);
-        }
-      }
-    }
-    for (const id of tierPool) {
-      if (!seen.has(id)) {
-        seen.add(id);
-        ordered.push(id);
-      }
-    }
-  }
-  for (const id of unique) {
-    if (!seen.has(id)) {
-      seen.add(id);
-      ordered.push(id);
-    }
-  }
-  return ordered;
+  const telemetryAll = getModelTelemetry();
+  return unique.sort((a, b) => {
+    const sa = scoreModelPower(a, { meta: metaMap?.get?.(a) || null, state, telemetry: telemetryAll[a] || null });
+    const sb = scoreModelPower(b, { meta: metaMap?.get?.(b) || null, state, telemetry: telemetryAll[b] || null });
+    if (sb !== sa) return sb - sa;
+    return a.localeCompare(b);
+  });
 }
 
-function pickTierCandidate(pool, tier, state) {
-  const tierPool = pool.filter((id) => classifyTier(id, state) === tier);
+function pickTierCandidate(pool, tier, state, metaMap = null) {
+  const tierPool = pool.filter((id) => classifyTier(id, state, metaMap?.get?.(id) || null) === tier);
   const ready = tierPool.filter((id) => !isModelOnCooldown(id));
   const candidates = ready.length ? ready : tierPool;
-  for (const kw of TIER_PRIORITY[tier] || []) {
-    const hit = candidates.find((id) => id.toLowerCase().includes(kw));
-    if (hit) return hit;
-  }
-  return candidates[0] ?? null;
+  if (!candidates.length) return null;
+  const telemetryAll = getModelTelemetry();
+  const sorted = [...candidates].sort((a, b) => {
+    const sa = scoreModelPower(a, { meta: metaMap?.get?.(a) || null, state, telemetry: telemetryAll[a] || null });
+    const sb = scoreModelPower(b, { meta: metaMap?.get?.(b) || null, state, telemetry: telemetryAll[b] || null });
+    if (sb !== sa) return sb - sa;
+    return a.localeCompare(b);
+  });
+  return sorted[0] ?? null;
 }
 
 // Shared, inspectable connector metadata. It is never account or quota data.
 export const MCP_TOOL_CATALOG = Object.freeze([
-  { name: 'fs_delegate', label: 'Déléguer', writesWorkspace: true },
+  { name: 'fs_delegate', label: 'Déléguer (Smart Routing + Web/Canvas)', writesWorkspace: true },
   { name: 'fs_job_status', label: 'Suivi', writesWorkspace: false },
   { name: 'fs_undo', label: 'Annuler (/undo)', writesWorkspace: true },
   { name: 'fs_memory', label: 'Mémoire projet', writesWorkspace: false },
@@ -224,7 +305,7 @@ export const MCP_TOOL_CATALOG = Object.freeze([
   { name: 'fs_browser', label: 'Navigateur CDP (/browse)', writesWorkspace: false },
   { name: 'fs_web', label: 'Lecture & Recherche Web (/web)', writesWorkspace: false },
   { name: 'fs_system', label: 'Système, Ports & Processus', writesWorkspace: false },
-  { name: 'fs_mcp_hub', label: 'Hub 34+ MCP (Roblox, Blender, Unity, DB…)', writesWorkspace: false },
+  { name: 'fs_mcp_hub', label: 'Hub 62+ MCP (Roblox, Blender, Firecrawl, Stripe, Cloud…)', writesWorkspace: false },
   { name: 'fs_data', label: 'Code Interpreter & Data Analyst (/data)', writesWorkspace: false },
   { name: 'fs_research', label: 'Deep Research Multi-Sources (/research)', writesWorkspace: false },
   { name: 'fs_canvas', label: 'Artifacts & Live Canvas (/canvas)', writesWorkspace: false },
@@ -382,6 +463,10 @@ export const DEFAULT_STATE = {
   useClientTools: true,
   computerUseEnabled: true,
   enableWebSearch: true,
+  webSearchMode: 'auto',
+  canvasMode: 'auto',
+  imageGenMode: 'auto',
+  smartRouting: true,
   reuseChat: true,
   contextCompactPercent: 80,
   // Minimal does not inject a project map or the content of files.
@@ -392,9 +477,9 @@ export const DEFAULT_STATE = {
   allowedModels: [],
   blockedModels: [],
   tiers: {
-    light: ['haiku', 'luna', 'mini', 'nano', 'flash'],
-    medium: ['sonnet', 'terra', 'gpt-5.6-sol', 'kimi-k2'],
-    heavy: ['fable', 'opus', 'astra', 'gpt-6.2', 'gpt-6-sol', 'gpt-6.1-sol', 'kimi-k3'],
+    light: ['haiku', 'luna', 'mini', 'nano', 'flash', 'ministral', 'lite', 'instant', 'scout'],
+    medium: ['sonnet', 'terra', 'gpt-5.6-sol', 'kimi-k2', 'plus', 'maverick', 'codestral'],
+    heavy: ['opus', 'ultra', 'astra', 'fable', 'gpt-6.2', 'gpt-6-sol', 'gpt-6.1-sol', 'o4', 'o3', 'kimi-k3', 'deepseek-r1', 'deepseek-r2', 'reasoner'],
   },
   history: [],
 };
@@ -1067,6 +1152,93 @@ export function compactChatContext(state, chatId) {
   return fsJson(state, 'POST', `/chats/${chatId}/context`);
 }
 
+let cachedPersonalization = null;
+let cachedPersonalizationAt = 0;
+
+/** Reads native France Student user settings (Canvas documentToolsEnabled, imageGenerationToolEnabled, gptReasoning, webSearchMode, promptCompression). */
+export async function fetchUserPersonalization(state, { force = false } = {}) {
+  if (!force && cachedPersonalization && Date.now() - cachedPersonalizationAt < 60_000) {
+    return cachedPersonalization;
+  }
+  const res = await fsJson(state, 'GET', '/user/instructions');
+  cachedPersonalization = res || null;
+  cachedPersonalizationAt = Date.now();
+  return cachedPersonalization;
+}
+
+/** Updates native France Student user personalization settings (partial PATCH /user/instructions). */
+export async function updateUserPersonalization(state, patch = {}) {
+  if (!patch || typeof patch !== 'object' || !Object.keys(patch).length) return cachedPersonalization;
+  const res = await fsJson(state, 'PATCH', '/user/instructions', patch);
+  cachedPersonalization = res || { ...(cachedPersonalization || {}), ...patch };
+  cachedPersonalizationAt = Date.now();
+  return cachedPersonalization;
+}
+
+/**
+ * Syncs France Student native Canvas (documentToolsEnabled) and Image Generation
+ * (imageGenerationToolEnabled) only when the desired value differs from the cached server state.
+ * Best-effort: never fails a request if the token lacks /user/instructions scope.
+ */
+export async function syncNativeCapabilities(state, { enableCanvas = null, enableImageGen = null } = {}) {
+  if (enableCanvas === null && enableImageGen === null) return { synced: false };
+  try {
+    const cur = await fetchUserPersonalization(state).catch(() => null);
+    const patch = {};
+    if (typeof enableCanvas === 'boolean' && (!cur || cur.documentToolsEnabled !== enableCanvas)) {
+      patch.documentToolsEnabled = enableCanvas;
+    }
+    if (typeof enableImageGen === 'boolean' && (!cur || cur.imageGenerationToolEnabled !== enableImageGen)) {
+      patch.imageGenerationToolEnabled = enableImageGen;
+    }
+    if (!Object.keys(patch).length) return { synced: false, unchanged: true, current: cur };
+    const updated = await updateUserPersonalization(state, patch);
+    return { synced: true, patch, current: updated };
+  } catch (e) {
+    return { synced: false, error: String(e?.message || e).slice(0, 180) };
+  }
+}
+
+/** Remote Cloud MCP Servers hosted inside France Student (/mcp/servers). */
+export async function fetchCloudMcpServers(state) {
+  const res = await fsJson(state, 'GET', '/mcp/servers');
+  return asList(res);
+}
+
+export async function addCloudMcpServer(state, payload) {
+  return fsJson(state, 'POST', '/mcp/servers', payload);
+}
+
+export async function deleteCloudMcpServer(state, serverId) {
+  return fsJson(state, 'DELETE', `/mcp/servers/${encodeURIComponent(String(serverId || ''))}`);
+}
+
+/** France Student DeskDock virtual PC (/deskdock). Handles 403 beta-gated accounts cleanly. */
+export async function fetchDeskDock(state) {
+  try {
+    const data = await fsJson(state, 'GET', '/deskdock');
+    return { available: true, data };
+  } catch (e) {
+    const msg = String(e?.message || e);
+    return { available: false, betaGated: /403|UNAUTHORIZED_ACCESS|deskdock/i.test(msg), error: msg.slice(0, 220) };
+  }
+}
+
+export async function controlDeskDock(state, action = 'status') {
+  const act = String(action || 'status').toLowerCase();
+  if (act === 'status') return fetchDeskDock(state);
+  try {
+    if (act === 'create') return { available: true, data: await fsJson(state, 'POST', '/deskdock') };
+    if (act === 'start') return { available: true, data: await fsJson(state, 'POST', '/deskdock/start') };
+    if (act === 'stop') return { available: true, data: await fsJson(state, 'POST', '/deskdock/stop') };
+    if (act === 'delete') return { available: true, data: await fsJson(state, 'DELETE', '/deskdock') };
+    throw new Error(`Action DeskDock inconnue : ${action}`);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    return { available: false, betaGated: /403|UNAUTHORIZED_ACCESS|deskdock/i.test(msg), error: msg.slice(0, 220) };
+  }
+}
+
 function asList(value) {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.data)) return value.data;
@@ -1248,8 +1420,9 @@ export async function fetchAgentsAndModels(state) {
 }
 
 /**
- * Enriches the model list with ID, tier, real API creation date when present,
- * local first-seen date otherwise, and a 14-day "Nouveau" badge.
+ * Enriches the model list with ID, tier, universal powerScore/powerRank (sorted
+ * strictly strongest -> weakest for current AND future unseen models), real API
+ * creation date when present, local first-seen date otherwise, and a 14-day "Nouveau" badge.
  */
 export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { persist = true } = {}) {
   const rawMap = new Map();
@@ -1260,7 +1433,6 @@ export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { pe
   const telemetryAll = getModelTelemetry();
   let changed = false;
   const now = Date.now();
-  const tierRank = { heavy: 0, medium: 1, light: 2 };
   const rows = [];
 
   for (const id of ids || []) {
@@ -1282,25 +1454,29 @@ export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { pe
       known[id] = rec;
       changed = true;
     }
-    const tier = classifyTier(id, state);
+    const tier = classifyTier(id, state, meta);
     const policy = getModelPolicy(id, state);
     const addedAt = apiCreatedAt ?? rec.firstSeenAt ?? null;
     const addedSource = apiCreatedAt ? 'api' : (rec.firstSeenAt ? 'detected' : 'unknown');
     const isNew = apiCreatedAt
       ? (now - apiCreatedAt <= RECENT_MODEL_WINDOW_MS)
       : Boolean(!rec.baseline && rec.firstSeenAt && (now - rec.firstSeenAt <= RECENT_MODEL_WINDOW_MS));
+    const telemetry = telemetryAll[id] ?? null;
+    // Catalog sorting uses pure intrinsic model power so newer/stronger models always stay at the top.
+    const powerScore = scoreModelPower(id, { meta, state, telemetry: null });
     rows.push({
       id,
       name: meta?.name || id,
       provider: meta?.provider || raw?.owned_by || (id.startsWith('claude') ? 'anthropic' : 'openai'),
       tier,
+      powerScore,
       policy,
       blocked: policy === 'deny',
       contextWindow: meta?.contextWindow ?? null,
       addedAt,
       addedSource,
       isNew,
-      telemetry: telemetryAll[id] ?? null,
+      telemetry,
     });
   }
 
@@ -1309,44 +1485,151 @@ export function enrichModelsCatalog(ids, metaMap, state, apiModelsRaw = [], { pe
     if (persist) saveState(state);
   }
 
+  // Always sorted strictly strongest -> weakest (including newly released models), keeping isNew badge intact.
   rows.sort((a, b) => {
-    if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
-    const tr = (tierRank[a.tier] ?? 9) - (tierRank[b.tier] ?? 9);
-    if (tr !== 0) return tr;
+    if (b.powerScore !== a.powerScore) return b.powerScore - a.powerScore;
     return a.id.localeCompare(b.id);
   });
+  rows.forEach((row, idx) => { row.powerRank = idx + 1; });
   return rows;
 }
 
 const HEAVY = /(architect|refactor|migration|sécurité|security|concurren|optimi[sz]|algorithm|debug|bug|race condition|performance|plusieurs fichiers|full[\s-]?stack|audit|économie|economie)/i;
 const CODING_MEDIUM = /(cr[ée]{1,2}|g[ée]n[èe]re|impl[ée]ment|d[ée]velopp|corrig|am[ée]lior|ajout|modifi|composant|interface|script|fonction|classe|endpoint|route|backend|frontend|base de donn|sql|test|build|vid[ée]o|application|\bapi\b|\bapp\b|\bhtml\b|\bcss\b|\bjs\b|\bts\b|\bpy\b)/i;
 const LIGHT = /(renomm|rename|commentaire|comment|docstring|readme|typo|formate|format|tradui|translate|lint|import)/i;
+const WEB_RESEARCH_RE = /(?:cherche(?:r)?\s+(?:sur\s+)?(?:internet|le\s+web|google|en\s+ligne|github)|recherche(?:\s+web|\s+approfondie|\s+internet|\s+en\s+ligne)?|actualit[ée]s?|dernier(?:e|es|s)?\s+(?:version|sortie|release|news|nouvelle)|derni[èe]res?\s+(?:version|sortie|news)|comparatif|prix|tarif|(?:quelle\s+)?m[ée]t[ée]o\s+(?:[àa]|de|du|pour|aujourd|demain)|bours[ei]|cours\s+du|doc(?:umentation)?\s+officielle|qu['’]est[- ]ce\s+qui\s+est\s+sorti|trouve(?:r)?\s+(?:sur\s+)?(?:internet|github|le\s+web)|v[ée]rifie(?:r)?\s+en\s+ligne|sources?\s+web|citations?|\blatest\b|\bnews\b|\b202[5-9]\b|https?:\/\/|github\.com|reddit|wikipedia)/i;
+const CANVAS_ARTIFACT_RE = /(?:\bcanva[s]?\b|\bartefact(?:s)?\b|\bartifact(?:s)?\b|page\s+(?:web\s+)?interactive|maquette(?:\s+ui|\s+html)?|prototype(?:\s+interactif)?|infographie|dashboard\s+interactif|tableau\s+de\s+bord\s+(?:interactif|visuel)|diaporama|pr[ée]sentation\s+(?:interactive|visuelle|slides?)|\bslides?\b|sch[ée]ma\s+(?:visuel|interactif|architecture)|diagramme(?:\s+mermaid|\s+svg)?|\bmermaid\b|graphique\s+(?:svg|interactif)|fiche\s+de\s+r[ée]vision|document\s+(?:structur[ée]|format[ée]|visuel)|aper[çc]u\s+visuel|mini[- ]?app(?:lication)?|widget\s+interactif|carte\s+interactive)/i;
+const IMAGE_GEN_RE = /(?:g[ée]n[èe]re(?:r)?\s+(?:une\s+)?image|cr[ée]{1,2}(?:r)?\s+(?:une\s+)?(?:image|illustration|affiche|banni[èe]re|ic[ôo]ne|logo|wallpaper|poster)|dessine(?:-moi)?|illustration\s+photor[ée]aliste|visuel\s+(?:photor[ée]aliste|3d|publicitaire))/i;
 
-export function classifyTier(id, state) {
-  const s = String(id).toLowerCase();
+const AUTO_LIGHT_RE = /(?:haiku|luna|mini(?!stral)|ministral|nano|flash|lite|instant|micro|tiny|small|fast|scout|spark)/i;
+const AUTO_HEAVY_RE = /(?:opus|ultra|astra|fable|pro-max|promax|\bmax\b|\bo4\b|\bo3\b|o1-pro|deepseek-r[12]|\br[12]\b|reasoner|thinking|kimi-k[3-9]|grok-[3-9]|mistral-large|codestral-large|\bpro\b)/i;
+const AUTO_MEDIUM_RE = /(?:sonnet|terra|gpt-5\.6-sol|kimi-k2|\bplus\b|medium|balanced|4o|maverick|codestral|mistral-small)/i;
+
+export function classifyTier(id, state, meta = null) {
+  const s = String(id || '').toLowerCase();
   const tiers = state?.tiers ?? DEFAULT_STATE.tiers;
-  const has = (pats) => (pats || []).some((p) => s.includes(String(p).toLowerCase()));
-  if (has(tiers.heavy)) return 'heavy';
-  if (has(tiers.light)) return 'light';
-  if (has(tiers.medium)) return 'medium';
+  const has = (pats) => (pats || []).some((p) => {
+    const kw = String(p || '').toLowerCase().trim();
+    return kw && s.includes(kw);
+  });
+
+  // 1. Light patterns checked before heavy so future "o4-mini", "gemini-4-flash", "ministral-14b" always stay Light.
+  const paramsB = extractParamBillions(s);
+  if (has(tiers.light) || AUTO_LIGHT_RE.test(s) || (paramsB !== null && paramsB <= 20)) return 'light';
+
+  // 2. Explicit heavy list or universal flagship patterns (including future gpt-7/claude-6 without light/medium marker).
+  const ver = extractModelVersion(s);
+  const isSolHeavy = s.includes('sol') && !s.includes('5.6') && (ver === 0 || ver >= 6);
+  if (has(tiers.heavy) || AUTO_HEAVY_RE.test(s) || isSolHeavy || (paramsB !== null && paramsB >= 100)) {
+    return 'heavy';
+  }
+
+  // 3. Medium list / universal balanced patterns.
+  if (has(tiers.medium) || AUTO_MEDIUM_RE.test(s) || (paramsB !== null && paramsB > 20 && paramsB < 100)) {
+    return 'medium';
+  }
+
+  // 4. Context window / version heuristic for completely unseen model brand names.
+  const ctx = Number(meta?.contextWindow || 0);
+  if (ctx >= 500_000) return 'heavy';
+  if (ctx > 0 && ctx <= 64_000) return 'light';
   return 'medium';
 }
 
 export function groupModelsByTier(available, state, metaMap) {
   const groups = { light: [], medium: [], heavy: [] };
+  const telemetryAll = getModelTelemetry();
   for (const id of available || []) {
-    const t = classifyTier(id, state);
-    const meta = metaMap?.get(id);
+    const meta = metaMap?.get?.(id);
+    const t = classifyTier(id, state, meta);
     const policy = getModelPolicy(id, state);
     groups[t].push({
       id,
       name: meta?.name || id,
       provider: meta?.provider || (id.startsWith('claude') ? 'anthropic' : 'openai'),
+      powerScore: scoreModelPower(id, { meta, state, telemetry: telemetryAll[id] || null }),
       policy,
       blocked: policy === 'deny',
     });
   }
+  for (const k of ['heavy', 'medium', 'light']) {
+    groups[k].sort((a, b) => (b.powerScore - a.powerScore) || a.id.localeCompare(b.id));
+  }
   return groups;
+}
+
+/**
+ * Intelligent intent analyzer: inspects the user's request to decide BOTH the optimal
+ * model tier (e.g., light/fast for pure web research so Opus quota isn't wasted) AND
+ * which native France Student triggers to enable (enableWebSearch, enableCanvas/documentTools, enableImageGen).
+ */
+export function analyzeTaskIntent(prompt, {
+  executionMode = 'apply',
+  workspaceRoot = '',
+  useClientTools = false,
+  webSearchMode = 'auto',
+  canvasMode = 'auto',
+  imageGenMode = 'auto',
+} = {}) {
+  const text = String(prompt ?? '').trim();
+  const isWebResearch = WEB_RESEARCH_RE.test(text);
+  const isCanvasArtifact = CANVAS_ARTIFACT_RE.test(text);
+  const isImageGen = IMAGE_GEN_RE.test(text);
+  const isHeavyCode = HEAVY.test(text) || text.length > 3800;
+  const isCoding = CODING_MEDIUM.test(text);
+  const isLightTask = LIGHT.test(text) && text.length < 900;
+  const hasWorkspaceWrite = Boolean(workspaceRoot && useClientTools && executionMode === 'apply');
+
+  const wsMode = normalizeTriggerMode(webSearchMode, 'auto');
+  const cvMode = normalizeTriggerMode(canvasMode, 'auto');
+  const igMode = normalizeTriggerMode(imageGenMode, 'auto');
+
+  const enableWebSearch = wsMode === 'on' ? true : (wsMode === 'off' ? false : isWebResearch);
+  const enableCanvas = cvMode === 'on'
+    ? true
+    : (cvMode === 'off' ? false : Boolean(isCanvasArtifact && !hasWorkspaceWrite && executionMode !== 'patch' && executionMode !== 'plan'));
+  const enableImageGen = igMode === 'on' ? true : (igMode === 'off' ? false : isImageGen);
+
+  let intent = 'general';
+  let recommendedTier = null;
+  let rationale = '';
+
+  if (isImageGen && !isHeavyCode) {
+    intent = 'image_generation';
+    recommendedTier = 'light';
+    rationale = 'image IA (modèle léger suffisant + générateur natif)';
+  } else if (isWebResearch && !isHeavyCode && !hasWorkspaceWrite) {
+    intent = isCanvasArtifact ? 'research_canvas' : 'web_research';
+    recommendedTier = isCanvasArtifact || isCoding || text.length > 900 ? 'medium' : 'light';
+    rationale = isCanvasArtifact
+      ? 'recherche web + Canvas (modèle équilibré)'
+      : (recommendedTier === 'light'
+        ? 'recherche web (modèle léger suffisant + recherche web active)'
+        : 'recherche web technique (modèle équilibré + recherche web active)');
+  } else if (isCanvasArtifact && !hasWorkspaceWrite && executionMode !== 'patch') {
+    intent = 'canvas_artifact';
+    recommendedTier = isHeavyCode ? 'heavy' : 'medium';
+    rationale = 'Canvas / artefact visuel (modèle équilibré + outils Canvas)';
+  } else if (isHeavyCode) {
+    intent = 'heavy_engineering';
+    recommendedTier = 'heavy';
+    rationale = 'ingénierie complexe (modèle fort)';
+  } else if (isLightTask && !isCoding) {
+    intent = 'light_edit';
+    recommendedTier = 'light';
+    rationale = 'tâche légère (modèle rapide)';
+  }
+
+  return {
+    intent,
+    recommendedTier,
+    rationale,
+    signals: { isWebResearch, isCanvasArtifact, isImageGen, isHeavyCode, isCoding, isLightTask, hasWorkspaceWrite },
+    enableWebSearch,
+    enableCanvas,
+    enableImageGen,
+    modes: { webSearch: wsMode, canvas: cvMode, imageGen: igMode },
+  };
 }
 
 export const MISSING_REFUSAL_REASON = 'motif non fourni par le fournisseur';
@@ -1393,11 +1676,11 @@ export function refusalReasonFromEvent(event) {
 const ARTIFACT_STUB_PATTERN = /(?:create_artifact|artefact|panneau latéral|disponibles? dans|se trouve dans|voir dans [«"'])/i;
 
 /** A text-only fallback detects explicit refusals and short server-artifact redirects. */
-export function refusalReasonFromText(text) {
+export function refusalReasonFromText(text, { allowArtifacts = false } = {}) {
   const value = String(text ?? '').trim();
   if (!value || value.length > 1800) return null;
   const hasRealCode = /```[\s\S]{80,}```/.test(value);
-  if (!hasRealCode && value.length < 500 && ARTIFACT_STUB_PATTERN.test(value)) {
+  if (!allowArtifacts && !hasRealCode && value.length < 500 && ARTIFACT_STUB_PATTERN.test(value)) {
     return 'Redirection vers artefact serveur sans code inline';
   }
   if (/```/.test(value)) return null;
@@ -1465,6 +1748,9 @@ export function parseTaskDirectives(raw) {
   let permissionMode = null;
   let reasoningEffort = null;
   let quotaQuery = false;
+  let webSearchMode = null;
+  let canvasMode = null;
+  let imageGenMode = null;
   // `/plan /security audit src/auth` is valid: all recognised directives are local.
   for (;;) {
     const slash = /^\s*\/([a-zA-ZÀ-ÿ0-9_-]+)(?:\s+|$)/.exec(prompt);
@@ -1481,6 +1767,11 @@ export function parseTaskDirectives(raw) {
     if (command === 'apply') { executionMode = 'apply'; prompt = next; continue; }
     if (command === 'think' || command === 'deep' || command === 'reason') { reasoningEffort = 'deep'; prompt = next; continue; }
     if (command === 'max' || command === 'boost' || command === 'xhigh') { reasoningEffort = 'max'; requested = requested ?? { kind: 'tier', value: 'heavy' }; prompt = next; continue; }
+    if (command === 'search' || command === 'websearch' || command === 'online') { webSearchMode = 'on'; prompt = next; continue; }
+    if (command === 'noweb' || command === 'nosearch' || command === 'offline') { webSearchMode = 'off'; prompt = next; continue; }
+    if (command === 'canvas' || command === 'canva' || command === 'artefact' || command === 'artifact') { canvasMode = 'on'; prompt = next; continue; }
+    if (command === 'nocanvas' || command === 'noartifact') { canvasMode = 'off'; prompt = next; continue; }
+    if (command === 'image' || command === 'img') { imageGenMode = 'on'; prompt = next; continue; }
     if (command === 'model' || command === 'modele') {
       const m = /^(\S+)(?:\s+|$)/.exec(next);
       if (!m) break;
@@ -1503,7 +1794,19 @@ export function parseTaskDirectives(raw) {
     if (MODEL_ALIASES[command]) { requested = { kind: 'model', value: MODEL_ALIASES[command] }; prompt = next; continue; }
     break;
   }
-  return { prompt: prompt.trim(), tagModel, requested, profile, executionMode, permissionMode, reasoningEffort, quotaQuery };
+  return {
+    prompt: prompt.trim(),
+    tagModel,
+    requested,
+    profile,
+    executionMode,
+    permissionMode,
+    reasoningEffort,
+    quotaQuery,
+    ...(webSearchMode ? { webSearchMode } : {}),
+    ...(canvasMode ? { canvasMode } : {}),
+    ...(imageGenMode ? { imageGenMode } : {}),
+  };
 }
 
 /** Non-writing modes may discover local files but never edit or create them. */
@@ -1527,7 +1830,15 @@ function profileTier(profile, prompt) {
   }
 }
 
-export function pickModel(raw, available, state, explicit, { approvedModel = null } = {}) {
+export function pickModel(raw, available, state, explicit, {
+  approvedModel = null,
+  metaMap = null,
+  workspaceRoot = '',
+  useClientTools = false,
+  webSearchMode = null,
+  canvasMode = null,
+  imageGenMode = null,
+} = {}) {
   const has = (id, pats) => pats.some((p) => id.toLowerCase().includes(p.toLowerCase()));
   const pool = (available || []).filter((id) => getModelPolicy(id, state) !== 'deny');
   if (!pool.length) throw new Error('Aucun modèle autorisé disponible (vérifie l’onglet Modèles).');
@@ -1539,18 +1850,60 @@ export function pickModel(raw, available, state, explicit, { approvedModel = nul
   const forcedTier = requested?.kind === 'tier' ? requested.value : TIER_ALIASES[wantedNorm];
   const profile = directives.profile || (state?.routingProfile === 'auto' ? 'auto' : normalizeRoutingProfile(state?.routingProfile)) || 'auto';
 
+  const resolvedWsMode = normalizeTriggerMode(
+    webSearchMode ?? directives.webSearchMode ?? state?.webSearchMode ?? (state?.enableWebSearch === false ? 'off' : 'auto'),
+    'auto'
+  );
+  const resolvedCanvasMode = normalizeTriggerMode(
+    canvasMode ?? directives.canvasMode ?? state?.canvasMode ?? 'auto',
+    'auto'
+  );
+  const resolvedImgMode = normalizeTriggerMode(
+    imageGenMode ?? directives.imageGenMode ?? state?.imageGenMode ?? 'auto',
+    'auto'
+  );
+
+  const intentInfo = analyzeTaskIntent(prompt, {
+    executionMode: directives.executionMode,
+    workspaceRoot,
+    useClientTools,
+    webSearchMode: resolvedWsMode,
+    canvasMode: resolvedCanvasMode,
+    imageGenMode: resolvedImgMode,
+  });
+
+  const triggers = {
+    intent: intentInfo.intent,
+    enableWebSearch: intentInfo.enableWebSearch,
+    enableCanvas: intentInfo.enableCanvas,
+    enableImageGen: intentInfo.enableImageGen,
+    rationale: intentInfo.rationale,
+    modes: intentInfo.modes,
+  };
+
   const finalize = (result) => {
     const policy = getModelPolicy(result.model, state);
     const needsApproval = policy === 'ask' && approvedModel !== result.model;
     const alternatives = needsApproval
-      ? rankModelsBestToWorst(pool, state, { includeAsk: false }).slice(0, 3)
+      ? rankModelsBestToWorst(pool, state, { includeAsk: false, metaMap }).slice(0, 3)
       : [];
-    return { ...result, policy, needsApproval, alternatives };
+    return {
+      ...result,
+      intent: intentInfo.intent,
+      enableWebSearch: intentInfo.enableWebSearch,
+      enableCanvas: intentInfo.enableCanvas,
+      enableImageGen: intentInfo.enableImageGen,
+      triggers,
+      policy,
+      needsApproval,
+      alternatives,
+    };
   };
 
   const effectiveEffort = normalizeReasoningEffort(directives.reasoningEffort || state?.reasoningEffort, 'deep');
   if (wanted && !forcedTier) {
-    const hit = pool.find((id) => has(id, [wanted]));
+    const matching = pool.filter((id) => has(id, [wanted]));
+    const hit = matching.length ? rankModelsBestToWorst(matching, state, { includeAsk: true, approvedModel, metaMap })[0] : null;
     if (hit) return finalize({ model: hit, prompt, reason: `forcé : ${wanted}`, profile, executionMode: directives.executionMode, permissionMode: directives.permissionMode, reasoningEffort: effectiveEffort });
     const rawHit = (available || []).find((id) => has(id, [wanted]));
     if (rawHit && getModelPolicy(rawHit, state) === 'deny') {
@@ -1559,22 +1912,42 @@ export function pickModel(raw, available, state, explicit, { approvedModel = nul
     throw new Error(`Modèle « ${wanted} » indisponible ou bloqué.`);
   }
 
-  const preferredTier = effectiveEffort === 'max' ? 'heavy' : profileTier(profile, prompt);
+  // Smart intent routing: when user didn't explicitly type /max, /quality, /security, /refactor,
+  // automatically pick a lighter/balanced model for pure web search, image gen, or Canvas artifacts!
+  const explicitStrictProfile = Boolean(directives.profile && ['quality', 'security', 'refactor'].includes(directives.profile));
+  const explicitMaxDirective = directives.reasoningEffort === 'max';
+  const smartOverrideTier = (
+    state?.smartRouting !== false &&
+    !forcedTier &&
+    !explicitMaxDirective &&
+    !explicitStrictProfile &&
+    ['web_research', 'research_canvas', 'canvas_artifact', 'image_generation'].includes(intentInfo.intent) &&
+    intentInfo.recommendedTier
+  ) ? intentInfo.recommendedTier : null;
+
+  const preferredTier = smartOverrideTier || (effectiveEffort === 'max' ? 'heavy' : profileTier(profile, prompt));
   const tier = forcedTier || preferredTier || (HEAVY.test(prompt) || prompt.length > 4000 ? 'heavy'
     : LIGHT.test(prompt) && prompt.length < 800 ? 'light' : 'medium');
   const order = tier === 'heavy' ? ['heavy', 'medium', 'light']
     : tier === 'light' ? ['light', 'medium', 'heavy'] : ['medium', 'heavy', 'light'];
   for (const t of order) {
-    const hit = pickTierCandidate(pool, t, state);
+    const hit = pickTierCandidate(pool, t, state, metaMap);
     if (hit) {
       const label = t === 'light' ? 'faible' : t === 'heavy' ? 'fort' : 'équilibré';
+      const triggerNotes = [
+        intentInfo.enableWebSearch ? 'Web' : null,
+        intentInfo.enableCanvas ? 'Canvas' : null,
+        intentInfo.enableImageGen ? 'Image' : null,
+      ].filter(Boolean);
+      const baseReason = forcedTier ? `catégorie : ${label}`
+        : (smartOverrideTier ? `smart ${intentInfo.rationale || label}${t !== tier ? ' (repli)' : ''}`
+          : (effectiveEffort === 'max' ? `raisonnement max : ${label}`
+            : (preferredTier ? `profil ${profile} : ${label}${t !== tier ? ' (repli)' : ''}`
+              : `auto : ${label}${t !== tier ? ' (repli)' : ''}`)));
       return finalize({
         model: hit,
         prompt,
-        reason: forcedTier ? `catégorie : ${label}`
-          : (effectiveEffort === 'max' ? `raisonnement max : ${label}`
-            : (preferredTier ? `profil ${profile} : ${label}${t !== tier ? ' (repli)' : ''}`
-              : `auto : ${label}${t !== tier ? ' (repli)' : ''}`)),
+        reason: triggerNotes.length ? `${baseReason} [${triggerNotes.join('+')}]` : baseReason,
         profile,
         executionMode: directives.executionMode,
         permissionMode: directives.permissionMode,
@@ -1977,12 +2350,17 @@ export async function streamGeneration({
   clientTools = [],
   executeToolCall = null,
   maxToolTurns = 12,
+  enableWebSearch,
+  enableCanvas,
+  enableImageGen,
   signal,
   timeoutMs,
   onText,
   onReasoning,
   onChatId,
   onToolCall,
+  onWebSearch,
+  onImageGenerated,
 }) {
   const base = OFFICIAL_API_BASE_URL;
   let apiKey = await resolveAuthToken(state);
@@ -1990,6 +2368,11 @@ export async function streamGeneration({
   const agentId = agentMap?.get(model);
   const localPromptEstimateTokens = estimateTokens(prompt);
   let activeChatId = existingChatId ?? null;
+  const effectiveWebSearch = typeof enableWebSearch === 'boolean'
+    ? enableWebSearch
+    : (state?.enableWebSearch !== undefined ? Boolean(state.enableWebSearch) : undefined);
+  const effectiveCanvas = typeof enableCanvas === 'boolean' ? enableCanvas : false;
+  const effectiveImageGen = typeof enableImageGen === 'boolean' ? enableImageGen : undefined;
 
   const effectiveTimeoutMs = Math.max(
     10_000,
@@ -2030,6 +2413,7 @@ export async function streamGeneration({
       input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
     };
     if (state.showReasoning !== false) body.reasoning = { effort: apiEffort, summary: 'auto' };
+    if (effectiveWebSearch === true) body.tools = [{ type: 'web_search' }];
     const doResponses = (token) => fetch(base + '/v1/responses', {
       method: 'POST',
       signal: effectiveSignal,
@@ -2068,9 +2452,15 @@ export async function streamGeneration({
         throw providerFailure(ev, 'Échec de génération.');
       }
     }
-    const refusal = refusalReasonFromText(text);
+    const refusal = refusalReasonFromText(text, { allowArtifacts: effectiveCanvas });
     if (refusal) throw new ModelRefusalError(refusal);
-    return { text, usage, written: [], tokenMeasurement: tokenMeasurementForPrompt(prompt, usage) };
+    return {
+      text,
+      usage,
+      written: [],
+      triggeredCapabilities: { webSearch: Boolean(effectiveWebSearch), canvas: effectiveCanvas, imageGen: Boolean(effectiveImageGen) },
+      tokenMeasurement: tokenMeasurementForPrompt(prompt, usage),
+    };
   };
 
   // Mode strictement sans écriture ni clientTools : uniquement des phrases normales.
@@ -2084,6 +2474,18 @@ export async function streamGeneration({
     let combinedText = '';
     let aggregateUsage = null;
     let toolTurns = 0;
+    const webSearchSources = [];
+    const webSearchQueries = [];
+    const generatedImages = [];
+    const seenSourceUrls = new Set();
+
+    // Sync native France Student documentToolsEnabled (Canvas) / imageGenerationToolEnabled when explicitly requested.
+    if (typeof enableCanvas === 'boolean' || typeof enableImageGen === 'boolean') {
+      await syncNativeCapabilities(state, {
+        enableCanvas: typeof enableCanvas === 'boolean' ? enableCanvas : null,
+        enableImageGen: typeof enableImageGen === 'boolean' ? enableImageGen : null,
+      }).catch(() => {});
+    }
 
     const addUsage = (tu) => {
       if (!tu) return;
@@ -2155,6 +2557,29 @@ export async function streamGeneration({
             turn.text += ev.text;
             combinedText += ev.text;
             onText?.(ev.text);
+          } else if (ev?.type === 'response.web_search_call.searching' || ev?.type === 'response.web_search_call.in_progress') {
+            onWebSearch?.({ status: 'searching' });
+          } else if (ev?.type === 'response.output_item.done' && ev.item?.type === 'web_search_call') {
+            const act = ev.item.action || {};
+            const qs = [...(Array.isArray(act.queries) ? act.queries : []), ...(act.query ? [act.query] : [])].filter(Boolean);
+            for (const q of qs) if (!webSearchQueries.includes(q)) webSearchQueries.push(q);
+            for (const src of act.sources || []) {
+              const url = String(src?.url || '').trim();
+              if (url && !seenSourceUrls.has(url)) {
+                seenSourceUrls.add(url);
+                webSearchSources.push({ title: String(src?.title || url).slice(0, 140), url });
+              }
+            }
+            onWebSearch?.({ status: ev.item.status || 'completed', queries: qs, sourcesCount: webSearchSources.length });
+          } else if (ev?.type === 'response.output_item.done' && ev.item?.type === 'image_generation_call') {
+            const img = {
+              id: ev.item.id,
+              status: ev.item.status || 'completed',
+              revisedPrompt: ev.item.revised_prompt || '',
+              resultAvailable: Boolean(ev.item.result_available),
+            };
+            generatedImages.push(img);
+            onImageGenerated?.(img);
           } else if (
             ev?.type === 'response.reasoning_summary_text.delta' ||
             ev?.type === 'response.reasoning.delta' ||
@@ -2223,13 +2648,14 @@ export async function streamGeneration({
       ? {
         content: prompt,
         agentId: id,
-        enableCanvas: false,
+        enableCanvas: effectiveCanvas,
+        ...(effectiveWebSearch !== undefined ? { enableWebSearch: effectiveWebSearch } : {}),
         ...(toolsList.length ? { clientTools: toolsList } : {}),
       }
       : {
         agentId: id,
-        enableCanvas: false,
-        ...(state?.enableWebSearch !== undefined ? { enableWebSearch: Boolean(state.enableWebSearch) } : {}),
+        enableCanvas: effectiveCanvas,
+        ...(effectiveWebSearch !== undefined ? { enableWebSearch: effectiveWebSearch } : {}),
         initialContent,
         ...(toolsList.length ? { clientTools: toolsList } : {}),
       };
@@ -2279,7 +2705,7 @@ export async function streamGeneration({
 
     const finalText = toolTurns > 0 ? (lastNonEmptyTurnText || combinedText) : combinedText;
     if (!toolTurns) {
-      const refusal = refusalReasonFromText(finalText);
+      const refusal = refusalReasonFromText(finalText, { allowArtifacts: effectiveCanvas });
       if (refusal) throw new ModelRefusalError(refusal, { chatId });
     }
 
@@ -2289,6 +2715,14 @@ export async function streamGeneration({
       written: [],
       toolTurns,
       chatId,
+      webSearchSources,
+      webSearchQueries,
+      generatedImages,
+      triggeredCapabilities: {
+        webSearch: Boolean(effectiveWebSearch),
+        canvas: effectiveCanvas,
+        imageGen: Boolean(effectiveImageGen),
+      },
       tokenMeasurement: {
         localPromptEstimateTokens,
         providerUsage: normalizeProviderTokenUsage(aggregateUsage),
