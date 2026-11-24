@@ -41,6 +41,7 @@ import {
   readLiveJobs,
   recordAntigravitySavings,
   removeApiKey,
+  requestCancelJob,
   resolveApiKey,
   saveApiKey,
   saveModelPoliciesFile,
@@ -100,16 +101,15 @@ const jobs = new Map();
 const running = new Map();
 const queue = [];
 
-const PANEL_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis (list_directory, search_files, read_file, et selon permission edit_file, write_file, run_command). Ne réécris pas le code dans ta réponse finale : termine par un bilan ultra-court (<= 6 lignes) des fichiers modifiés et commandes exécutées.`;
+const PANEL_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis pour lire et modifier les fichiers demandés, puis termine par un court bilan.`;
 
-const PANEL_INSTRUCTIONS = `Réponds clairement et directement en français (ou dans la langue de la demande).
-Si du code est demandé, fournis un code complet, propre et directement utilisable dans des blocs Markdown standards, sans blabla inutile.`;
+const PANEL_INSTRUCTIONS = `Réponds clairement et directement en français, avec le code complet en bloc Markdown si du code est demandé.`;
 
-const PANEL_CANVAS_INSTRUCTIONS = `Mode Canvas & Artefact actif : crée un artefact visuel ou document structuré complet et autonome (page HTML/CSS/JS complète dans un bloc \`\`\`html, graphique \`\`\`svg, diagramme \`\`\`mermaid ou document Markdown riche). Soigne l'esthétique et la lisibilité.`;
+const PANEL_CANVAS_INSTRUCTIONS = `Réponds clairement en français. Mets le code ou document complet dans un document Canvas (createDocument) ou en bloc Markdown prêt à copier.`;
 
-const PANEL_PLAN_INSTRUCTIONS = `Propose un plan clair, concret et concis : étapes, fichiers concernés et points d'attention, sans rédiger le code complet.`;
+const PANEL_PLAN_INSTRUCTIONS = `Propose un plan court et clair (étapes et fichiers clés), sans écrire tout le code.`;
 
-const PANEL_PATCH_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Ne réécris JAMAIS le fichier complet : formate CHAQUE modification exactement avec TARGET: suivi d'un bloc de code et REPLACE: suivi d'un bloc de code.`;
+const PANEL_PATCH_INSTRUCTIONS = `Donne uniquement les extraits à modifier au format TARGET: puis REPLACE: en blocs de code.`;
 
 const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'patch', 'dry-run']);
 const ROUTING_PROFILES = new Set(['auto', 'eco', 'fast', 'quality', 'security', 'refactor']);
@@ -284,13 +284,15 @@ function publicView(j) {
     providerUsage: normalizeProviderTokenUsage(j.usage),
   };
   return {
-    jobId: j.id,
+    jobId: j.id || j.jobId,
+    id: j.id || j.jobId,
     title: j.title,
+    task: j.task || '',
     status: j.status,
     model: j.model,
     route: j.routeReason,
-    elapsedSec: j.startedAt ? Math.round((end - j.startedAt) / 1000) : 0,
-    receivedChars: j.receivedChars,
+    elapsedSec: (j.startedAt || j.createdAt) ? Math.max(0, Math.round((end - (j.startedAt || j.createdAt)) / 1000)) : 0,
+    receivedChars: j.receivedChars || 0,
     response: j.response ?? j.summary ?? '',
     summary: j.summary,
     filesWritten: j.filesWritten ?? [],
@@ -301,6 +303,7 @@ function publicView(j) {
     lastThoughts: (j.thoughts || []).slice(-8),
     thoughts: (j.thoughts || []).slice(-12),
     error: j.error,
+    createdAt: j.createdAt,
     startedAt: j.startedAt,
     endedAt: j.endedAt,
     usage: j.usage,
@@ -318,6 +321,7 @@ function publicView(j) {
     triggeredCapabilities: j.triggeredCapabilities ?? null,
     webSearchSources: j.webSearchSources ?? [],
     generatedImages: j.generatedImages ?? [],
+    canvasDocuments: j.canvasDocuments ?? [],
     canvasPreview: j.canvasPreview ?? null,
     antigravitySavings: j.antigravitySavings ?? null,
   };
@@ -476,6 +480,14 @@ async function runJob(job) {
             job.thoughts.push(`Image IA générée (${img.status || 'ok'})`);
             job.thoughts = job.thoughts.slice(-20);
           },
+          onCanvasProgress: (chars) => {
+            job.receivedChars += chars;
+            job.summary = `Génération Canvas en cours (${job.receivedChars} car.)…`;
+          },
+          onCanvasDocument: (doc) => {
+            job.thoughts.push(`Canvas prêt : ${doc.title} (${doc.kind}, ${doc.content.length} car.)`);
+            job.thoughts = job.thoughts.slice(-20);
+          },
           signal: ac.signal,
           onChatId: (cid) => { job.chatId = cid; },
           onText: (d) => {
@@ -540,6 +552,7 @@ async function runJob(job) {
     job.toolTurns = result.toolTurns ?? 0;
     job.webSearchSources = result.webSearchSources ?? [];
     job.generatedImages = result.generatedImages ?? [];
+    job.canvasDocuments = result.canvasDocuments ?? [];
     if (runner) {
       job.filesWritten = runner.getFilesWritten();
       job.commandsRun = runner.getCommandsRun();
@@ -549,22 +562,25 @@ async function runJob(job) {
       providerUsage: normalizeProviderTokenUsage(result.usage),
     };
     job.response = String(result.text ?? '').trim().slice(0, 30_000);
-    if (route.enableCanvas && job.response) {
-      const htmlMatch = /```html\s*\n([\s\S]+?)```/i.exec(job.response);
-      const svgMatch = !htmlMatch ? /```svg\s*\n([\s\S]+?)```/i.exec(job.response) : null;
-      const mmdMatch = (!htmlMatch && !svgMatch) ? /```mermaid\s*\n([\s\S]+?)```/i.exec(job.response) : null;
-      const artContent = htmlMatch?.[1] || svgMatch?.[1] || mmdMatch?.[1] || null;
-      const artType = htmlMatch ? 'html' : (svgMatch ? 'svg' : (mmdMatch ? 'mermaid' : null));
+    if ((route.enableCanvas || job.canvasDocuments.length) && job.response) {
+      const nativeVisual = job.canvasDocuments.find((d) => ['html', 'svg', 'mermaid'].includes(String(d.kind || '').toLowerCase()));
+      const htmlMatch = !nativeVisual ? /```html\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+      const svgMatch = (!nativeVisual && !htmlMatch) ? /```svg\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+      const mmdMatch = (!nativeVisual && !htmlMatch && !svgMatch) ? /```mermaid\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+      const artContent = nativeVisual?.content || htmlMatch?.[1] || svgMatch?.[1] || mmdMatch?.[1] || null;
+      const artType = nativeVisual ? String(nativeVisual.kind).toLowerCase() : (htmlMatch ? 'html' : (svgMatch ? 'svg' : (mmdMatch ? 'mermaid' : null)));
       if (artContent && artType) {
         try {
           const cv = await executeCanvasAction({
             action: 'create',
             id: `panel-${job.id}`,
-            title: job.title.replace(/^\[ATG\]\s*/, '').slice(0, 60),
+            title: (nativeVisual?.title || job.title.replace(/^\[ATG\]\s*/, '')).slice(0, 60),
             type: artType,
             content: artContent.trim(),
           });
-          if (cv?.url) job.canvasPreview = { id: cv.id, type: artType, url: cv.url };
+          if (cv?.previewUrl || cv?.url) {
+            job.canvasPreview = { id: cv.id, type: artType, url: cv.previewUrl || cv.url, title: nativeVisual?.title || '' };
+          }
         } catch { /* non-blocking */ }
       }
     }
@@ -637,7 +653,7 @@ app.api('/api/state', async () => {
     useClientTools,
     computerUseEnabled: state.computerUseEnabled !== false,
     webSearchMode: normalizeTriggerMode(state.webSearchMode ?? (state.enableWebSearch === false ? 'off' : 'auto'), 'auto'),
-    canvasMode: normalizeTriggerMode(state.canvasMode ?? 'auto', 'auto'),
+    canvasMode: normalizeTriggerMode(state.canvasMode ?? 'on', 'on'),
     imageGenMode: normalizeTriggerMode(state.imageGenMode ?? 'auto', 'auto'),
     smartRouting: state.smartRouting !== false,
     browserSession: getBrowserSessionStatus(),
@@ -688,8 +704,17 @@ app.api('/api/state', async () => {
 app.api('/api/clear-history', () => {
   state = loadState();
   state.history = [];
-  saveState(state);
+  saveState(state, { replaceHistory: true });
   return { ok: true };
+});
+
+app.api('/api/delete-history', (data) => {
+  const id = String(data?.id || '').trim();
+  if (!id) return { ok: false };
+  state = loadState();
+  state.history = (state.history || []).filter((h) => String(h.jobId || h.id || '') !== id);
+  saveState(state, { replaceHistory: true });
+  return { ok: true, remaining: state.history.length };
 });
 
 app.api('/api/refresh', async () => {
@@ -1104,8 +1129,14 @@ app.api('/api/delegate', async (data) => {
 });
 
 app.api('/api/cancel', (data) => {
-  const job = jobs.get(data.id);
-  if (!job) return { ok: false };
+  const id = String(data?.id || '').trim();
+  if (!id) return { ok: false };
+  const job = jobs.get(id);
+  if (!job) {
+    // Job belongs to MCP server (fs_delegate) -> write cross-process cancel signal!
+    requestCancelJob(id);
+    return { ok: true, crossProcess: true };
+  }
   if (job.status === 'queued') {
     const idx = queue.indexOf(job);
     if (idx >= 0) queue.splice(idx, 1);
@@ -1115,7 +1146,7 @@ app.api('/api/cancel', (data) => {
       state = loadState();
       void fsJson(state, 'POST', `/chats/${job.chatId}/stream/cancel`).catch(() => {});
     }
-    running.get(data.id)?.abort();
+    running.get(id)?.abort();
   }
   return { ok: true };
 });

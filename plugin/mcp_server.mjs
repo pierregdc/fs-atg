@@ -13,6 +13,7 @@ import {
   acquireGlobalSlot,
   apiCredentialStatus,
   buildReasoningDirective,
+  clearCancelRequest,
   compactChatContext,
   compactCatalog,
   enrichModelsCatalog,
@@ -28,6 +29,7 @@ import {
   fsJson,
   getGlobalCooldown,
   globalSlotStatus,
+  isJobCancelRequested,
   loadState,
   normalizeProviderTokenUsage,
   normalizeReasoningEffort,
@@ -77,26 +79,17 @@ import {
   executeVoiceAction,
 } from './classic_ai_tools.mjs';
 
-const CLIENT_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis (list_directory, search_files, read_file, et selon permission edit_file, write_file, run_command). Ne réécris pas le code dans ta réponse finale : termine par un bilan ultra-court (<= 6 lignes) des fichiers modifiés/commandes lancées.`;
+const CLIENT_TOOLS_INSTRUCTIONS = `Utilise directement les outils locaux fournis pour lire et modifier les fichiers demandés, puis termine par un court bilan.`;
 
-const NATURAL_INSTRUCTIONS = `Réponds en français (ou langue de la demande) de façon ultra-concise et dense : zéro introduction, zéro conclusion, zéro reformulation.
-Si du code est demandé : N'UTILISE JAMAIS create_artifact / artefact / canvas. Écris uniquement le bloc de code ou patch ciblé directement en Markdown, sans commentaires évidents ni texte superflu autour.`;
+const NATURAL_INSTRUCTIONS = `Réponds clairement et directement en français, avec le code complet en bloc Markdown si du code est demandé.`;
 
-const CANVAS_INSTRUCTIONS = `Mode Canvas & Artefact actif : crée un document ou artefact visuel complet, autonome et soigné (HTML/CSS/JS complet en un seul bloc \`\`\`html, SVG en \`\`\`svg, diagramme \`\`\`mermaid, ou document Markdown structuré prêt à afficher). Donne un titre clair puis l'artefact complet directement utilisable.`;
+const CANVAS_INSTRUCTIONS = `Réponds clairement en français. Mets le code ou document complet dans un document Canvas (createDocument) ou en bloc Markdown prêt à copier.`;
 
-const PLAN_INSTRUCTIONS = `Réponds en style télégraphique (15 lignes max) : fichiers exacts, étapes clés et risques majeurs uniquement. Zéro code complet, zéro blabla.`;
+const PLAN_INSTRUCTIONS = `Propose un plan court et clair (étapes et fichiers clés), sans écrire tout le code.`;
 
-const PATCH_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Ne réécris JAMAIS le fichier complet : formate CHAQUE modification exactement ainsi (sans texte autour) :
-TARGET:
-\`\`\`
-extrait exact à remplacer
-\`\`\`
-REPLACE:
-\`\`\`
-nouveau code exact
-\`\`\``;
+const PATCH_INSTRUCTIONS = `Donne uniquement les extraits à modifier au format TARGET: puis REPLACE: en blocs de code.`;
 
-const PLAN_B_PART_INSTRUCTIONS = `N'utilise jamais create_artifact / artefact / canvas. Donne uniquement le bloc de code ou patch demandé pour cette partie, complet, compact, sans commentaires superflus ni texte autour.`;
+const PLAN_B_PART_INSTRUCTIONS = `Donne directement la réponse ou le bloc de code complet demandé pour cette partie.`;
 
 const FINAL = new Set(['done', 'error', 'cancelled', 'needs_approval']);
 const EXECUTION_MODES = new Set(['generate', 'apply', 'plan', 'patch', 'dry-run']);
@@ -114,8 +107,21 @@ function notify() {
 }
 
 const liveHeartbeat = setInterval(() => {
+  if (!jobs.size) return;
+  for (const [id, job] of [...jobs.entries()]) {
+    if (isJobCancelRequested(id)) {
+      clearCancelRequest(id);
+      if (job.status === 'queued') {
+        const idx = queue.indexOf(job);
+        if (idx >= 0) queue.splice(idx, 1);
+        finishJob(job, 'cancelled');
+      } else {
+        running.get(id)?.abort();
+      }
+    }
+  }
   if (jobs.size) notify();
-}, 8_000);
+}, 3_500);
 liveHeartbeat.unref?.();
 
 function directSessionKey(job) {
@@ -307,14 +313,16 @@ function publicView(j) {
     providerUsage: normalizeProviderTokenUsage(usage),
   };
   return {
-    jobId: j.id,
+    jobId: j.id || j.jobId,
+    id: j.id || j.jobId,
     title: j.title,
+    task: j.task || '',
     status: j.status,
     model: j.model,
     route: j.routeReason,
     planB: Boolean(j.planB),
-    elapsedSec: j.startedAt ? Math.round((end - j.startedAt) / 1000) : 0,
-    receivedChars: j.receivedChars,
+    elapsedSec: (j.startedAt || j.createdAt) ? Math.max(0, Math.round((end - (j.startedAt || j.createdAt)) / 1000)) : 0,
+    receivedChars: j.receivedChars || 0,
     response: j.response ?? j.summary ?? '',
     summary: j.summary,
     filesWritten: j.filesWritten ?? [],
@@ -327,6 +335,7 @@ function publicView(j) {
     error: j.error,
     planBRecommended: Boolean(j.planBRecommended),
     planBHint: j.planBHint ?? null,
+    createdAt: j.createdAt,
     startedAt: j.startedAt,
     endedAt: j.endedAt,
     usage,
@@ -344,6 +353,7 @@ function publicView(j) {
     triggeredCapabilities: j.triggeredCapabilities ?? null,
     webSearchSources: j.webSearchSources ?? [],
     generatedImages: j.generatedImages ?? [],
+    canvasDocuments: j.canvasDocuments ?? [],
     canvasPreview: j.canvasPreview ?? null,
     antigravitySavings: j.antigravitySavings ?? null,
   };
@@ -680,6 +690,15 @@ async function runJob(job) {
             job.thoughts = job.thoughts.slice(-20);
             notify();
           },
+          onCanvasProgress: (chars) => {
+            job.receivedChars += chars;
+            job.summary = `Génération Canvas en cours (${job.receivedChars} car.)…`;
+          },
+          onCanvasDocument: (doc) => {
+            job.thoughts.push(`Canvas prêt : ${doc.title} (${doc.kind}, ${doc.content.length} car.)`);
+            job.thoughts = job.thoughts.slice(-20);
+            notify();
+          },
           signal: ac.signal,
           ...makeStreamCallbacks(),
         });
@@ -720,6 +739,7 @@ async function runJob(job) {
       job.toolTurns = result.toolTurns ?? 0;
       job.webSearchSources = result.webSearchSources ?? [];
       job.generatedImages = result.generatedImages ?? [];
+      job.canvasDocuments = result.canvasDocuments ?? [];
       if (runner) {
         job.filesWritten = runner.getFilesWritten();
         job.commandsRun = runner.getCommandsRun();
@@ -729,23 +749,26 @@ async function runJob(job) {
         providerUsage: normalizeProviderTokenUsage(result.usage),
       };
       job.response = String(result.text ?? '').trim().slice(0, 60_000);
-      // Auto-publish Canvas HTML/SVG/Mermaid artifacts to live local Canvas preview when Canvas mode triggered!
-      if (route.enableCanvas && job.response) {
-        const htmlMatch = /```html\s*\n([\s\S]+?)```/i.exec(job.response);
-        const svgMatch = !htmlMatch ? /```svg\s*\n([\s\S]+?)```/i.exec(job.response) : null;
-        const mmdMatch = (!htmlMatch && !svgMatch) ? /```mermaid\s*\n([\s\S]+?)```/i.exec(job.response) : null;
-        const artContent = htmlMatch?.[1] || svgMatch?.[1] || mmdMatch?.[1] || null;
-        const artType = htmlMatch ? 'html' : (svgMatch ? 'svg' : (mmdMatch ? 'mermaid' : null));
+      // Auto-publish Canvas HTML/SVG/Mermaid documents (native createDocument or fenced code) to Live Canvas!
+      if ((route.enableCanvas || job.canvasDocuments.length) && job.response) {
+        const nativeVisual = job.canvasDocuments.find((d) => ['html', 'svg', 'mermaid'].includes(String(d.kind || '').toLowerCase()));
+        const htmlMatch = !nativeVisual ? /```html\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+        const svgMatch = (!nativeVisual && !htmlMatch) ? /```svg\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+        const mmdMatch = (!nativeVisual && !htmlMatch && !svgMatch) ? /```mermaid\s*\n([\s\S]+?)```/i.exec(job.response) : null;
+        const artContent = nativeVisual?.content || htmlMatch?.[1] || svgMatch?.[1] || mmdMatch?.[1] || null;
+        const artType = nativeVisual ? String(nativeVisual.kind).toLowerCase() : (htmlMatch ? 'html' : (svgMatch ? 'svg' : (mmdMatch ? 'mermaid' : null)));
         if (artContent && artType) {
           try {
             const cv = await executeCanvasAction({
               action: 'create',
               id: `artifact-${job.id}`,
-              title: job.title.replace(/^\[ATG\]\s*/, '').slice(0, 60),
+              title: (nativeVisual?.title || job.title.replace(/^\[ATG\]\s*/, '')).slice(0, 60),
               type: artType,
               content: artContent.trim(),
             });
-            if (cv?.url) job.canvasPreview = { id: cv.id, type: artType, url: cv.url };
+            if (cv?.previewUrl || cv?.url) {
+              job.canvasPreview = { id: cv.id, type: artType, url: cv.previewUrl || cv.url, title: nativeVisual?.title || '' };
+            }
           } catch { /* non-blocking live preview */ }
         }
       }

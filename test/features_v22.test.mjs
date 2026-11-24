@@ -6,16 +6,20 @@ import test from 'node:test';
 
 import {
   analyzeTaskIntent,
+  buildReasoningDirective,
+  clearCancelRequest,
   DEFAULT_STATE,
   DEFAULT_TOOLS_STREAM_TIMEOUT_MS,
   enrichModelsCatalog,
   extractModelVersion,
   getModelTelemetry,
+  isJobCancelRequested,
   MCP_TOOL_CATALOG,
   parseTaskDirectives,
   pickModel,
   rankModelsBestToWorst,
   recordModelTelemetry,
+  requestCancelJob,
   scoreModelPower,
   TELEMETRY_MAX_SAMPLES,
   TELEMETRY_WINDOW_MS,
@@ -397,10 +401,17 @@ test('v2.6.0 : routage intelligent & déclencheurs natifs Web Search / Canvas / 
   assert.equal(canvasRoute.intent, 'canvas_artifact');
   assert.equal(canvasRoute.enableCanvas, true);
 
-  // 3. Refactoring architecture lourde -> modèle fort + Canvas off !
-  const heavyRoute = pickModel('refactorise l architecture sécurité multi-fichiers du backend', models, st);
-  assert.equal(heavyRoute.model, 'claude-opus-5-5');
-  assert.equal(heavyRoute.enableCanvas, false);
+  // 3. Refactoring architecture lourde avec écriture disque (clientTools) -> modèle fort + Canvas off !
+  const heavyDiskRoute = pickModel('refactorise l architecture sécurité multi-fichiers du backend', models, st, undefined, {
+    workspaceRoot: 'C:/tmp/proj',
+    useClientTools: true,
+  });
+  assert.equal(heavyDiskRoute.model, 'claude-opus-5-5');
+  assert.equal(heavyDiskRoute.enableCanvas, false);
+
+  // 3b. Code simple dans le panneau (sans écriture disque) -> Canvas ON par défaut pour copier le code facilement !
+  const simpleCodeRoute = pickModel('écris une fonction fibonacci en JS', models, st);
+  assert.equal(simpleCodeRoute.enableCanvas, true);
 
   // 4. Génération d'image -> modèle léger + enableImageGen: true !
   const imgRoute = pickModel('génère une image photoréaliste d un astronome', models, st);
@@ -418,6 +429,18 @@ test('v2.6.0 : routage intelligent & déclencheurs natifs Web Search / Canvas / 
   // 6. analyzeTaskIntent respecte les surcharges off/on
   const forcedOff = analyzeTaskIntent('cherche sur internet les news 2026', { webSearchMode: 'off', canvasMode: 'on' });
   assert.equal(forcedOff.enableWebSearch, false);
-  assert.equal(forcedOff.enableCanvas, true);
+  assert.equal(forcedOff.enableCanvas, false); // pure web lookup keeps Canvas off unless explicitCanvas
+  const forcedCanvas = analyzeTaskIntent('cherche sur internet les news 2026', { webSearchMode: 'off', canvasMode: 'on', explicitCanvas: true });
+  assert.equal(forcedCanvas.enableCanvas, true);
+
+  // 7. Prompts simplifiés & annulation cross-process des agents actifs
+  assert.equal(buildReasoningDirective('deep'), '');
+  assert.ok(buildReasoningDirective('max').length < 100);
+  const testJobId = `cancel-test-${Date.now()}`;
+  assert.equal(isJobCancelRequested(testJobId), false);
+  requestCancelJob(testJobId);
+  assert.equal(isJobCancelRequested(testJobId), true);
+  clearCancelRequest(testJobId);
+  assert.equal(isJobCancelRequested(testJobId), false);
 });
 

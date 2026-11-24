@@ -1010,9 +1010,9 @@
               Canvas
             </span>
           </div>
-          <div class="trig-seg" id="canvasSeg" title="Auto : active les artefacts Canvas France Student + aperçu live sur les demandes visuelles">
-            <button type="button" data-val="auto" class="on">Auto</button>
-            <button type="button" data-val="on">Oui</button>
+          <div class="trig-seg" id="canvasSeg" title="Activé par défaut : génère le code dans Canvas (copie 1 clic + aperçu live)">
+            <button type="button" data-val="auto">Auto</button>
+            <button type="button" data-val="on" class="on">Oui</button>
             <button type="button" data-val="off">Non</button>
           </div>
         </div>
@@ -1718,6 +1718,28 @@
       $('tierPopover').hidden = true;
     }
 
+    let lastHistoryRenderSig = '';
+
+    function extractCopyableCode(j) {
+      if (Array.isArray(j?.canvasDocuments) && j.canvasDocuments.length && j.canvasDocuments[0]?.content) {
+        return {
+          title: j.canvasDocuments[0].title || 'Canvas',
+          kind: j.canvasDocuments[0].kind || 'code',
+          code: String(j.canvasDocuments[0].content),
+        };
+      }
+      const resp = String(j?.response || '');
+      const matches = [...resp.matchAll(/```([\w.+-]*)\s*\n([\s\S]*?)```/g)];
+      if (!matches.length) return null;
+      // Pick the largest fenced block (the actual code/artifact)
+      matches.sort((a, b) => b[2].length - a[2].length);
+      return {
+        title: 'Bloc de code',
+        kind: matches[0][1] || 'code',
+        code: matches[0][2].trim(),
+      };
+    }
+
     function renderActive() {
       const list = Array.isArray(S.active) ? S.active : [];
       $('activeCount').textContent = list.length;
@@ -1727,69 +1749,97 @@
         return;
       }
       $('active').innerHTML = list.map((j) => {
+        const jId = j.jobId || j.id || '';
         const title = esc(String(j.title || '').replace(/^\[ATG\]\s*/, ''));
         const thought = (j.lastThoughts && j.lastThoughts.length)
           ? j.lastThoughts[j.lastThoughts.length - 1]
           : (j.summary || j.route || 'Génération en cours…');
+        const trig = j.triggeredCapabilities || null;
+        const capChips = [
+          trig?.webSearch ? '<span class="cap-chip">Web</span>' : '',
+          trig?.canvas ? '<span class="cap-chip canvas">Canvas</span>' : '',
+        ].filter(Boolean).join('');
+        const statusTxt = j.status === 'queued'
+          ? 'En file d’attente…'
+          : (j.status === 'waiting'
+            ? 'En attente de créneau…'
+            : (j.receivedChars ? `${fmtNum(j.receivedChars)} car.` : 'Connexion au modèle…'));
+        const startTs = Number(j.startedAt || j.createdAt || 0);
+        const liveSec = startTs ? Math.max(0, Math.round((Date.now() - startTs) / 1000)) : (j.elapsedSec || 0);
         return `<div class="job-card">
           <div class="job-top">
             <span class="tag">ATG</span>
             <span class="job-title" title="${title}">${title}</span>
+            ${capChips}
             <span class="model-pill">${esc(shortModel(j.model) || 'routage…')}</span>
-            <button class="x" data-cancel="${esc(j.jobId)}" title="Annuler">${ICO_X}</button>
+            <button type="button" class="x" data-cancel="${esc(jId)}" title="Annuler cet agent">${ICO_X}</button>
           </div>
           <div class="pbar"><div></div></div>
           <div class="job-meta">
-            <span>${j.status === 'waiting' ? 'En attente de créneau…' : (j.receivedChars ? j.receivedChars + ' car.' : 'Connexion…')}</span>
-            <span data-start="${j.status === 'running' ? j.startedAt : ''}">${fmtSec(j.elapsedSec || 0)}</span>
+            <span>${esc(statusTxt)}</span>
+            <span data-start="${startTs || ''}">${fmtSec(liveSec)}</span>
           </div>
           <div class="term">&gt; ${esc(thought)}</div>
         </div>`;
       }).join('');
     }
 
-    function renderHistory() {
+    function renderHistory(force = false) {
       if (!Array.isArray(S.history)) {
         const label = stateLoad === 'unavailable' ? 'Indisponible' : 'Chargement…';
         $('historyCount').textContent = '—';
         $('clearHistory').hidden = true;
         $('history').innerHTML = `<div class="empty-txt">${label}</div>`;
+        lastHistoryRenderSig = '';
         return;
       }
       $('historyCount').textContent = S.history.length;
       $('clearHistory').hidden = S.history.length === 0;
       if (!S.history.length) {
         $('history').innerHTML = '<div class="empty-txt">Aucune génération récente</div>';
+        lastHistoryRenderSig = 'empty';
         return;
       }
-      const undoIds = new Set((Array.isArray(S.undoEntries) ? S.undoEntries : []).map((u) => u.id));
-      $('history').innerHTML = '<div class="hist-list">' + S.history.slice(0, 10).map((j) => {
+      const undoList = Array.isArray(S.undoEntries) ? S.undoEntries : [];
+      const undoIds = new Set(undoList.map((u) => u.id));
+      const slice = S.history.slice(0, 15);
+      const sig = JSON.stringify({
+        exp: [...expandedHistory].sort(),
+        undo: [...undoIds].sort(),
+        rows: slice.map((j) => [j.jobId || j.id, j.status, j.endedAt, (j.response || '').length, j.canvasPreview?.url || '']),
+      });
+      if (!force && sig === lastHistoryRenderSig) return;
+      lastHistoryRenderSig = sig;
+
+      $('history').innerHTML = '<div class="hist-list">' + slice.map((j) => {
         const jId = j.jobId || j.id || '';
         const title = esc(String(j.title || '').replace(/^\[ATG\]\s*/, ''));
         const ico = j.status === 'done' ? ICO_CHECK : j.status === 'error' ? ICO_X : ICO_PAUSE;
         const respText = j.response || j.summary || j.error || '';
+        const codeExtract = extractCopyableCode(j);
         const filesArr = Array.isArray(j.filesWritten) ? j.filesWritten : [];
         const cmdsArr = Array.isArray(j.commandsRun) ? j.commandsRun : [];
         const fwCount = filesArr.length;
         const cmdCount = cmdsArr.length;
         const savedTok = j.antigravitySavings?.totalTokensSavedEst;
         const trig = j.triggeredCapabilities || null;
+        const hasCanvas = Boolean(trig?.canvas || (j.canvasDocuments && j.canvasDocuments.length) || j.canvasPreview?.url);
         const badges = [
           trig?.webSearch ? '<span class="cap-chip">Web</span>' : '',
-          trig?.canvas ? '<span class="cap-chip canvas">Canvas</span>' : '',
+          hasCanvas ? '<span class="cap-chip canvas">Canvas</span>' : '',
           trig?.imageGen ? '<span class="cap-chip">Image</span>' : '',
           fwCount ? `<span class="hchip">${fwCount} fichier(s)</span>` : '',
           cmdCount ? `<span class="hchip">${cmdCount} cmd</span>` : '',
         ].filter(Boolean).join('');
         const sub = [
           shortModel(j.model) || 'Auto',
-          j.error ? j.error : (respText ? respText.length + ' car.' : 'terminé'),
+          j.error ? j.error : (respText ? `${fmtNum(respText.length)} car.` : (j.status === 'cancelled' ? 'annulé' : 'terminé')),
           savedTok > 0 ? `~${fmtNum(savedTok)} tok` : '',
         ].filter(Boolean).join(' · ');
         const open = expandedHistory.has(jId);
         const sourcesArr = Array.isArray(j.webSearchSources) ? j.webSearchSources : [];
         const sourcesHtml = open && sourcesArr.length ? `<div class="hist-sec"><div class="hist-sec-lbl">Sources Web (${sourcesArr.length})</div><div class="source-list">${sourcesArr.slice(0, 8).map((s) => `<a class="source-pill" href="${esc(s.url)}" target="_blank" rel="noopener" title="${esc(s.url)}">${esc(s.title || s.url)}</a>`).join('')}</div></div>` : '';
-        const canvasHtml = open && j.canvasPreview?.url ? `<div class="hist-sec"><div class="hist-sec-lbl">Aperçu Canvas Live (${esc(j.canvasPreview.type || 'html')})</div><iframe class="stage-iframe" sandbox="allow-scripts" src="${esc(j.canvasPreview.url)}"></iframe></div>` : '';
+        const canvasHtml = open && j.canvasPreview?.url ? `<div class="hist-sec"><div class="stage-head" style="margin-bottom:5px"><span class="hist-sec-lbl" style="margin:0">Aperçu Canvas Live (${esc(j.canvasPreview.type || 'html')})</span><a class="source-pill" href="${esc(j.canvasPreview.url)}" target="_blank" rel="noopener">Ouvrir ↗</a></div><iframe class="stage-iframe" sandbox="allow-scripts" src="${esc(j.canvasPreview.url)}"></iframe></div>` : '';
         const thoughtsArr = Array.isArray(j.thoughts) && j.thoughts.length
           ? j.thoughts
           : (Array.isArray(j.lastThoughts) ? j.lastThoughts : []);
@@ -1812,14 +1862,18 @@
               <span class="hist-title">${title}${badges ? `<span class="hist-badges">${badges}</span>` : ''}</span>
               <div class="hist-sub">${esc(sub)}</div>
             </div>
-            <span class="hist-time">${fmtAgo(j.endedAt || j.startedAt)}</span>
+            ${codeExtract ? `<button type="button" class="undo-mini" data-copy-code="${esc(jId)}" title="Copier directement le code Canvas (${esc(codeExtract.kind)})">Copier code</button>` : ''}
+            <span class="hist-time">${fmtAgo(j.endedAt || j.startedAt || j.createdAt)}</span>
           </div>
           ${open ? `<div class="hist-detail">
             <pre class="hist-pre">${esc(respText || 'Aucun contenu.')}</pre>
             ${canvasHtml}${sourcesHtml}${thoughtsHtml}${filesHtml}${cmdsHtml}
             <div class="hist-actions">
-              ${respText && j.status === 'done' ? `<button type="button" class="btn sm" data-copy-resp="${esc(jId)}">Copier</button>` : ''}
+              ${codeExtract ? `<button type="button" class="btn sm" data-copy-code="${esc(jId)}">Copier le code (${esc(codeExtract.kind)})</button>` : ''}
+              ${respText && j.status === 'done' ? `<button type="button" class="btn ${codeExtract ? 'ghost ' : ''}sm" data-copy-resp="${esc(jId)}">Copier tout</button>` : ''}
               ${j.task ? `<button type="button" class="btn ghost sm" data-rerun-id="${esc(jId)}">Relancer</button>` : ''}
+              <span class="spacer"></span>
+              <button type="button" class="btn ghost sm" data-del-hist="${esc(jId)}" title="Supprimer de l’historique">Supprimer</button>
             </div>
           </div>` : ''}
         </div>`;
@@ -2188,7 +2242,7 @@
         ? 'Maximum · Modèles forts'
         : (effort === 'standard' ? 'Standard' : 'Approfondi');
       const wsMode = S.webSearchMode || 'auto';
-      const cvMode = S.canvasMode || 'auto';
+      const cvMode = S.canvasMode || 'on';
       document.querySelectorAll('#webSearchSeg button').forEach((b) => b.classList.toggle('on', b.dataset.val === wsMode));
       document.querySelectorAll('#canvasSeg button').forEach((b) => b.classList.toggle('on', b.dataset.val === cvMode));
       const undoList = Array.isArray(S.undoEntries) ? S.undoEntries : [];
@@ -3344,12 +3398,32 @@
         await poll();
         return;
       }
+      const copyCodeBtn = e.target.closest('[data-copy-code]');
+      if (copyCodeBtn) {
+        const job = (S.history || []).find((h) => (h.jobId || h.id) === copyCodeBtn.dataset.copyCode);
+        const extracted = extractCopyableCode(job);
+        if (extracted?.code) {
+          await navigator.clipboard.writeText(extracted.code).catch(() => {});
+          flash(`Code copié (${extracted.kind}) !`);
+        }
+        return;
+      }
       const copyRespBtn = e.target.closest('[data-copy-resp]');
       if (copyRespBtn) {
         const job = (S.history || []).find((h) => (h.jobId || h.id) === copyRespBtn.dataset.copyResp);
         const text = job?.response || job?.summary || '';
         await navigator.clipboard.writeText(text).catch(() => {});
-        flash('Copié !');
+        flash('Réponse copiée !');
+        return;
+      }
+      const delHistBtn = e.target.closest('[data-del-hist]');
+      if (delHistBtn) {
+        const delId = delHistBtn.dataset.delHist;
+        expandedHistory.delete(delId);
+        await api('/api/delete-history', { id: delId }).catch(() => {});
+        lastHistoryRenderSig = '';
+        flash('Entrée supprimée');
+        await poll();
         return;
       }
       const rerunBtn = e.target.closest('[data-rerun-id]');
@@ -3364,13 +3438,18 @@
         return;
       }
       const cancel = e.target.closest('[data-cancel]');
-      if (cancel) { await api('/api/cancel', { id: cancel.dataset.cancel }); await poll(); return; }
+      if (cancel) {
+        await api('/api/cancel', { id: cancel.dataset.cancel }).catch(() => {});
+        flash('Annulation envoyée');
+        await poll();
+        return;
+      }
 
       const hist = e.target.closest('[data-hist]');
-      if (hist && !e.target.closest('button, a')) {
+      if (hist && !e.target.closest('button, a, .hist-detail')) {
         const id = hist.dataset.hist;
         if (expandedHistory.has(id)) expandedHistory.delete(id); else expandedHistory.add(id);
-        renderHistory();
+        renderHistory(true);
       }
     });
 

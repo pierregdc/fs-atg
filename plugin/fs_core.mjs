@@ -397,8 +397,56 @@ export function getModelTelemetry({ filePath = TELEMETRY_PATH, now = Date.now() 
   return out;
 }
 export const LIVE_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_live.json');
+export const CANCEL_PATH = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_cancels.json');
 export const SLOT_DIR = join(__dirname, 'sidecars', 'fs_atg_panel', '.fsatg_slots');
-export const LIVE_JOB_TTL_MS = 30_000;
+export const LIVE_JOB_TTL_MS = 90_000;
+
+function readCancelMap() {
+  try {
+    if (existsSync(CANCEL_PATH)) {
+      const parsed = JSON.parse(readFileSync(CANCEL_PATH, 'utf-8').replace(/^\uFEFF/, ''));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const now = Date.now();
+        const fresh = {};
+        for (const [k, ts] of Object.entries(parsed)) {
+          if (now - Number(ts || 0) < 10 * 60_000) fresh[k] = Number(ts);
+        }
+        return fresh;
+      }
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+export function requestCancelJob(jobId) {
+  const id = String(jobId || '').trim();
+  if (!id) return false;
+  try {
+    const map = readCancelMap();
+    map[id] = Date.now();
+    mkdirSync(dirname(CANCEL_PATH), { recursive: true });
+    writeFileSync(CANCEL_PATH, JSON.stringify(map), 'utf-8');
+    return true;
+  } catch { return false; }
+}
+
+export function isJobCancelRequested(jobId) {
+  const id = String(jobId || '').trim();
+  if (!id) return false;
+  return Boolean(readCancelMap()[id]);
+}
+
+export function clearCancelRequest(jobId) {
+  const id = String(jobId || '').trim();
+  if (!id) return;
+  try {
+    const map = readCancelMap();
+    if (map[id]) {
+      delete map[id];
+      writeFileSync(CANCEL_PATH, JSON.stringify(map), 'utf-8');
+    }
+  } catch { /* ignore */ }
+}
 
 export const BASELINE_MODEL_IDS = new Set([
   'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.6-sol',
@@ -435,15 +483,12 @@ export function normalizeReasoningEffort(val, fallback = 'deep') {
 
 export function buildReasoningDirective(effort = 'deep', executionMode = 'generate') {
   const eff = normalizeReasoningEffort(effort, 'deep');
-  if (eff === 'standard') return '';
   if (eff === 'max') {
     return executionMode === 'plan'
-      ? ` Protocole de raisonnement MAXIMUM : décompose l'architecture, vérifie chaque dépendance inter-fichiers, anticipe les cas limites, régressions, failles de sécurité et goulots de performance avant de formuler le plan.`
-      : ` Protocole de raisonnement MAXIMUM : avant toute écriture ou réponse, analyse méthodiquement la cause racine, les invariants du code, les effets de bord multi-fichiers et les cas limites (erreurs, types, concurrence, sécurité). Vérifie systématiquement la cohérence syntaxique et logique du résultat final.`;
+      ? ' Vérifie les dépendances importantes et les cas limites.'
+      : ' Vérifie la logique, les cas limites et la syntaxe avant de répondre.';
   }
-  return executionMode === 'plan'
-    ? ` Raisonnement approfondi : vérifie les dépendances et cas limites avant de structurer les étapes.`
-    : ` Raisonnement approfondi : analyse les contraintes, dépendances et cas limites avant de coder ou modifier un fichier, et vérifie la cohérence finale.`;
+  return '';
 }
 
 export const DEFAULT_STATE = {
@@ -464,7 +509,7 @@ export const DEFAULT_STATE = {
   computerUseEnabled: true,
   enableWebSearch: true,
   webSearchMode: 'auto',
-  canvasMode: 'auto',
+  canvasMode: 'on',
   imageGenMode: 'auto',
   smartRouting: true,
   reuseChat: true,
@@ -560,7 +605,25 @@ export function loadState() {
   return { ...DEFAULT_STATE, modelPolicies: filePolicies };
 }
 
-export function saveState(st) {
+function mergeHistoryLists(incoming = [], disk = [], limit = 25) {
+  const byId = new Map();
+  const add = (item) => {
+    if (!item || typeof item !== 'object') return;
+    const key = String(item.jobId || item.id || '');
+    if (!key) return;
+    const prev = byId.get(key);
+    if (!prev || Number(item.endedAt || item.createdAt || 0) >= Number(prev.endedAt || prev.createdAt || 0)) {
+      byId.set(key, item);
+    }
+  };
+  for (const item of Array.isArray(disk) ? disk : []) add(item);
+  for (const item of Array.isArray(incoming) ? incoming : []) add(item);
+  return [...byId.values()]
+    .sort((a, b) => Number(b.endedAt || b.startedAt || b.createdAt || 0) - Number(a.endedAt || a.startedAt || a.createdAt || 0))
+    .slice(0, limit);
+}
+
+export function saveState(st, { replaceHistory = false } = {}) {
   const incomingPolicies = (st?.modelPolicies && typeof st.modelPolicies === 'object' && !Array.isArray(st.modelPolicies))
     ? st.modelPolicies
     : {};
@@ -569,8 +632,22 @@ export function saveState(st) {
   }
   const diskPolicies = loadModelPoliciesFile();
   const mergedPolicies = { ...diskPolicies, ...incomingPolicies };
-  if (st && typeof st === 'object') st.modelPolicies = mergedPolicies;
-  const payload = JSON.stringify(st && typeof st === 'object' ? { ...st, modelPolicies: mergedPolicies } : st, null, 2);
+  let mergedHistory = Array.isArray(st?.history) ? st.history : [];
+  if (!replaceHistory && st && typeof st === 'object') {
+    try {
+      if (existsSync(STATE_PATH)) {
+        const diskRaw = JSON.parse(readFileSync(STATE_PATH, 'utf-8').replace(/^\uFEFF/, ''));
+        if (Array.isArray(diskRaw?.history)) {
+          mergedHistory = mergeHistoryLists(mergedHistory, diskRaw.history, 25);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  if (st && typeof st === 'object') {
+    st.modelPolicies = mergedPolicies;
+    st.history = mergedHistory;
+  }
+  const payload = JSON.stringify(st && typeof st === 'object' ? { ...st, modelPolicies: mergedPolicies, history: mergedHistory } : st, null, 2);
   const tmp = `${STATE_PATH}.${process.pid}.tmp`;
   try {
     mkdirSync(dirname(STATE_PATH), { recursive: true });
@@ -1568,8 +1645,9 @@ export function analyzeTaskIntent(prompt, {
   workspaceRoot = '',
   useClientTools = false,
   webSearchMode = 'auto',
-  canvasMode = 'auto',
+  canvasMode = 'on',
   imageGenMode = 'auto',
+  explicitCanvas = false,
 } = {}) {
   const text = String(prompt ?? '').trim();
   const isWebResearch = WEB_RESEARCH_RE.test(text);
@@ -1581,13 +1659,15 @@ export function analyzeTaskIntent(prompt, {
   const hasWorkspaceWrite = Boolean(workspaceRoot && useClientTools && executionMode === 'apply');
 
   const wsMode = normalizeTriggerMode(webSearchMode, 'auto');
-  const cvMode = normalizeTriggerMode(canvasMode, 'auto');
+  const cvMode = normalizeTriggerMode(canvasMode, 'on');
   const igMode = normalizeTriggerMode(imageGenMode, 'auto');
 
   const enableWebSearch = wsMode === 'on' ? true : (wsMode === 'off' ? false : isWebResearch);
-  const enableCanvas = cvMode === 'on'
-    ? true
-    : (cvMode === 'off' ? false : Boolean(isCanvasArtifact && !hasWorkspaceWrite && executionMode !== 'patch' && executionMode !== 'plan'));
+  const isPureWebLookup = isWebResearch && !isCanvasArtifact && !isCoding;
+  const canUseCanvas = explicitCanvas || (!hasWorkspaceWrite && executionMode !== 'patch' && executionMode !== 'plan' && !isPureWebLookup);
+  const enableCanvas = cvMode === 'off'
+    ? false
+    : (cvMode === 'on' ? canUseCanvas : Boolean(isCanvasArtifact && canUseCanvas));
   const enableImageGen = igMode === 'on' ? true : (igMode === 'off' ? false : isImageGen);
 
   let intent = 'general';
@@ -1855,8 +1935,8 @@ export function pickModel(raw, available, state, explicit, {
     'auto'
   );
   const resolvedCanvasMode = normalizeTriggerMode(
-    canvasMode ?? directives.canvasMode ?? state?.canvasMode ?? 'auto',
-    'auto'
+    canvasMode ?? directives.canvasMode ?? state?.canvasMode ?? 'on',
+    'on'
   );
   const resolvedImgMode = normalizeTriggerMode(
     imageGenMode ?? directives.imageGenMode ?? state?.imageGenMode ?? 'auto',
@@ -1870,6 +1950,7 @@ export function pickModel(raw, available, state, explicit, {
     webSearchMode: resolvedWsMode,
     canvasMode: resolvedCanvasMode,
     imageGenMode: resolvedImgMode,
+    explicitCanvas: directives.canvasMode === 'on' || canvasMode === 'on',
   });
 
   const triggers = {
@@ -2361,6 +2442,8 @@ export async function streamGeneration({
   onToolCall,
   onWebSearch,
   onImageGenerated,
+  onCanvasDocument,
+  onCanvasProgress,
 }) {
   const base = OFFICIAL_API_BASE_URL;
   let apiKey = await resolveAuthToken(state);
@@ -2477,7 +2560,31 @@ export async function streamGeneration({
     const webSearchSources = [];
     const webSearchQueries = [];
     const generatedImages = [];
+    const canvasDocuments = [];
     const seenSourceUrls = new Set();
+    const seenCanvasIds = new Set();
+
+    const recordCanvasDoc = (rawId, toolName, argsObj) => {
+      if (!argsObj || typeof argsObj !== 'object') return;
+      const content = String(argsObj.content ?? argsObj.code ?? argsObj.text ?? argsObj.new_content ?? '').trim();
+      if (!content) return;
+      const key = String(rawId || `${toolName}:${argsObj.title || ''}:${content.length}`);
+      if (seenCanvasIds.has(key)) return;
+      seenCanvasIds.add(key);
+      const rawKind = String(argsObj.kind ?? argsObj.language ?? argsObj.type ?? '').trim().toLowerCase();
+      const lang = rawKind === 'code'
+        ? String(argsObj.language || '').trim().toLowerCase() || (content.startsWith('<!DOCTYPE') || content.startsWith('<html') ? 'html' : 'txt')
+        : (rawKind || (content.startsWith('<!DOCTYPE') || content.startsWith('<html') ? 'html' : (content.startsWith('<svg') ? 'svg' : 'md')));
+      const doc = {
+        id: String(rawId || `doc-${canvasDocuments.length + 1}`),
+        tool: String(toolName || 'createDocument'),
+        title: String(argsObj.title || argsObj.name || 'Document Canvas').slice(0, 120),
+        kind: lang,
+        content,
+      };
+      canvasDocuments.push(doc);
+      onCanvasDocument?.(doc);
+    };
 
     // Sync native France Student documentToolsEnabled (Canvas) / imageGenerationToolEnabled when explicitly requested.
     if (typeof enableCanvas === 'boolean' || typeof enableImageGen === 'boolean') {
@@ -2557,6 +2664,18 @@ export async function streamGeneration({
             turn.text += ev.text;
             combinedText += ev.text;
             onText?.(ev.text);
+          } else if (ev?.type === 'response.function_call_arguments.delta') {
+            const d = ev.delta ?? '';
+            if (d) onCanvasProgress?.(d.length);
+          } else if (ev?.type === 'response.output_item.done' && ev.item?.type === 'function_call') {
+            const fnName = String(ev.item.name || '');
+            if (/^(?:createDocument|updateDocument|editDocument|create_artifact)$/i.test(fnName)) {
+              let parsedArgs = ev.item.arguments;
+              if (typeof parsedArgs === 'string') {
+                try { parsedArgs = JSON.parse(parsedArgs); } catch { parsedArgs = null; }
+              }
+              if (parsedArgs) recordCanvasDoc(ev.item.call_id || ev.item.id, fnName, parsedArgs);
+            }
           } else if (ev?.type === 'response.web_search_call.searching' || ev?.type === 'response.web_search_call.in_progress') {
             onWebSearch?.({ status: 'searching' });
           } else if (ev?.type === 'response.output_item.done' && ev.item?.type === 'web_search_call') {
@@ -2597,6 +2716,18 @@ export async function streamGeneration({
             if (!turn.text && ev.message?.content) {
               turn.text = String(ev.message.content);
               combinedText += (combinedText ? '\n' : '') + turn.text;
+            }
+            // Also inspect completed message parts for any Canvas createDocument / updateDocument payload
+            if (Array.isArray(ev.message?.parts)) {
+              for (const part of ev.message.parts) {
+                const fnName = String(part?.toolName || part?.name || '');
+                if (/^(?:createDocument|updateDocument|editDocument|create_artifact)$/i.test(fnName)) {
+                  const argsObj = part?.input || part?.args || part?.arguments || part?.result || null;
+                  if (argsObj && typeof argsObj === 'object') {
+                    recordCanvasDoc(part.toolCallId || part.id, fnName, argsObj);
+                  }
+                }
+              }
             }
             turn.toolCalls = extractApiToolCalls(ev.message);
             addUsage(ev.message?.tokenUsage ?? ev.response?.usage ?? ev.usage);
@@ -2642,8 +2773,9 @@ export async function streamGeneration({
     };
 
     const continuing = Boolean(chatId);
-    // Prompt placed BEFORE rules/context annex to preserve prompt cache and prevent GPT instruction refusals.
-    const initialContent = instructions ? `${prompt}\n\n---\n\n${instructions}` : prompt;
+    // Keep prompt clean & natural (no heavy robotic boilerplate that causes refusals or "non distribué").
+    const cleanInstr = String(instructions || '').trim();
+    const initialContent = cleanInstr ? `${prompt}\n\n(${cleanInstr})` : prompt;
     const firstPayload = continuing
       ? {
         content: prompt,
@@ -2703,9 +2835,22 @@ export async function streamGeneration({
       turn = await consumeTurn(await postChat(`${base}/chats/${encodeURIComponent(chatId)}`, { toolResults, clientTools: toolsList }));
     }
 
-    const finalText = toolTurns > 0 ? (lastNonEmptyTurnText || combinedText) : combinedText;
+    let finalText = toolTurns > 0 ? (lastNonEmptyTurnText || combinedText) : combinedText;
+    // Append complete copyable code blocks from native France Student Canvas documents (createDocument / updateDocument).
+    if (canvasDocuments.length) {
+      const blocks = [];
+      for (const doc of canvasDocuments) {
+        if (!finalText.includes(doc.content.slice(0, 80))) {
+          const fence = doc.kind === 'markdown' ? 'md' : (doc.kind || '');
+          blocks.push(`### Canvas : ${doc.title}\n\`\`\`${fence}\n${doc.content}\n\`\`\``);
+        }
+      }
+      if (blocks.length) {
+        finalText = finalText.trim() ? `${finalText.trim()}\n\n${blocks.join('\n\n')}` : blocks.join('\n\n');
+      }
+    }
     if (!toolTurns) {
-      const refusal = refusalReasonFromText(finalText, { allowArtifacts: effectiveCanvas });
+      const refusal = refusalReasonFromText(finalText, { allowArtifacts: effectiveCanvas || canvasDocuments.length > 0 });
       if (refusal) throw new ModelRefusalError(refusal, { chatId });
     }
 
@@ -2718,9 +2863,10 @@ export async function streamGeneration({
       webSearchSources,
       webSearchQueries,
       generatedImages,
+      canvasDocuments,
       triggeredCapabilities: {
         webSearch: Boolean(effectiveWebSearch),
-        canvas: effectiveCanvas,
+        canvas: effectiveCanvas || canvasDocuments.length > 0,
         imageGen: Boolean(effectiveImageGen),
       },
       tokenMeasurement: {
